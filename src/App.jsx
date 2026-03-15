@@ -101,19 +101,17 @@ function TimePicker({ value, onChange }) {
   const { h, m, ampm } = parseTime(value);
   const hours = Array.from({ length: 12 }, (_, i) => i + 1);
   const mins = ["00","05","10","15","20","25","30","35","40","45","50","55"];
+  const selStyle = { background:"#f0f1f3", color:"#1f2937", border:"1px solid #d1d5db", borderRadius:6, padding:"6px 8px", fontSize:13 };
   return (
     <div style={{ display:"flex", gap:4, alignItems:"center" }}>
-      <select value={h} onChange={e => onChange(formatTime(e.target.value, m, ampm))}
-        style={{ background:"#1e2235", color:"#e2e8f0", border:"1px solid #334155", borderRadius:6, padding:"4px 6px", fontSize:13 }}>
+      <select value={h} onChange={e => onChange(formatTime(e.target.value, m, ampm))} style={selStyle}>
         {hours.map(hh => <option key={hh} value={hh}>{hh}</option>)}
       </select>
-      <span style={{ color:"#94a3b8" }}>:</span>
-      <select value={String(m).padStart(2,"0")} onChange={e => onChange(formatTime(h, e.target.value, ampm))}
-        style={{ background:"#1e2235", color:"#e2e8f0", border:"1px solid #334155", borderRadius:6, padding:"4px 6px", fontSize:13 }}>
+      <span style={{ color:"#6b7280" }}>:</span>
+      <select value={String(m).padStart(2,"0")} onChange={e => onChange(formatTime(h, e.target.value, ampm))} style={selStyle}>
         {mins.map(mm => <option key={mm} value={mm}>{mm}</option>)}
       </select>
-      <select value={ampm} onChange={e => onChange(formatTime(h, m, e.target.value))}
-        style={{ background:"#1e2235", color:"#e2e8f0", border:"1px solid #334155", borderRadius:6, padding:"4px 6px", fontSize:13 }}>
+      <select value={ampm} onChange={e => onChange(formatTime(h, m, e.target.value))} style={selStyle}>
         <option>AM</option>
         <option>PM</option>
       </select>
@@ -126,7 +124,7 @@ function TimePicker({ value, onChange }) {
 function SwatchPicker({ value, onChange, label }) {
   return (
     <div style={{ marginBottom:10 }}>
-      {label && <div style={{ fontSize:12, color:"#94a3b8", marginBottom:6 }}>{label}</div>}
+      {label && <div style={{ fontSize:12, color:V.textMuted, marginBottom:6 }}>{label}</div>}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:6 }}>
         {SWATCH_COLORS.map(c => {
           const sel = value === c.hex;
@@ -1688,12 +1686,67 @@ export default function App() {
                   <span style={{
                     flex: 1, fontSize: 12, color: r.done ? V.textDim : V.textSecondary,
                     textDecoration: r.done ? "line-through" : "none"
-                  }}>{r.text}</span>
+                  }}>
+                    {r.text}
+                    {r.streakCount > 0 && <span style={{ marginLeft:4, fontSize:11, textDecoration:"none" }}>🔥{r.streakCount}{r.hasCrown ? " 👑" : ""}</span>}
+                  </span>
                 </div>
               ))}
               {(routines||[]).length > 5 && <div style={{ fontSize: 11, color: V.textDim }}>+{(routines||[]).length-5} more</div>}
             </div>
           </div>
+        </div>
+
+        {/* ═══ AI QUICK ADD + VOICE (Cozyla) ═══ */}
+        <div style={{ padding: "0 14px 8px" }}>
+          <div style={{ display:"flex", gap:6, marginBottom:10 }}>
+            <button onClick={() => isRecording ? stopVoiceInput() : startVoiceInput(text => setQuickAddInput(text))}
+              style={{ width:44, height:44, borderRadius:"50%", border:"none", cursor:"pointer", fontSize:18,
+                background: isRecording ? V.danger : V.bgElevated, color: isRecording ? "#fff" : V.textMuted, flexShrink:0 }}>🎤</button>
+            <input value={quickAddInput} onChange={e => setQuickAddInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleQuickAdd()}
+              placeholder="Add anything..."
+              style={{ ...inputStyle, flex:1, padding:"10px 14px", fontSize:13, borderRadius:20 }} />
+            <button onClick={handleQuickAdd} disabled={quickAddLoading || !quickAddInput.trim()}
+              style={{ ...btnPrimary, borderRadius:20, padding:"10px 14px", fontSize:16, opacity: quickAddLoading ? 0.6 : 1 }}>
+              {quickAddLoading ? "..." : "✨"}</button>
+          </div>
+          {quickAddPreview && (
+            <div style={{ ...cardStyle, border:`2px solid ${V.accent}`, marginBottom:10 }}>
+              <div style={{ fontWeight:700, color:V.accent, marginBottom:6 }}>Creating {quickAddPreview.totalInstances} event{quickAddPreview.totalInstances>1?"s":""}{quickAddPreview.repeatDesc}</div>
+              <div style={{ display:"flex", gap:8, marginTop:8 }}>
+                <button onClick={confirmQuickAdd} style={{ ...btnPrimary, flex:1 }}>Confirm</button>
+                <button onClick={() => setQuickAddPreview(null)} style={{ ...btnSecondary, flex:1 }}>Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ═══ BIRTHDAY COUNTDOWNS (Cozyla) ═══ */}
+        <div style={{ padding: "0 14px" }}>
+          {(() => {
+            const upcoming = getUpcomingBirthdays();
+            const todayBdays = upcoming.filter(b => b.daysUntil === 0);
+            if (todayBdays.length > 0) setTimeout(() => triggerConfetti(document.body, "big"), 300);
+            return upcoming.length > 0 ? (
+              <div style={{ marginBottom: 10 }}>
+                {todayBdays.map((b, i) => (
+                  <div key={"cbdt"+i} style={{ padding:12, borderRadius:20, background:`linear-gradient(135deg, ${V.accent}33, ${V.accent}11)`,
+                    border:"2px solid gold", textAlign:"center", marginBottom:8 }}>
+                    <div style={{ fontSize:18, fontWeight:800, color:V.textPrimary }}>🎂 TODAY IS {b.name.toUpperCase()}'S BIRTHDAY! 👑🎉</div>
+                  </div>
+                ))}
+                {upcoming.filter(b => b.daysUntil > 0).map((b, i) => (
+                  <div key={"cbd"+i} style={{ padding:10, borderRadius:14, background:V.bgCard, marginBottom:6,
+                    border: b.daysUntil <= 7 ? "2px solid gold" : `1px solid ${V.borderDefault}`,
+                    display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                    <span style={{ color:V.textSecondary, fontWeight:600, fontSize:13 }}>{b.emoji} {b.name} in {b.daysUntil}d 🎉</span>
+                    {b.daysUntil <= 7 && <span style={{ fontSize:18 }}>🎂</span>}
+                  </div>
+                ))}
+              </div>
+            ) : null;
+          })()}
         </div>
 
         {/* Day detail popup */}
@@ -1895,13 +1948,63 @@ export default function App() {
           ))}
         </div>
 
+        {/* ═══ AI QUICK ADD + VOICE (FamilyWall) ═══ */}
+        <div style={{ display:"flex", gap:6, marginTop:12, marginBottom:10 }}>
+          <button onClick={() => isRecording ? stopVoiceInput() : startVoiceInput(text => setQuickAddInput(text))}
+            style={{ width:44, height:44, borderRadius:"50%", border:"none", cursor:"pointer", fontSize:18,
+              background: isRecording ? V.danger : V.bgElevated, color: isRecording ? "#fff" : V.textMuted, flexShrink:0 }}>🎤</button>
+          <input value={quickAddInput} onChange={e => setQuickAddInput(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && handleQuickAdd()}
+            placeholder="Add anything..."
+            style={{ ...inputStyle, flex:1, padding:"10px 14px", fontSize:13, borderRadius:V.r2 }} />
+          <button onClick={handleQuickAdd} disabled={quickAddLoading || !quickAddInput.trim()}
+            style={{ ...btnPrimary, borderRadius:V.r2, padding:"10px 14px", fontSize:16, opacity: quickAddLoading ? 0.6 : 1 }}>
+            {quickAddLoading ? "..." : "✨"}</button>
+        </div>
+        {quickAddPreview && (
+          <div style={{ ...cardStyle, border:`2px solid ${V.accent}`, marginBottom:10 }}>
+            <div style={{ fontWeight:700, color:V.accent, marginBottom:6 }}>Creating {quickAddPreview.totalInstances} event{quickAddPreview.totalInstances>1?"s":""}{quickAddPreview.repeatDesc}</div>
+            <div style={{ display:"flex", gap:8, marginTop:8 }}>
+              <button onClick={confirmQuickAdd} style={{ ...btnPrimary, flex:1 }}>Confirm</button>
+              <button onClick={() => setQuickAddPreview(null)} style={{ ...btnSecondary, flex:1 }}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ BIRTHDAY COUNTDOWNS (FamilyWall) ═══ */}
+        {(() => {
+          const upcoming = getUpcomingBirthdays();
+          const todayBdays = upcoming.filter(b => b.daysUntil === 0);
+          if (todayBdays.length > 0) setTimeout(() => triggerConfetti(document.body, "big"), 300);
+          return upcoming.length > 0 ? (
+            <div style={{ marginBottom: 10 }}>
+              {todayBdays.map((b, i) => (
+                <div key={"fwbdt"+i} style={{ padding:14, borderRadius:V.r3, background:`${V.accent}15`,
+                  border:`2px solid ${V.accent}`, textAlign:"center", marginBottom:8 }}>
+                  <div style={{ fontSize:20, fontWeight:900, color:V.textPrimary }}>🎂 TODAY IS {b.name.toUpperCase()}'S BIRTHDAY! 👑🎉</div>
+                </div>
+              ))}
+              {upcoming.filter(b => b.daysUntil > 0).map((b, i) => (
+                <div key={"fwbd"+i} style={{ padding:12, borderRadius:V.r2, background:V.bgCard, marginBottom:6,
+                  border: b.daysUntil <= 7 ? `2px solid ${V.accent}` : `2px solid ${V.borderDefault}`,
+                  display:"flex", alignItems:"center", justifyContent:"space-between",
+                  boxShadow: b.daysUntil <= 7 ? V.shadowGlow : "none" }}>
+                  <span style={{ color:V.textPrimary, fontWeight:700, fontSize:14 }}>{b.emoji} {b.name} in {b.daysUntil}d 🎉</span>
+                  {b.daysUntil <= 7 && <span style={{ fontSize:20 }}>🎂</span>}
+                </div>
+              ))}
+            </div>
+          ) : null;
+        })()}
+
         {/* Day detail popup */}
         {selectedDay && renderDayPopup(dateKey(calYear, calMonth, selectedDay))}
       </div>
     );
   }
 
-  // ---- FOOD TAB ----
+  // ---- FOOD TAB (UNUSED — replaced by FoodTab.jsx component) ----
+  // TODO: Remove this dead code in next cleanup
   function renderFood() {
     const myGoals = (nutritionGoals||{})[currentProfile?.name] || { calories:2000, protein:150, carbs:200, fat:65 };
     return (
@@ -1929,11 +2032,11 @@ export default function App() {
             {chefResult && (
               <div style={{ ...cardStyle, borderLeft:"3px solid #f59e0b" }}>
                 <div style={{ fontWeight:700, color:"#f59e0b", marginBottom:8 }}>👨‍🍳 Chef says:</div>
-                <div style={{ fontSize:13, color:"#e2e8f0", lineHeight:1.6, whiteSpace:"pre-wrap" }}>{chefResult}</div>
+                <div style={{ fontSize:13, color:V.textSecondary, lineHeight:1.6, whiteSpace:"pre-wrap" }}>{chefResult}</div>
               </div>
             )}
             <div style={cardStyle}>
-              <div style={{ fontWeight:700, color:"#94a3b8", marginBottom:8, fontSize:13 }}>🔍 Look up any food</div>
+              <div style={{ fontWeight:700, color:V.textMuted, marginBottom:8, fontSize:13 }}>🔍 Look up any food</div>
               <div style={{ display:"flex", gap:8 }}>
                 <input value={foodSearch} onChange={e=>setFoodSearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&lookupFood()}
                   placeholder="e.g. 3 slices muenster cheese" style={{ ...inputStyle, flex:1 }} />
@@ -1942,13 +2045,13 @@ export default function App() {
                 </button>
               </div>
               {foodResult && (
-                <div style={{ background:"#161e30", borderRadius:8, padding:12, marginTop:10 }}>
-                  <div style={{ fontWeight:700, color:"#f8fafc", marginBottom:6 }}>{foodResult.name}</div>
+                <div style={{ background:V.bgCardAlt, borderRadius:8, padding:12, marginTop:10 }}>
+                  <div style={{ fontWeight:700, color:V.textPrimary, marginBottom:6 }}>{foodResult.name}</div>
                   <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:6 }}>
                     {Object.entries(foodResult).filter(([k])=>k!=="name").map(([k,v]) => (
                       <div key={k} style={{ textAlign:"center" }}>
                         <div style={{ fontSize:16, fontWeight:700, color:"#f59e0b" }}>{v}g</div>
-                        <div style={{ fontSize:11, color:"#64748b" }}>{k}</div>
+                        <div style={{ fontSize:11, color:V.textDim }}>{k}</div>
                       </div>
                     ))}
                   </div>
@@ -1966,11 +2069,11 @@ export default function App() {
           <div>
             <div style={cardStyle}>
               <div style={{ fontWeight:700, color:"#f59e0b", marginBottom:10 }}>📊 My Nutrition Goals</div>
-              <div style={{ fontSize:12, color:"#64748b", marginBottom:10 }}>Set your own daily targets — different for each profile</div>
+              <div style={{ fontSize:12, color:V.textDim, marginBottom:10 }}>Set your own daily targets — different for each profile</div>
               {["calories","protein","carbs","fat","fiber","sugar"].map(m => (
                 <div key={m} style={{ marginBottom:8 }}>
                   <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
-                    <span style={{ fontSize:13, color:"#e2e8f0" }}>{m.charAt(0).toUpperCase()+m.slice(1)}</span>
+                    <span style={{ fontSize:13, color:V.textSecondary }}>{m.charAt(0).toUpperCase()+m.slice(1)}</span>
                     <span style={{ fontSize:12, color:"#f59e0b" }}>{myGoals[m] || 0}{m==="calories"?"":" g"}</span>
                   </div>
                   <input type="number" value={myGoals[m]||0} onChange={e => {
@@ -1983,13 +2086,13 @@ export default function App() {
             <div style={cardStyle}>
               <div style={{ fontWeight:700, color:"#f59e0b", marginBottom:8 }}>Today's Log</div>
               {(foodLog||[]).filter(f=>f.date===todayStr&&f.profile===currentProfile?.name).map((f,i)=>(
-                <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:"1px solid #1e2d4a", fontSize:13 }}>
-                  <span style={{ color:"#e2e8f0" }}>{f.name}</span>
+                <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:`1px solid ${V.borderDefault}`, fontSize:13 }}>
+                  <span style={{ color:V.textSecondary }}>{f.name}</span>
                   <span style={{ color:"#f59e0b" }}>{f.calories} cal</span>
                 </div>
               ))}
               {!(foodLog||[]).filter(f=>f.date===todayStr&&f.profile===currentProfile?.name).length &&
-                <div style={{ color:"#64748b", fontSize:13 }}>Nothing logged today</div>}
+                <div style={{ color:V.textDim, fontSize:13 }}>Nothing logged today</div>}
               <div style={{ marginTop:8, fontSize:13, color:"#f59e0b", fontWeight:700 }}>
                 Total: {todayCalories} / {myGoals.calories || 2000} cal
               </div>
@@ -2006,10 +2109,10 @@ export default function App() {
                   <div style={{ fontWeight:600 }}>{f.name}</div>
                   <button onClick={() => logFood(f)} style={{ ...btnPrimary, padding:"4px 10px", fontSize:12 }}>Log</button>
                 </div>
-                <div style={{ fontSize:12, color:"#64748b", marginTop:4 }}>{f.calories} cal · {f.protein}g protein · {f.carbs}g carbs</div>
+                <div style={{ fontSize:12, color:V.textDim, marginTop:4 }}>{f.calories} cal · {f.protein}g protein · {f.carbs}g carbs</div>
               </div>
             ))}
-            {!(myFoods||[]).length && <div style={{ ...cardStyle, color:"#64748b", textAlign:"center" }}>No saved foods yet. Look up a food and save it!</div>}
+            {!(myFoods||[]).length && <div style={{ ...cardStyle, color:V.textDim, textAlign:"center" }}>No saved foods yet. Look up a food and save it!</div>}
           </div>
         )}
 
@@ -2018,7 +2121,7 @@ export default function App() {
             <div style={{ fontWeight:700, color:"#f59e0b", marginBottom:10 }}>✏️ Manual Entry</div>
             {["name","calories","protein","carbs","fat"].map(field => (
               <div key={field} style={{ marginBottom:8 }}>
-                <div style={{ fontSize:12, color:"#94a3b8", marginBottom:3 }}>{field.charAt(0).toUpperCase()+field.slice(1)}{field!=="name"?" (g/kcal)":""}</div>
+                <div style={{ fontSize:12, color:V.textMuted, marginBottom:3 }}>{field.charAt(0).toUpperCase()+field.slice(1)}{field!=="name"?" (g/kcal)":""}</div>
                 <input value={manualFood[field]} onChange={e=>setManualFood({...manualFood,[field]:field==="name"?e.target.value:Number(e.target.value)})}
                   type={field==="name"?"text":"number"} style={{ ...inputStyle }} />
               </div>
@@ -2057,7 +2160,7 @@ export default function App() {
                   <span style={{ fontSize:24 }}>{kid.emoji}</span>
                   <div>
                     <div style={{ fontWeight:700, color:kid.color||"#f59e0b" }}>{kid.name}</div>
-                    <div style={{ fontSize:12, color:"#64748b" }}>⭐ {kd.points || 0} points</div>
+                    <div style={{ fontSize:12, color:V.textDim }}>⭐ {kd.points || 0} points</div>
                   </div>
                 </div>
                 <div style={{ display:"flex", gap:6 }}>
@@ -2109,7 +2212,7 @@ export default function App() {
             </div>
           );
         })}
-        {!kidProfiles.length && <div style={{...cardStyle,color:"#64748b",textAlign:"center"}}>Add kids in Settings → Profiles</div>}
+        {!kidProfiles.length && <div style={{...cardStyle,color:V.textDim,textAlign:"center"}}>Add kids in Settings → Profiles</div>}
 
         {/* 📚 Homework Helper */}
         <HomeworkHelper V={V} profiles={profiles} kidsData={kidsData} fbSet={fbSet}
@@ -2134,7 +2237,7 @@ export default function App() {
         {familySubTab === "schedule" && (
           <div style={cardStyle}>
             <div style={{fontWeight:700,color:"#f59e0b",marginBottom:10}}>📅 Weekly Custody Schedule</div>
-            <div style={{fontSize:12,color:"#64748b",marginBottom:12}}>{isAdmin?"Tap a day to change":"View only"}</div>
+            <div style={{fontSize:12,color:V.textDim,marginBottom:12}}>{isAdmin?"Tap a day to change":"View only"}</div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6}}>
               {custodyDayNames.map(day=>{
                 const val=(custodySchedule||{})[day]||"Free";
@@ -2142,16 +2245,16 @@ export default function App() {
                   <div key={day} onClick={()=>cycleCustody(day)}
                     style={{textAlign:"center",padding:"10px 4px",borderRadius:8,cursor:isAdmin?"pointer":"default",
                       background:custodyColor(val),border:`1px solid ${custodyColor(val)}`}}>
-                    <div style={{fontSize:11,color:"#94a3b8",marginBottom:4}}>{day}</div>
-                    <div style={{fontSize:12,fontWeight:700,color:val==="Free"?"#64748b":"#f8fafc"}}>{val}</div>
+                    <div style={{fontSize:11,color:V.textMuted,marginBottom:4}}>{day}</div>
+                    <div style={{fontSize:12,fontWeight:700,color:val==="Free"?V.textDim:V.textPrimary}}>{val}</div>
                   </div>
                 );
               })}
             </div>
             <div style={{display:"flex",gap:8,marginTop:12}}>
-              <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:12,height:12,borderRadius:3,background:"#f59e0b"}}/><span style={{fontSize:12,color:"#94a3b8"}}>Dad</span></div>
-              <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:12,height:12,borderRadius:3,background:"#a855f7"}}/><span style={{fontSize:12,color:"#94a3b8"}}>Mom</span></div>
-              <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:12,height:12,borderRadius:3,background:"#334155"}}/><span style={{fontSize:12,color:"#94a3b8"}}>Free</span></div>
+              <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:12,height:12,borderRadius:3,background:"#f59e0b"}}/><span style={{fontSize:12,color:V.textMuted}}>Dad</span></div>
+              <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:12,height:12,borderRadius:3,background:"#a855f7"}}/><span style={{fontSize:12,color:V.textMuted}}>Mom</span></div>
+              <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:12,height:12,borderRadius:3,background:V.borderSubtle}}/><span style={{fontSize:12,color:V.textMuted}}>Free</span></div>
             </div>
           </div>
         )}
@@ -2161,8 +2264,8 @@ export default function App() {
             <div style={cardStyle}>
               <div style={{fontWeight:700,color:"#f59e0b",marginBottom:10}}>👑 My House Rules</div>
               {(myRules||[]).map((r,i)=>(
-                <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid #1e2d4a",fontSize:13}}>
-                  <span style={{color:"#e2e8f0"}}>• {r}</span>
+                <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${V.borderDefault}`,fontSize:13}}>
+                  <span style={{color:V.textSecondary}}>• {r}</span>
                   {isAdmin&&<button onClick={()=>fbSet("myRules",(myRules||[]).filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer"}}>✕</button>}
                 </div>
               ))}
@@ -2181,7 +2284,7 @@ export default function App() {
           <div style={cardStyle}>
             <div style={{fontWeight:700,color:"#a855f7",marginBottom:10}}>💜 Their House Rules</div>
             {(theirRules||[]).map((r,i)=>(
-              <div key={i} style={{padding:"8px 0",borderBottom:"1px solid #1e2d4a",fontSize:13,color:"#e2e8f0"}}>• {r}</div>
+              <div key={i} style={{padding:"8px 0",borderBottom:`1px solid ${V.borderDefault}`,fontSize:13,color:V.textSecondary}}>• {r}</div>
             ))}
             {isAdmin&&(
               <div style={{display:"flex",gap:6,marginTop:8}}>
@@ -2197,8 +2300,8 @@ export default function App() {
           <div style={cardStyle}>
             <div style={{fontWeight:700,color:"#22c55e",marginBottom:10}}>🤝 Shared Rules</div>
             {(sharedRules||[]).map((r,i)=>(
-              <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid #1e2d4a",fontSize:13}}>
-                <span style={{color:"#e2e8f0"}}>✓ {typeof r==="string"?r:r.text}</span>
+              <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${V.borderDefault}`,fontSize:13}}>
+                <span style={{color:V.textSecondary}}>✓ {typeof r==="string"?r:r.text}</span>
               </div>
             ))}
             {isAdmin&&(
@@ -2215,7 +2318,7 @@ export default function App() {
           <div>
             <div style={cardStyle}>
               <div style={{fontWeight:700,color:"#f59e0b",marginBottom:8}}>⏱ Exchange Log</div>
-              <div style={{fontSize:12,color:"#64748b",marginBottom:10}}>Track pickup/dropoff times. Only visible to you.</div>
+              <div style={{fontSize:12,color:V.textDim,marginBottom:10}}>Track pickup/dropoff times. Only visible to you.</div>
               {!exchangeStart ? (
                 <button onClick={startExchange} style={{...btnPrimary,width:"100%",padding:12}}>▶ Start Exchange Timer</button>
               ) : (
@@ -2223,7 +2326,7 @@ export default function App() {
                   <div style={{textAlign:"center",fontSize:32,fontWeight:800,color:"#f59e0b",marginBottom:8}}>
                     {Math.floor(elapsed/60)}:{String(elapsed%60).padStart(2,"0")}
                   </div>
-                  <div style={{fontSize:12,color:"#64748b",textAlign:"center",marginBottom:10}}>Waiting since {exchangeStart.toLocaleTimeString()}</div>
+                  <div style={{fontSize:12,color:V.textDim,textAlign:"center",marginBottom:10}}>Waiting since {exchangeStart.toLocaleTimeString()}</div>
                   <input value={exchangeNote} onChange={e=>setExchangeNote(e.target.value)}
                     placeholder="Notes (optional)" style={{...inputStyle,marginBottom:8}} />
                   <button onClick={()=>logArrival(exchangeNote)} style={{...btnPrimary,width:"100%",padding:12}}>✓ They Arrived</button>
@@ -2233,16 +2336,16 @@ export default function App() {
             {(exchangeLog||[]).slice().reverse().slice(0,10).map((entry,i)=>(
               <div key={i} style={{...cardStyle,borderLeft:`3px solid ${entry.waitMinutes>15?"#ef4444":"#22c55e"}`}}>
                 <div style={{display:"flex",justifyContent:"space-between"}}>
-                  <span style={{fontWeight:600,color:"#e2e8f0",fontSize:13}}>{entry.date} {entry.time}</span>
+                  <span style={{fontWeight:600,color:V.textSecondary,fontSize:13}}>{entry.date} {entry.time}</span>
                   <span style={{color:entry.waitMinutes>15?"#ef4444":"#22c55e",fontWeight:700,fontSize:13}}>{entry.waitMinutes} min wait</span>
                 </div>
-                {entry.notes&&<div style={{fontSize:12,color:"#94a3b8",marginTop:4}}>{entry.notes}</div>}
+                {entry.notes&&<div style={{fontSize:12,color:V.textMuted,marginTop:4}}>{entry.notes}</div>}
               </div>
             ))}
           </div>
         )}
         {familySubTab === "log" && !isAdmin && (
-          <div style={{...cardStyle,color:"#64748b",textAlign:"center"}}>Exchange log is admin only.</div>
+          <div style={{...cardStyle,color:V.textDim,textAlign:"center"}}>Exchange log is admin only.</div>
         )}
         {familySubTab === "budget" && (
           <BudgetTab V={V} currentProfile={currentProfile} fbSet={fbSet} GROQ_KEY={GROQ_KEY}
@@ -2277,7 +2380,7 @@ export default function App() {
               <div style={cardStyle}>
                 <div style={{fontWeight:700,color:"#f59e0b",marginBottom:10}}>My Profile</div>
                 <div style={{marginBottom:8}}>
-                  <div style={{fontSize:12,color:"#94a3b8",marginBottom:3}}>Name</div>
+                  <div style={{fontSize:12,color:V.textMuted,marginBottom:3}}>Name</div>
                   <div style={{display:"flex",gap:6}}>
                     <input value={profileNameEdit||currentProfile?.name} onChange={e=>setProfileNameEdit(e.target.value)}
                       style={{...inputStyle,flex:1}} />
@@ -2288,7 +2391,7 @@ export default function App() {
                   </div>
                 </div>
                 <div style={{marginBottom:8}}>
-                  <div style={{fontSize:12,color:"#94a3b8",marginBottom:3}}>PIN (4-6 digits)</div>
+                  <div style={{fontSize:12,color:V.textMuted,marginBottom:3}}>PIN (4-6 digits)</div>
                   <div style={{display:"flex",gap:6}}>
                     <input type="password" value={pinEdit} onChange={e=>setPinEdit(e.target.value)}
                       placeholder="New PIN" maxLength={6} style={{...inputStyle,flex:1}} />
@@ -2343,7 +2446,7 @@ export default function App() {
               ))}
               {isAdmin && (
                 <div style={{marginTop:10}}>
-                  <div style={{fontSize:12,color:"#94a3b8",marginBottom:6}}>Add Family Member</div>
+                  <div style={{fontSize:12,color:V.textMuted,marginBottom:6}}>Add Family Member</div>
                   <div style={{display:"flex",gap:6,marginBottom:6}}>
                     <input value={newMemberName} onChange={e=>setNewMemberName(e.target.value)} placeholder="Name" style={{...inputStyle,flex:1}} />
                     <input value={newMemberEmoji} onChange={e=>setNewMemberEmoji(e.target.value)} placeholder="😊" style={{...inputStyle,width:60}} />
@@ -2402,11 +2505,11 @@ export default function App() {
           <div style={cardStyle}>
             <div style={{fontWeight:700,color:"#f59e0b",marginBottom:10}}>📞 Call Button Numbers</div>
             <div style={{marginBottom:8}}>
-              <div style={{fontSize:12,color:"#94a3b8",marginBottom:3}}>Dada's Number</div>
+              <div style={{fontSize:12,color:V.textMuted,marginBottom:3}}>Dada's Number</div>
               <input value={contactDad} onChange={e=>setContactDad(e.target.value)} placeholder="555-000-0000" style={{...inputStyle}} />
             </div>
             <div style={{marginBottom:12}}>
-              <div style={{fontSize:12,color:"#94a3b8",marginBottom:3}}>Mom's Number</div>
+              <div style={{fontSize:12,color:V.textMuted,marginBottom:3}}>Mom's Number</div>
               <input value={contactMom} onChange={e=>setContactMom(e.target.value)} placeholder="555-000-0000" style={{...inputStyle}} />
             </div>
             <button onClick={()=>{fbSet("contacts",{dad:contactDad,mom:contactMom});showSave("Contacts saved!");}}
@@ -2417,11 +2520,11 @@ export default function App() {
         {settingsSubTab === "alerts" && (
           <div style={cardStyle}>
             <div style={{fontWeight:700,color:"#f59e0b",marginBottom:10}}>🔔 Event Reminders</div>
-            <div style={{fontSize:13,color:"#94a3b8",marginBottom:12}}>How many minutes before an event to get reminded?</div>
+            <div style={{fontSize:13,color:V.textMuted,marginBottom:12}}>How many minutes before an event to get reminded?</div>
             <div style={{textAlign:"center",fontSize:36,fontWeight:800,color:"#f59e0b",marginBottom:6}}>{alertMinutes} min</div>
             <input type="range" min={1} max={120} value={alertMinutes} onChange={e=>setAlertMinutes(Number(e.target.value))}
               style={{width:"100%",accentColor:"#f59e0b",marginBottom:12}} />
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#64748b",marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:V.textDim,marginBottom:12}}>
               <span>1 min</span><span>30 min</span><span>1 hour</span><span>2 hours</span>
             </div>
             <button onClick={()=>{fbSet("alertMinutes",alertMinutes);showSave("Alert saved!");}} style={{...btnPrimary,width:"100%"}}>💾 Save</button>
