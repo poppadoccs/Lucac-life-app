@@ -863,7 +863,7 @@ export default function App() {
   function custodyColor(val) {
     if (val === "Dad") return "#f59e0b";
     if (val === "Mom") return "#a855f7";
-    return "#334155";
+    return V.borderSubtle;
   }
 
   // Kids helpers
@@ -1976,6 +1976,28 @@ export default function App() {
               </div>
             </div>
           )}
+          {quickAddDeleteMatches && (
+            <div style={{ ...cardStyle, border:`2px solid ${V.danger}`, marginBottom:10 }}>
+              <div style={{ fontWeight:700, color:V.danger, marginBottom:6 }}>🗑️ Found {quickAddDeleteMatches.matches.length} match{quickAddDeleteMatches.matches.length>1?"es":""}</div>
+              {quickAddDeleteMatches.matches.slice(0,6).map((m,i) => (
+                <div key={i} onClick={() => executeDeleteMatch(m.dk, m.idx)}
+                  style={{ padding:8, background:V.bgCardAlt, borderRadius:V.r2, marginBottom:4, cursor:"pointer" }}>
+                  <span style={{ fontWeight:600, color:V.textPrimary, fontSize:13 }}>{m.ev.title}</span>
+                  <span style={{ fontSize:11, color:V.textDim, marginLeft:6 }}>{m.dk}</span>
+                </div>
+              ))}
+              <button onClick={() => setQuickAddDeleteMatches(null)} style={{ ...btnSecondary, width:"100%", marginTop:4 }}>Cancel</button>
+            </div>
+          )}
+          {quickAddEditPreview && (
+            <div style={{ ...cardStyle, border:`2px solid ${V.info}`, marginBottom:10 }}>
+              <div style={{ fontWeight:700, color:V.info, marginBottom:6 }}>✏️ Edit: {quickAddEditPreview.ev.title} → {quickAddEditPreview.changes.title || quickAddEditPreview.changes.time}</div>
+              <div style={{ display:"flex", gap:8 }}>
+                <button onClick={() => executeEditMatch(quickAddEditPreview.dk, quickAddEditPreview.idx, quickAddEditPreview.changes)} style={{ ...btnPrimary, flex:1 }}>Confirm</button>
+                <button onClick={() => setQuickAddEditPreview(null)} style={{ ...btnSecondary, flex:1 }}>Cancel</button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ═══ BIRTHDAY COUNTDOWNS (Cozyla) ═══ */}
@@ -2223,6 +2245,29 @@ export default function App() {
             <div style={{ display:"flex", gap:8, marginTop:8 }}>
               <button onClick={confirmQuickAdd} style={{ ...btnPrimary, flex:1 }}>Confirm</button>
               <button onClick={() => setQuickAddPreview(null)} style={{ ...btnSecondary, flex:1 }}>Cancel</button>
+            </div>
+          </div>
+        )}
+        {quickAddDeleteMatches && (
+          <div style={{ ...cardStyle, border:`2px solid ${V.danger}`, marginBottom:10 }}>
+            <div style={{ fontWeight:700, color:V.danger, marginBottom:6 }}>🗑️ Found {quickAddDeleteMatches.matches.length} match{quickAddDeleteMatches.matches.length>1?"es":""}</div>
+            {quickAddDeleteMatches.matches.slice(0,6).map((m,i) => (
+              <div key={i} onClick={() => executeDeleteMatch(m.dk, m.idx)}
+                style={{ padding:10, background:V.bgCardAlt, borderRadius:V.r2, marginBottom:4, cursor:"pointer",
+                  border:`2px solid ${V.borderDefault}` }}>
+                <span style={{ fontWeight:700, color:V.textPrimary, fontSize:14 }}>{m.ev.title}</span>
+                <span style={{ fontSize:11, color:V.textDim, marginLeft:8 }}>{m.dk}</span>
+              </div>
+            ))}
+            <button onClick={() => setQuickAddDeleteMatches(null)} style={{ ...btnSecondary, width:"100%", marginTop:4 }}>Cancel</button>
+          </div>
+        )}
+        {quickAddEditPreview && (
+          <div style={{ ...cardStyle, border:`2px solid ${V.info}`, marginBottom:10 }}>
+            <div style={{ fontWeight:700, color:V.info, marginBottom:6 }}>✏️ Edit: {quickAddEditPreview.ev.title} → {quickAddEditPreview.changes.title || quickAddEditPreview.changes.time}</div>
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={() => executeEditMatch(quickAddEditPreview.dk, quickAddEditPreview.idx, quickAddEditPreview.changes)} style={{ ...btnPrimary, flex:1 }}>Confirm</button>
+              <button onClick={() => setQuickAddEditPreview(null)} style={{ ...btnSecondary, flex:1 }}>Cancel</button>
             </div>
           </div>
         )}

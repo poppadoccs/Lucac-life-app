@@ -1060,10 +1060,11 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
     const iv = setInterval(() => {
       const p = genMathProblem(kidDifficulty.math);
       const wrong1 = p.answer + Math.floor(Math.random()*5) + 1;
-      const wrong2 = Math.max(0, p.answer - Math.floor(Math.random()*5) - 1);
+      const wrong2 = Math.max(1, p.answer - Math.floor(Math.random()*5) - 1);
+      const options = [p.answer, wrong1, wrong2].sort(() => Math.random()-0.5);
       setFishBubbles(bs => [...bs.slice(-4), {
         x: Math.random()*80+10, y: Math.random()*70+10,
-        answer: p.answer, correct: p.answer, text: p.text, id: Date.now()
+        correct: p.answer, options, text: p.text, id: Date.now()
       }]);
     }, 3000);
     return () => clearInterval(iv);
@@ -1913,19 +1914,30 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
                 transition:"left 0.15s, top 0.15s, font-size 0.3s", transform:"translateX(-50%) translateY(-50%)" }}>
                 🐟
               </div>
-              {/* Bubbles with math */}
+              {/* Bubbles with math — 3 answer options */}
               {fishBubbles.map((b, i) => (
-                <div key={b.id||i} onClick={() => {
-                  if (parseInt(b.answer) === b.correct) {
-                    setFishSize(s => Math.min(10, s+1)); setFishStars(s => s+1); setFishScore(s => s+10);
-                    setFishBubbles(bs => bs.filter((_,j) => j!==i));
-                  } else {
-                    setFishSize(s => Math.max(1, s-1));
-                    setTimeout(() => setFishSize(s => Math.min(10, s+1)), 2000);
-                  }
-                }} style={{ position:"absolute", left:`${b.x}%`, top:`${b.y}%`, background:"rgba(255,255,255,0.2)",
-                  borderRadius:"50%", width:50, height:50, display:"flex", alignItems:"center", justifyContent:"center",
-                  color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", border:"2px solid rgba(255,255,255,0.4)" }}>
+                <div key={b.id||i} style={{ position:"absolute", left:`${b.x}%`, top:`${b.y}%`,
+                  display:"flex", flexDirection:"column", alignItems:"center", gap:4, transform:"translate(-50%,-50%)", zIndex:5 }}>
+                  <div style={{ background:"rgba(255,255,255,0.25)", borderRadius:10, padding:"4px 8px",
+                    color:"#fff", fontWeight:700, fontSize:13, border:"1px solid rgba(255,255,255,0.4)" }}>
+                    🫧 {b.text}
+                  </div>
+                  <div style={{ display:"flex", gap:4 }}>
+                    {(b.options||[b.correct]).map((opt, oi) => (
+                      <button key={oi} onClick={e => { e.stopPropagation();
+                        if (opt === b.correct) {
+                          setFishSize(s => Math.min(10, s+1)); setFishStars(s => s+1); setFishScore(s => s+10);
+                          setFishBubbles(bs => bs.filter((_,j) => j!==i));
+                        } else {
+                          setFishSize(s => Math.max(1, s-1));
+                          setTimeout(() => setFishSize(s => Math.min(10, s+1)), 2000);
+                        }
+                      }} style={{ width:36, height:36, borderRadius:"50%", border:"2px solid rgba(255,255,255,0.5)",
+                        background:"rgba(59,130,246,0.6)", color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer" }}>
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
                   {b.answer}
                 </div>
               ))}
