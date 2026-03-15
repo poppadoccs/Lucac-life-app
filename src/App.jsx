@@ -1,12 +1,22 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, onValue } from "firebase/database";
+import * as Sentry from "@sentry/react";
 import LucacLegends from "./LucacLegends";
 import { groqFetch, parseGroqJSON, cacheGet, cacheSet, SWATCH_COLORS, triggerConfetti, createSpeechRecognition } from "./utils";
 import FoodTab from "./FoodTab";
 import BudgetTab from "./BudgetTab";
 import HomeworkHelper from "./HomeworkHelper";
 import GroqAssistant from "./GroqAssistant";
+
+// ═══ SENTRY ERROR MONITORING ═══
+Sentry.init({
+  dsn: "https://a455b66904781b4971757005dabead83@o4511050464690176.ingest.us.sentry.io/4511050481467392",
+  integrations: [Sentry.browserTracingIntegration()],
+  tracesSampleRate: 0.3,
+  environment: window.location.hostname === "localhost" ? "development" : "production",
+  enabled: window.location.hostname !== "localhost",
+});
 
 // ⚠️ PASTE YOUR FIREBASE CONFIG HERE (copy from your old App.jsx)
 const firebaseConfig = {
