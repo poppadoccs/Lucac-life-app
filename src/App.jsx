@@ -20,8 +20,65 @@ const db = getDatabase(firebaseApp);
 const GROQ_KEY = import.meta.env.VITE_GROQ_KEY;
 const TAVILY_KEY = import.meta.env.VITE_TAVILY_KEY;
 
-const DAYS = ["Su","Mo","Tu","We","Th","Fr","Sa"];
+const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+// ═══ CSS VARIABLES ═══
+// Single source of truth for all colors & spacing — swap this object for theming
+const V = {
+  // Backgrounds — light Skylight-inspired
+  bgApp: "#f8f9fb",
+  bgCard: "#ffffff",
+  bgCardAlt: "#f3f4f6",
+  bgInput: "#f3f4f6",
+  bgElevated: "#e8eaef",
+  bgOverlay: "rgba(0,0,0,0.35)",
+  // Calendar specific
+  calBgCell: "#ffffff",
+  calBgCellHover: "#f9fafb",
+  calBgToday: "#fffbeb",
+  calBgSelected: "#eef4ff",
+  calBgHeader: "#ffffff",
+  calBgWeekday: "#f8f9fb",
+  // Borders
+  borderDefault: "#e5e7eb",
+  borderSubtle: "#d1d5db",
+  borderAccent: "#f59e0b",
+  borderFocus: "#3b82f6",
+  // Text
+  textPrimary: "#1f2937",
+  textSecondary: "#374151",
+  textMuted: "#6b7280",
+  textDim: "#9ca3af",
+  // Accent colors — gold stays for today
+  accent: "#f59e0b",
+  accentGlow: "rgba(245,158,11,0.12)",
+  accentGlowStrong: "rgba(245,158,11,0.22)",
+  success: "#16a34a",
+  danger: "#dc2626",
+  info: "#2563eb",
+  purple: "#7c3aed",
+  pink: "#db2777",
+  // Spacing
+  sp1: 4,
+  sp2: 8,
+  sp3: 12,
+  sp4: 16,
+  sp5: 20,
+  sp6: 24,
+  sp8: 32,
+  // Radius
+  r1: 6,
+  r2: 8,
+  r3: 12,
+  r4: 16,
+  // Shadows
+  shadowCard: "0 1px 4px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.04)",
+  shadowModal: "0 8px 30px rgba(0,0,0,0.15)",
+  shadowGlow: "0 0 12px rgba(245,158,11,0.12)",
+  // Font
+  fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+};
 
 function formatTime(h, m, ampm) {
   const hh = String(h).padStart(2,"0");
@@ -671,122 +728,266 @@ export default function App() {
           ✦ {quote}
         </div>
 
-        {/* Calendar */}
-        <div style={cardStyle}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+        {/* ═══ CALENDAR ═══ */}
+        <div style={{
+          background: V.bgCard, borderRadius: V.r3, border: `1px solid ${V.borderDefault}`,
+          boxShadow: V.shadowCard, overflow: "hidden", marginBottom: V.sp3
+        }}>
+          {/* Month header */}
+          <div style={{
+            background: V.calBgHeader, padding: `${V.sp4}px ${V.sp5}px`,
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            borderBottom: `1px solid ${V.borderDefault}`
+          }}>
             <button onClick={() => { if(calMonth===0){setCalMonth(11);setCalYear(y=>y-1);}else setCalMonth(m=>m-1); }}
-              style={{ ...btnSecondary, padding:"4px 12px" }}>‹</button>
-            <div style={{ textAlign:"center" }}>
-              <div style={{ fontWeight:800, color:"#f59e0b", fontSize:16 }}>{MONTHS[calMonth]} {calYear}</div>
-              <button onClick={() => { setCalMonth(today.getMonth()); setCalYear(today.getFullYear()); setSelectedDay(today.getDate()); }}
-                style={{ background:"none", border:"none", color:"#64748b", fontSize:11, cursor:"pointer" }}>Today</button>
+              style={{ width: 40, height: 40, borderRadius: V.r2, background: V.bgElevated,
+                border: `1px solid ${V.borderSubtle}`, color: V.textSecondary, fontSize: 20,
+                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                transition: "background 0.15s" }}
+              aria-label="Previous month">
+              ‹
+            </button>
+            <div style={{ textAlign: "center", flex: 1 }}>
+              <div style={{ fontWeight: 800, color: V.accent, fontSize: 22, letterSpacing: 0.5, lineHeight: 1.2 }}>
+                {MONTHS[calMonth]}
+              </div>
+              <div style={{ fontSize: 13, color: V.textDim, fontWeight: 500, marginTop: 2 }}>{calYear}</div>
+              <button onClick={() => { setCalMonth(today.getMonth()); setCalYear(today.getFullYear()); }}
+                style={{ background: V.accentGlow, border: `1px solid ${V.accent}33`,
+                  color: V.accent, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                  borderRadius: 20, padding: "3px 14px", marginTop: 6, transition: "background 0.15s" }}>
+                Today
+              </button>
             </div>
             <button onClick={() => { if(calMonth===11){setCalMonth(0);setCalYear(y=>y+1);}else setCalMonth(m=>m+1); }}
-              style={{ ...btnSecondary, padding:"4px 12px" }}>›</button>
+              style={{ width: 40, height: 40, borderRadius: V.r2, background: V.bgElevated,
+                border: `1px solid ${V.borderSubtle}`, color: V.textSecondary, fontSize: 20,
+                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                transition: "background 0.15s" }}
+              aria-label="Next month">
+              ›
+            </button>
           </div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2, marginBottom:4 }}>
-            {DAYS.map(d => <div key={d} style={{ textAlign:"center", fontSize:11, color:"#64748b", padding:4 }}>{d}</div>)}
+
+          {/* Weekday headers */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)",
+            background: V.calBgWeekday, borderBottom: `1px solid ${V.borderDefault}` }}>
+            {DAYS.map(d => (
+              <div key={d} style={{ textAlign: "center", fontSize: 12, fontWeight: 700,
+                color: (d === "Sun" || d === "Sat") ? V.accent + "99" : V.textDim,
+                padding: `${V.sp2}px 0`, letterSpacing: 0.5, textTransform: "uppercase" }}>{d}</div>
+            ))}
           </div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2 }}>
+
+          {/* Day cells grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 1,
+            background: V.borderDefault, padding: 1 }}>
             {cells.map((d, i) => {
-              if (!d) return <div key={i} />;
+              if (!d) return <div key={i} style={{ background: V.bgApp, minHeight: 85 }} />;
               const dk2 = dateKey(calYear, calMonth, d);
               const dayEvents = (events||{})[dk2] || [];
+              const isTodayCell = isToday(d);
               const selected = selectedDay === d;
+              const isWeekend = (i % 7 === 0) || (i % 7 === 6);
               return (
-                <div key={i} onClick={() => { setSelectedDay(d); setAddingEvents([{ title:"", time:"12:00 PM", who:"", notes:"" }]); }}
-                  style={{ minHeight:52, borderRadius:8, padding:4, cursor:"pointer",
-                    background: selected ? "#1e3a5f" : isToday(d) ? "#2d1f0e" : "#161e30",
-                    border: isToday(d) ? "2px solid #f59e0b" : selected ? "1px solid #3b82f6" : "1px solid transparent",
-                    transition:"background 0.15s" }}>
-                  <div style={{ fontSize:12, fontWeight: isToday(d) ? 800 : 400, color: isToday(d) ? "#f59e0b" : "#94a3b8", marginBottom:2 }}>{d}</div>
-                  {dayEvents.slice(0,3).map((ev, idx) => {
-                    const s = getEventStyle(dk2, idx);
-                    const pColor = ev.who ? getPersonColor(ev.who) : "#3b82f6";
-                    return (
-                      <div key={idx} style={{
-                        background: s?.bg || pColor,
-                        color: s?.color || "#fff",
-                        fontSize: Math.min(s?.size || 10, 10),
-                        borderRadius:4, padding:"1px 4px", marginBottom:1,
-                        fontWeight: s?.bold ? 700 : 600,
-                        fontStyle: s?.italic ? "italic" : "normal",
-                        fontFamily: s?.cursive ? "cursive" : "inherit",
-                        overflow:"hidden", whiteSpace:"nowrap", textOverflow:"ellipsis"
-                      }}>{ev.title}</div>
-                    );
-                  })}
-                  {dayEvents.length > 3 && <div style={{ fontSize:9, color:"#64748b" }}>+{dayEvents.length-3}</div>}
+                <div key={i}
+                  onClick={() => { setSelectedDay(d); setAddingEvents([{ title:"", time:"12:00 PM", who:"", notes:"" }]); }}
+                  style={{
+                    minHeight: 85, padding: V.sp1 + 2, cursor: "pointer",
+                    background: selected ? V.calBgSelected
+                      : isTodayCell ? V.calBgToday
+                      : isWeekend ? V.bgApp
+                      : V.calBgCell,
+                    position: "relative",
+                    transition: "background 0.15s, box-shadow 0.15s",
+                    boxShadow: isTodayCell ? `inset 0 0 0 2px ${V.accent}` : selected ? `inset 0 0 0 2px ${V.info}` : "none",
+                    display: "flex", flexDirection: "column"
+                  }}>
+                  {/* Day number */}
+                  <div style={{
+                    fontSize: isTodayCell ? 15 : 13,
+                    fontWeight: isTodayCell ? 800 : 500,
+                    color: isTodayCell ? V.bgApp : selected ? V.textPrimary : V.textMuted,
+                    marginBottom: V.sp1,
+                    display: "flex", alignItems: "center", gap: 4
+                  }}>
+                    {isTodayCell ? (
+                      <span style={{
+                        background: V.accent, color: V.bgApp,
+                        borderRadius: "50%", width: 26, height: 26,
+                        display: "inline-flex", alignItems: "center", justifyContent: "center",
+                        fontWeight: 800, fontSize: 13, boxShadow: `0 0 8px ${V.accentGlowStrong}`
+                      }}>{d}</span>
+                    ) : (
+                      <span>{d}</span>
+                    )}
+                  </div>
+                  {/* Event pills */}
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2, overflow: "hidden" }}>
+                    {dayEvents.slice(0,3).map((ev, idx) => {
+                      const s = getEventStyle(dk2, idx);
+                      const pColor = ev.who ? getPersonColor(ev.who) : V.info;
+                      const initials = ev.who ? ev.who.slice(0,2) : "";
+                      return (
+                        <div key={idx} style={{
+                          background: `${s?.bg || pColor}22`,
+                          borderLeft: `3px solid ${s?.bg || pColor}`,
+                          color: s?.color || V.textPrimary,
+                          fontSize: 10, fontWeight: 600,
+                          borderRadius: V.r1, padding: "2px 5px",
+                          overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis",
+                          lineHeight: 1.4,
+                          fontStyle: s?.italic ? "italic" : "normal",
+                          fontFamily: s?.cursive ? "cursive" : "inherit",
+                        }}>
+                          {initials ? <span style={{ fontWeight:700, marginRight:3, opacity:0.7 }}>{initials}</span> : null}
+                          {ev.title}
+                        </div>
+                      );
+                    })}
+                    {dayEvents.length > 3 && (
+                      <div style={{ fontSize: 9, color: V.textDim, fontWeight: 600, padding: "0 2px" }}>
+                        +{dayEvents.length-3} more
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* Selected day events */}
+        {/* ═══ DAY DETAIL POPUP ═══ */}
         {selectedDay && (
-          <div style={cardStyle}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-              <div style={{ fontWeight:700, color:"#f59e0b" }}>
-                {new Date(calYear, calMonth, selectedDay).toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})}
+          <div style={{
+            position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+            background: V.bgOverlay, zIndex: 1000,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: V.sp4, backdropFilter: "blur(4px)"
+          }}
+            onClick={e => { if(e.target === e.currentTarget) setSelectedDay(null); }}>
+            <div style={{
+              background: V.bgCard, borderRadius: V.r4, width: "100%", maxWidth: 420,
+              maxHeight: "85vh", overflowY: "auto",
+              border: `1px solid ${V.borderSubtle}`, boxShadow: V.shadowModal
+            }}>
+              {/* Popup header */}
+              <div style={{
+                padding: `${V.sp4}px ${V.sp5}px`, borderBottom: `1px solid ${V.borderDefault}`,
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                position: "sticky", top: 0, background: V.bgCard, zIndex: 1, borderRadius: `${V.r4}px ${V.r4}px 0 0`
+              }}>
+                <div>
+                  <div style={{ fontWeight: 800, color: V.accent, fontSize: 18 }}>
+                    {new Date(calYear, calMonth, selectedDay).toLocaleDateString("en-US",{weekday:"long"})}
+                  </div>
+                  <div style={{ fontSize: 13, color: V.textMuted, marginTop: 2 }}>
+                    {MONTHS[calMonth]} {selectedDay}, {calYear}
+                  </div>
+                </div>
+                <button onClick={() => setSelectedDay(null)}
+                  style={{ width: 36, height: 36, borderRadius: "50%", background: V.bgElevated,
+                    border: `1px solid ${V.borderSubtle}`, color: V.textMuted,
+                    fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  ✕
+                </button>
               </div>
-              <button onClick={() => setSelectedDay(null)} style={{ ...btnSecondary, padding:"4px 10px", fontSize:12 }}>✕</button>
-            </div>
 
-            {/* Existing events */}
-            {((events||{})[dk]||[]).map((ev, idx) => {
-              const s = getEventStyle(dk, idx);
-              const pColor = ev.who ? getPersonColor(ev.who) : "#3b82f6";
-              return (
-                <div key={idx} style={{ background: s?.bg || "#1e2d4a", borderRadius:8, padding:"8px 12px", marginBottom:6,
-                  borderLeft:`3px solid ${s?.bg || pColor}` }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                    <div style={{ color: s?.color || "#f8fafc", fontSize: s?.size || 14, fontWeight: s?.bold ? 700 : 600,
-                      fontStyle: s?.italic ? "italic" : "normal", fontFamily: s?.cursive ? "cursive" : "inherit" }}>
-                      {ev.time && <span style={{ color:"#64748b", fontSize:12, marginRight:6 }}>{ev.time}</span>}
-                      {ev.title}
+              {/* Existing events */}
+              <div style={{ padding: V.sp5 }}>
+                {((events||{})[dk]||[]).length > 0 && (
+                  <div style={{ marginBottom: V.sp4 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: V.textDim, textTransform: "uppercase",
+                      letterSpacing: 1, marginBottom: V.sp2 }}>
+                      Events ({((events||{})[dk]||[]).length})
                     </div>
-                    <div style={{ display:"flex", gap:4 }}>
-                      <button onClick={() => setEditingStyle({ dk, idx })} style={{ background:"none", border:"none", cursor:"pointer", fontSize:16 }}>🎨</button>
-                      {isAdmin && <button onClick={() => deleteEvent(dk, idx)} style={{ background:"none", border:"none", cursor:"pointer", fontSize:14, color:"#ef4444" }}>✕</button>}
-                    </div>
+                    {((events||{})[dk]||[]).map((ev, idx) => {
+                      const s = getEventStyle(dk, idx);
+                      const pColor = ev.who ? getPersonColor(ev.who) : V.info;
+                      return (
+                        <div key={idx} style={{
+                          background: V.bgCardAlt, borderRadius: V.r2,
+                          padding: `${V.sp3}px ${V.sp4}px`, marginBottom: V.sp2,
+                          borderLeft: `4px solid ${s?.bg || pColor}`,
+                          transition: "background 0.15s"
+                        }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div style={{
+                              color: s?.color || V.textPrimary, fontSize: s?.size || 15, fontWeight: s?.bold ? 700 : 600,
+                              fontStyle: s?.italic ? "italic" : "normal", fontFamily: s?.cursive ? "cursive" : "inherit"
+                            }}>
+                              {ev.title}
+                            </div>
+                            <div style={{ display: "flex", gap: V.sp1, alignItems: "center" }}>
+                              <button onClick={() => setEditingStyle({ dk, idx })}
+                                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, padding: 4 }}>🎨</button>
+                              {isAdmin && <button onClick={() => deleteEvent(dk, idx)}
+                                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: V.danger, padding: 4 }}>✕</button>}
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", gap: V.sp3, marginTop: V.sp1, flexWrap: "wrap", alignItems: "center" }}>
+                            {ev.time && (
+                              <span style={{ fontSize: 12, color: V.textDim, display: "flex", alignItems: "center", gap: 4 }}>
+                                🕐 {ev.time}
+                              </span>
+                            )}
+                            {ev.who && (
+                              <span style={{
+                                fontSize: 11, color: pColor, background: `${pColor}22`,
+                                padding: "2px 8px", borderRadius: 20, fontWeight: 600
+                              }}>
+                                {ev.who}
+                              </span>
+                            )}
+                          </div>
+                          {ev.notes && <div style={{ fontSize: 12, color: V.textMuted, marginTop: V.sp2, lineHeight: 1.4 }}>{ev.notes}</div>}
+                        </div>
+                      );
+                    })}
                   </div>
-                  {ev.who && <div style={{ fontSize:11, color:"#64748b", marginTop:2 }}>👤 {ev.who}</div>}
-                  {ev.notes && <div style={{ fontSize:12, color:"#94a3b8", marginTop:4 }}>{ev.notes}</div>}
-                </div>
-              );
-            })}
+                )}
 
-            {/* Add new events */}
-            <div style={{ borderTop:"1px solid #1e2d4a", paddingTop:10, marginTop:8 }}>
-              <div style={{ fontSize:13, color:"#94a3b8", marginBottom:8 }}>Add Event{addingEvents.length > 1 ? "s" : ""}</div>
-              {addingEvents.map((ev, i) => (
-                <div key={i} style={{ background:"#161e30", borderRadius:8, padding:10, marginBottom:8 }}>
-                  {addingEvents.length > 1 && <div style={{ fontSize:11, color:"#64748b", marginBottom:6 }}>Event {i+1}</div>}
-                  <input placeholder="Event title" value={ev.title} onChange={e => {
-                    const u = [...addingEvents]; u[i] = {...u[i], title:e.target.value}; setAddingEvents(u);
-                  }} style={{ ...inputStyle, marginBottom:6 }} />
-                  <div style={{ display:"flex", gap:8, marginBottom:6, flexWrap:"wrap" }}>
-                    <TimePicker value={ev.time} onChange={val => {
-                      const u = [...addingEvents]; u[i] = {...u[i], time:val}; setAddingEvents(u);
-                    }} />
-                    <select value={ev.who} onChange={e => {
-                      const u = [...addingEvents]; u[i] = {...u[i], who:e.target.value}; setAddingEvents(u);
-                    }} style={{ ...inputStyle, width:"auto", flex:1 }}>
-                      <option value="">Who?</option>
-                      {familyNames.map(n => <option key={n} value={n}>{n}</option>)}
-                    </select>
+                {((events||{})[dk]||[]).length === 0 && (
+                  <div style={{ textAlign: "center", padding: `${V.sp5}px 0 ${V.sp4}px`, color: V.textDim, fontSize: 13 }}>
+                    No events yet — add one below
                   </div>
-                  <input placeholder="Notes (optional)" value={ev.notes} onChange={e => {
-                    const u = [...addingEvents]; u[i] = {...u[i], notes:e.target.value}; setAddingEvents(u);
-                  }} style={{ ...inputStyle }} />
+                )}
+
+                {/* Add new events */}
+                <div style={{ borderTop: `1px solid ${V.borderDefault}`, paddingTop: V.sp4 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: V.textDim, textTransform: "uppercase",
+                    letterSpacing: 1, marginBottom: V.sp3 }}>
+                    Add Event{addingEvents.length > 1 ? "s" : ""}
+                  </div>
+                  {addingEvents.map((ev, i) => (
+                    <div key={i} style={{ background: V.bgCardAlt, borderRadius: V.r2, padding: V.sp3, marginBottom: V.sp2 }}>
+                      {addingEvents.length > 1 && <div style={{ fontSize: 11, color: V.textDim, marginBottom: V.sp1, fontWeight: 600 }}>Event {i+1}</div>}
+                      <input placeholder="Event title" value={ev.title} onChange={e => {
+                        const u = [...addingEvents]; u[i] = {...u[i], title:e.target.value}; setAddingEvents(u);
+                      }} style={{ ...inputStyle, marginBottom: V.sp2 }} />
+                      <div style={{ display: "flex", gap: V.sp2, marginBottom: V.sp2, flexWrap: "wrap" }}>
+                        <TimePicker value={ev.time} onChange={val => {
+                          const u = [...addingEvents]; u[i] = {...u[i], time:val}; setAddingEvents(u);
+                        }} />
+                        <select value={ev.who} onChange={e => {
+                          const u = [...addingEvents]; u[i] = {...u[i], who:e.target.value}; setAddingEvents(u);
+                        }} style={{ ...inputStyle, width: "auto", flex: 1 }}>
+                          <option value="">Who?</option>
+                          {familyNames.map(n => <option key={n} value={n}>{n}</option>)}
+                        </select>
+                      </div>
+                      <input placeholder="Notes (optional)" value={ev.notes} onChange={e => {
+                        const u = [...addingEvents]; u[i] = {...u[i], notes:e.target.value}; setAddingEvents(u);
+                      }} style={inputStyle} />
+                    </div>
+                  ))}
+                  <button onClick={() => setAddingEvents(a => [...a, { title:"", time:"12:00 PM", who:"", notes:"" }])}
+                    style={{ ...btnSecondary, width: "100%", marginBottom: V.sp2, fontSize: 13 }}>+ Add Another Event</button>
+                  <button onClick={saveEvents} style={{ ...btnPrimary, width: "100%" }}>
+                    Save {addingEvents.filter(e=>e.title.trim()).length > 1 ? `${addingEvents.filter(e=>e.title.trim()).length} Events` : "Event"}
+                  </button>
                 </div>
-              ))}
-              <button onClick={() => setAddingEvents(a => [...a, { title:"", time:"12:00 PM", who:"", notes:"" }])}
-                style={{ ...btnSecondary, width:"100%", marginBottom:6, fontSize:13 }}>+ Add Another Event</button>
-              <button onClick={saveEvents} style={{ ...btnPrimary, width:"100%" }}>
-                💾 Save {addingEvents.filter(e=>e.title.trim()).length > 1 ? `${addingEvents.filter(e=>e.title.trim()).length} Events` : "Event"}
-              </button>
+              </div>
             </div>
           </div>
         )}
