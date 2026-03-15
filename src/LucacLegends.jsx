@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { groqFetch, parseGroqJSON } from "./utils";
 
 // ═══════════════════════════════════════════════════════════
 // LUCAC LEGENDS — Full Adventure RPG for Kids
@@ -81,6 +82,30 @@ const ITEMS = {
   boots:  { emoji: "👢", name: "Speed Boots", desc: "Dodge chance", stat: "dodge", value: 1 },
   crown:  { emoji: "👑", name: "Hero Crown", desc: "+3 Attack", stat: "attack", value: 3 },
 };
+
+// ─── MATH PROBLEM GENERATOR (verified, no Groq needed) ─────
+function genMathProblem(difficulty) {
+  const ops = [];
+  if (difficulty?.addition !== false) ops.push('+');
+  if (difficulty?.subtraction) ops.push('-');
+  if (difficulty?.multiplication) ops.push('×');
+  if (difficulty?.division) ops.push('÷');
+  if (!ops.length) ops.push('+');
+  const op = ops[Math.floor(Math.random() * ops.length)];
+  let a, b, answer;
+  if (op === '+') { a = Math.floor(Math.random()*10)+1; b = Math.floor(Math.random()*10)+1; answer = a+b; }
+  else if (op === '-') { a = Math.floor(Math.random()*15)+5; b = Math.floor(Math.random()*a)+1; answer = a-b; }
+  else if (op === '×') { a = Math.floor(Math.random()*12)+1; b = Math.floor(Math.random()*12)+1; answer = a*b; }
+  else { answer = Math.floor(Math.random()*12)+1; b = Math.floor(Math.random()*12)+1; a = answer*b; }
+  return { text: `${a} ${op} ${b}`, answer };
+}
+
+function speakText(text) {
+  if (!window.speechSynthesis) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = 0.85; u.pitch = 1.1;
+  window.speechSynthesis.speak(u);
+}
 
 const SCENE_CHOICES = {
   forest: [
@@ -638,7 +663,61 @@ function GameBtn({ children, onClick, color, disabled, big, style: extra }) {
 
 export default function LucacLegends({ profile, kidsData, fbSet }) {
   // ─── STATE ──────────────────────────────────────────────
-  const [screen, setScreen] = useState("menu"); // menu, world_select, adventure, battle, victory, game_over, store, chores
+  const [screen, setScreen] = useState("menu"); // menu, world_select, adventure, battle, victory, game_over, store, chores, mini_games, racing, fish, potion, reading, coop
+
+  // ─── MINI-GAME SHARED STATE ─────────────────────────────
+  const kidDifficulty = kidsData?.[profile?.name]?.difficulty || { math: { addition: true, subtraction: false, multiplication: false, division: false }, reading: { level: "beginner" } };
+  const kidAge = profile?.name === "Luca" ? 6 : profile?.name === "Yana" ? 8 : 7;
+  const isLucaMode = kidAge <= 7;
+  const GROQ_KEY_GAME = typeof window !== "undefined" ? (import.meta?.env?.VITE_GROQ_KEY || "") : "";
+
+  // Racing state
+  const [raceBarriers, setRaceBarriers] = useState([]);
+  const [raceLane, setRaceLane] = useState(1);
+  const [raceScore, setRaceScore] = useState(0);
+  const [raceStars, setRaceStars] = useState(0);
+  const [raceActive, setRaceActive] = useState(false);
+  const [raceTimer, setRaceTimer] = useState(60);
+  const [raceAnswer, setRaceAnswer] = useState("");
+  const [raceCurrentBarrier, setRaceCurrentBarrier] = useState(null);
+  const raceRef = useRef(null);
+
+  // Fish state
+  const [fishSize, setFishSize] = useState(1);
+  const [fishPos, setFishPos] = useState({ x: 50, y: 50 });
+  const [fishEnemies, setFishEnemies] = useState([]);
+  const [fishBubbles, setFishBubbles] = useState([]);
+  const [fishScore, setFishScore] = useState(0);
+  const [fishStars, setFishStars] = useState(0);
+  const [fishActive, setFishActive] = useState(false);
+  const [fishGameOver, setFishGameOver] = useState(false);
+  const fishRef = useRef(null);
+
+  // Potion state
+  const [potionRound, setPotionRound] = useState(0);
+  const [potionScore, setPotionScore] = useState(0);
+  const [potionLeft, setPotionLeft] = useState(null);
+  const [potionRight, setPotionRight] = useState(null);
+  const [potionChosen, setPotionChosen] = useState(null);
+  const [potionResult, setPotionResult] = useState(null);
+  const [potionComplete, setPotionComplete] = useState(false);
+
+  // Reading state
+  const [storyData, setStoryData] = useState(null);
+  const [storyBlankIdx, setStoryBlankIdx] = useState(0);
+  const [storyScore, setStoryScore] = useState(0);
+  const [storyComplete, setStoryComplete] = useState(false);
+  const [storyLoading, setStoryLoading] = useState(false);
+
+  // Co-op state
+  const [coopActive, setCoopActive] = useState(false);
+  const [coopScoreLeft, setCoopScoreLeft] = useState(0);
+  const [coopScoreRight, setCoopScoreRight] = useState(0);
+  const [coopRound, setCoopRound] = useState(0);
+  const [coopProblemLeft, setCoopProblemLeft] = useState(null);
+  const [coopProblemRight, setCoopProblemRight] = useState(null);
+  const [coopAnswerLeft, setCoopAnswerLeft] = useState("");
+  const [coopAnswerRight, setCoopAnswerRight] = useState("");
   const [currentWorld, setCurrentWorld] = useState(0);
   const [currentScene, setCurrentScene] = useState(0);
   const [hp, setHp] = useState(MAX_HP);
@@ -952,6 +1031,39 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
     transitionTo("menu");
   }
 
+  // ─── AWARD STARS HELPER ─────────────────────────────────
+  function awardStars(n) {
+    if (!n || !profile?.name) return;
+    const kd = kidsData?.[profile.name] || { points: 0 };
+    fbSet("kidsData", { ...(kidsData || {}), [profile.name]: { ...kd, points: (kd.points || 0) + n } });
+    setTotalStarsSession(s => s + n);
+  }
+
+  // ─── RACE TIMER ────────────────────────────────────────
+  useEffect(() => {
+    if (!raceActive || raceTimer <= 0) {
+      if (raceTimer <= 0) setRaceActive(false);
+      return;
+    }
+    const t = setTimeout(() => setRaceTimer(s => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [raceActive, raceTimer]);
+
+  // ─── FISH BUBBLE SPAWNER ───────────────────────────────
+  useEffect(() => {
+    if (!fishActive || fishSize >= 10 || fishGameOver) return;
+    const iv = setInterval(() => {
+      const p = genMathProblem(kidDifficulty.math);
+      const wrong1 = p.answer + Math.floor(Math.random()*5) + 1;
+      const wrong2 = Math.max(0, p.answer - Math.floor(Math.random()*5) - 1);
+      setFishBubbles(bs => [...bs.slice(-4), {
+        x: Math.random()*80+10, y: Math.random()*70+10,
+        answer: p.answer, correct: p.answer, text: p.text, id: Date.now()
+      }]);
+    }, 3000);
+    return () => clearInterval(iv);
+  }, [fishActive, fishSize, fishGameOver]);
+
   // ─── CLEANUP ────────────────────────────────────────────
 
   useEffect(() => {
@@ -1021,6 +1133,9 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
               <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 300, margin: "0 auto" }}>
                 <GameBtn color="#22c55e" big onClick={() => transitionTo("world_select")}>
                   ⚔️ Start Adventure
+                </GameBtn>
+                <GameBtn color="#3b82f6" big onClick={() => transitionTo("mini_games")}>
+                  🎮 Mini Games
                 </GameBtn>
                 <GameBtn color="#8b5cf6" onClick={() => transitionTo("store")}>
                   🏪 Star Store
@@ -1624,6 +1739,424 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // ─── MINI GAMES MENU ─────────────────────────────────────
+  if (screen === "mini_games") {
+    return (
+      <>
+        <style>{KEYFRAMES_CSS}</style>
+        <div style={containerStyle}>
+          <div style={{ minHeight:500, background:"linear-gradient(135deg, #1a1040, #0f2027, #203a43)", padding:20 }}>
+            <div style={{ textAlign:"center", marginBottom:20 }}>
+              <div style={{ fontSize:28, fontWeight:900, color:"#60a5fa", textShadow:"0 0 20px rgba(96,165,250,0.4)", marginBottom:4 }}>
+                🎮 MINI GAMES
+              </div>
+              <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)" }}>Learn while you play!</div>
+              <Avatar emoji={playerEmoji} emotion="happy" anim="bounce" size={50} />
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, maxWidth:340, margin:"0 auto" }}>
+              <div onClick={() => { setRaceBarriers([]); setRaceLane(1); setRaceScore(0); setRaceStars(0); setRaceTimer(60); setRaceActive(true); setRaceAnswer(""); setRaceCurrentBarrier(genMathProblem(kidDifficulty.math)); transitionTo("racing"); }}
+                style={{ background:"linear-gradient(135deg, #dc2626, #f97316)", borderRadius:16, padding:20, textAlign:"center", cursor:"pointer", minHeight:120 }}>
+                <div style={{ fontSize:40 }}>🏎️</div>
+                <div style={{ fontSize:16, fontWeight:700, color:"#fff", marginTop:6 }}>Racing</div>
+                <div style={{ fontSize:11, color:"rgba(255,255,255,0.7)" }}>Blast barriers!</div>
+              </div>
+              <div onClick={() => { setFishSize(1); setFishPos({x:50,y:50}); setFishEnemies([]); setFishBubbles([]); setFishScore(0); setFishStars(0); setFishActive(true); setFishGameOver(false); transitionTo("fish"); }}
+                style={{ background:"linear-gradient(135deg, #0369a1, #22d3ee)", borderRadius:16, padding:20, textAlign:"center", cursor:"pointer", minHeight:120 }}>
+                <div style={{ fontSize:40 }}>🐟</div>
+                <div style={{ fontSize:16, fontWeight:700, color:"#fff", marginTop:6 }}>Fish Eater</div>
+                <div style={{ fontSize:11, color:"rgba(255,255,255,0.7)" }}>Grow big!</div>
+              </div>
+              <div onClick={() => { setPotionRound(1); setPotionScore(0); setPotionChosen(null); setPotionResult(null); setPotionComplete(false);
+                const l=genMathProblem(kidDifficulty.math), r=genMathProblem(kidDifficulty.math); setPotionLeft({...l,color:"#a855f7"}); setPotionRight({...r,color:"#22c55e"}); transitionTo("potion"); }}
+                style={{ background:"linear-gradient(135deg, #7c3aed, #a855f7)", borderRadius:16, padding:20, textAlign:"center", cursor:"pointer", minHeight:120 }}>
+                <div style={{ fontSize:40 }}>🧪</div>
+                <div style={{ fontSize:16, fontWeight:700, color:"#fff", marginTop:6 }}>Potions</div>
+                <div style={{ fontSize:11, color:"rgba(255,255,255,0.7)" }}>Brew spells!</div>
+              </div>
+              <div onClick={() => { setStoryData(null); setStoryBlankIdx(0); setStoryScore(0); setStoryComplete(false); setStoryLoading(true); transitionTo("reading"); }}
+                style={{ background:"linear-gradient(135deg, #059669, #34d399)", borderRadius:16, padding:20, textAlign:"center", cursor:"pointer", minHeight:120 }}>
+                <div style={{ fontSize:40 }}>📖</div>
+                <div style={{ fontSize:16, fontWeight:700, color:"#fff", marginTop:6 }}>Reading</div>
+                <div style={{ fontSize:11, color:"rgba(255,255,255,0.7)" }}>Complete stories!</div>
+              </div>
+            </div>
+            <div style={{ marginTop:16, maxWidth:340, margin:"16px auto 0" }}>
+              <GameBtn color="#f59e0b" onClick={() => { setCoopActive(false); setCoopScoreLeft(0); setCoopScoreRight(0); setCoopRound(0); transitionTo("coop"); }}>
+                👫 Play Together (Co-op)
+              </GameBtn>
+            </div>
+            <div style={{ marginTop:12, textAlign:"center" }}>
+              <GameBtn color="#475569" onClick={backToMenu}>← Back to Menu</GameBtn>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // ─── RACING GAME ──────────────────────────────────────────
+  if (screen === "racing") {
+    return (
+      <>
+        <style>{KEYFRAMES_CSS}</style>
+        <div style={containerStyle}>
+          <div style={{ minHeight:500, background:"linear-gradient(180deg, #1a1a2e, #16213e)", padding:16 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+              <GameBtn color="#475569" onClick={() => { setRaceActive(false); transitionTo("mini_games"); }}>← Back</GameBtn>
+              <div style={{ color:"#fbbf24", fontWeight:700 }}>⭐ {raceStars} | Score: {raceScore}</div>
+              <div style={{ color:"#ef4444", fontWeight:700 }}>⏱ {raceTimer}s</div>
+            </div>
+            {/* Track */}
+            <div style={{ background:"linear-gradient(90deg, #374151 0%, #374151 48%, #fbbf24 49%, #fbbf24 51%, #374151 52%, #374151 100%)",
+              borderRadius:12, height:200, position:"relative", overflow:"hidden", border:"2px solid #4b5563", marginBottom:12 }}>
+              {/* Lanes */}
+              {[0,1,2].map(lane => (
+                <div key={lane} style={{ position:"absolute", top: lane*66+4, left:0, right:0, height:60, borderBottom: lane<2?"1px dashed rgba(255,255,255,0.2)":"none" }}>
+                  {raceLane === lane && <div style={{ position:"absolute", left:30, top:10, fontSize:40, transition:"top 0.2s" }}>🏎️</div>}
+                </div>
+              ))}
+              {/* Current barrier */}
+              {raceCurrentBarrier && raceActive && (
+                <div style={{ position:"absolute", right:20, top: raceLane*66+10, background:"#ef4444", borderRadius:8, padding:"8px 14px",
+                  color:"#fff", fontWeight:800, fontSize:18, border:"2px solid #fca5a5" }}>
+                  {raceCurrentBarrier.text} = ?
+                </div>
+              )}
+            </div>
+            {/* Controls */}
+            <div style={{ display:"flex", gap:8, justifyContent:"center", marginBottom:12 }}>
+              <GameBtn color="#3b82f6" onClick={() => setRaceLane(Math.max(0, raceLane-1))}>⬆️ Up</GameBtn>
+              <GameBtn color="#3b82f6" onClick={() => setRaceLane(Math.min(2, raceLane+1))}>⬇️ Down</GameBtn>
+            </div>
+            {/* Answer input */}
+            {raceActive && raceCurrentBarrier && (
+              <div style={{ display:"flex", gap:8, justifyContent:"center" }}>
+                <input value={raceAnswer} onChange={e => setRaceAnswer(e.target.value.replace(/[^0-9-]/g,""))}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && raceAnswer) {
+                      if (parseInt(raceAnswer) === raceCurrentBarrier.answer) {
+                        setRaceScore(s => s+10); setRaceStars(s => s+1);
+                        setRaceCurrentBarrier(genMathProblem(kidDifficulty.math));
+                      }
+                      setRaceAnswer("");
+                    }
+                  }}
+                  placeholder="Answer..." style={{ background:"#1e293b", color:"#fff", border:"2px solid #3b82f6", borderRadius:12,
+                    padding:"12px 16px", fontSize:20, width:120, textAlign:"center" }} />
+                <GameBtn color="#22c55e" onClick={() => {
+                  if (raceAnswer && parseInt(raceAnswer) === raceCurrentBarrier.answer) {
+                    setRaceScore(s => s+10); setRaceStars(s => s+1);
+                    setRaceCurrentBarrier(genMathProblem(kidDifficulty.math));
+                  }
+                  setRaceAnswer("");
+                }}>💥 Blast!</GameBtn>
+              </div>
+            )}
+            {!raceActive && raceScore > 0 && (
+              <div style={{ textAlign:"center", marginTop:20 }}>
+                <div style={{ fontSize:24, fontWeight:800, color:"#fbbf24" }}>🏁 Race Over!</div>
+                <div style={{ fontSize:18, color:"#fff", marginTop:8 }}>Score: {raceScore} | Stars: ⭐{raceStars}</div>
+                <GameBtn color="#22c55e" onClick={() => { awardStars(raceStars); transitionTo("mini_games"); }}>Collect Stars!</GameBtn>
+              </div>
+            )}
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // ─── FISH EATER GAME ──────────────────────────────────────
+  if (screen === "fish") {
+    return (
+      <>
+        <style>{KEYFRAMES_CSS}</style>
+        <div style={containerStyle}>
+          <div style={{ minHeight:500, background:"linear-gradient(180deg, #0c4a6e, #0369a1, #0284c7)", padding:16 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+              <GameBtn color="#475569" onClick={() => { setFishActive(false); transitionTo("mini_games"); }}>← Back</GameBtn>
+              <div style={{ color:"#fbbf24", fontWeight:700 }}>Size: {fishSize}/10 | ⭐ {fishStars}</div>
+            </div>
+            {/* Ocean */}
+            <div style={{ background:"linear-gradient(180deg, #0c4a6e, #164e63)", borderRadius:16, height:300, position:"relative",
+              overflow:"hidden", border:"2px solid #22d3ee" }}>
+              {/* Wave animation at top */}
+              <div style={{ position:"absolute", top:0, left:0, right:0, height:8, background:"rgba(34,211,238,0.3)" }} />
+              {/* Your fish */}
+              <div style={{ position:"absolute", left:`${fishPos.x}%`, top:`${fishPos.y}%`, fontSize: 20 + fishSize * 4,
+                transition:"left 0.15s, top 0.15s, font-size 0.3s", transform:"translateX(-50%) translateY(-50%)" }}>
+                🐟
+              </div>
+              {/* Bubbles with math */}
+              {fishBubbles.map((b, i) => (
+                <div key={b.id||i} onClick={() => {
+                  if (parseInt(b.answer) === b.correct) {
+                    setFishSize(s => Math.min(10, s+1)); setFishStars(s => s+1); setFishScore(s => s+10);
+                    setFishBubbles(bs => bs.filter((_,j) => j!==i));
+                  } else {
+                    setFishSize(s => Math.max(1, s-1));
+                    setTimeout(() => setFishSize(s => Math.min(10, s+1)), 2000);
+                  }
+                }} style={{ position:"absolute", left:`${b.x}%`, top:`${b.y}%`, background:"rgba(255,255,255,0.2)",
+                  borderRadius:"50%", width:50, height:50, display:"flex", alignItems:"center", justifyContent:"center",
+                  color:"#fff", fontWeight:700, fontSize:14, cursor:"pointer", border:"2px solid rgba(255,255,255,0.4)" }}>
+                  {b.answer}
+                </div>
+              ))}
+              {fishSize >= 10 && (
+                <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center",
+                  background:"rgba(0,0,0,0.5)", zIndex:10 }}>
+                  <div style={{ textAlign:"center", color:"#fbbf24" }}>
+                    <div style={{ fontSize:40 }}>🎉</div>
+                    <div style={{ fontSize:24, fontWeight:800 }}>MAX SIZE!</div>
+                    <div style={{ fontSize:16, marginTop:4 }}>⭐ {fishStars} Stars earned!</div>
+                  </div>
+                </div>
+              )}
+            </div>
+            {/* D-pad */}
+            <div style={{ display:"flex", justifyContent:"center", marginTop:12, gap:4 }}>
+              <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+                <GameBtn color="#0369a1" onClick={() => setFishPos(p => ({...p, y:Math.max(5,p.y-10)}))}>⬆️</GameBtn>
+                <div style={{ display:"flex", gap:4 }}>
+                  <GameBtn color="#0369a1" onClick={() => setFishPos(p => ({...p, x:Math.max(5,p.x-10)}))}>⬅️</GameBtn>
+                  <GameBtn color="#0369a1" onClick={() => setFishPos(p => ({...p, x:Math.min(95,p.x+10)}))}>➡️</GameBtn>
+                </div>
+                <GameBtn color="#0369a1" onClick={() => setFishPos(p => ({...p, y:Math.min(90,p.y+10)}))}>⬇️</GameBtn>
+              </div>
+            </div>
+            {(fishSize >= 10 || fishGameOver) && (
+              <div style={{ textAlign:"center", marginTop:12 }}>
+                <GameBtn color="#22c55e" onClick={() => { awardStars(fishStars); transitionTo("mini_games"); }}>Collect Stars!</GameBtn>
+              </div>
+            )}
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // ─── POTION BREWING ───────────────────────────────────────
+  if (screen === "potion") {
+    return (
+      <>
+        <style>{KEYFRAMES_CSS}</style>
+        <div style={containerStyle}>
+          <div style={{ minHeight:500, background:"linear-gradient(180deg, #1e1040, #2d1b69, #1e1040)", padding:20 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+              <GameBtn color="#475569" onClick={() => transitionTo("mini_games")}>← Back</GameBtn>
+              <div style={{ color:"#fbbf24", fontWeight:700 }}>Round {potionRound}/5 | Score: {potionScore}</div>
+            </div>
+            <div style={{ textAlign:"center", marginBottom:16 }}>
+              <div style={{ fontSize:60, animation:"ll-pulse 1.5s ease-in-out infinite" }}>🧪</div>
+              <div style={{ fontSize:18, fontWeight:700, color:"#c084fc", marginTop:4 }}>Pick the STRONGER potion!</div>
+              <div style={{ fontSize:12, color:"rgba(255,255,255,0.5)" }}>(Higher answer = stronger)</div>
+            </div>
+            {!potionComplete && potionLeft && potionRight && (
+              <div style={{ display:"flex", gap:16, justifyContent:"center", marginTop:20 }}>
+                {[{side:"left",p:potionLeft},{side:"right",p:potionRight}].map(({side,p}) => (
+                  <div key={side} onClick={() => {
+                    if (potionChosen) return;
+                    setPotionChosen(side);
+                    const correct = side === "left" ? potionLeft.answer >= potionRight.answer : potionRight.answer >= potionLeft.answer;
+                    setPotionResult(correct ? "correct" : "wrong");
+                    if (correct) setPotionScore(s => s+1);
+                    setTimeout(() => {
+                      if (potionRound >= 5) { setPotionComplete(true); return; }
+                      const l=genMathProblem(kidDifficulty.math), r=genMathProblem(kidDifficulty.math);
+                      setPotionLeft({...l,color:"#a855f7"}); setPotionRight({...r,color:"#22c55e"});
+                      setPotionRound(rnd => rnd+1); setPotionChosen(null); setPotionResult(null);
+                    }, 1500);
+                  }} style={{ background: potionChosen === side ? (potionResult === "correct" ? "#22c55e33" : "#ef444433") : `${p.color}22`,
+                    border: `3px solid ${potionChosen === side ? (potionResult === "correct" ? "#22c55e" : "#ef4444") : p.color}`,
+                    borderRadius:20, padding:"24px 20px", minWidth:130, textAlign:"center", cursor: potionChosen ? "default" : "pointer" }}>
+                    <div style={{ fontSize:36 }}>🧪</div>
+                    <div style={{ fontSize:22, fontWeight:800, color:"#fff", marginTop:8 }}>{p.text}</div>
+                    {potionChosen && <div style={{ fontSize:16, color:"#fbbf24", marginTop:4 }}>= {p.answer}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+            {potionComplete && (
+              <div style={{ textAlign:"center", marginTop:20 }}>
+                <div style={{ fontSize:28, fontWeight:800, color:"#fbbf24" }}>✨ Brewing Complete!</div>
+                <div style={{ fontSize:18, color:"#fff", marginTop:8 }}>{potionScore}/5 powerful potions brewed!</div>
+                <div style={{ fontSize:14, color:"#c084fc", marginTop:4 }}>⭐ {potionScore + (potionScore === 5 ? 2 : 0)} stars earned!</div>
+                <GameBtn color="#22c55e" onClick={() => { awardStars(potionScore + (potionScore === 5 ? 2 : 0)); transitionTo("mini_games"); }}>
+                  Collect Stars!
+                </GameBtn>
+              </div>
+            )}
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // ─── READING GAME ─────────────────────────────────────────
+  if (screen === "reading") {
+    // Load story from Groq on first render
+    if (storyLoading && !storyData) {
+      const prompt = isLucaMode
+        ? `Write a very simple 4-sentence story for a 6 year old named ${playerName}. Use simple words. Leave 3 blanks marked as [BLANK]. Return JSON: {"story":"The [BLANK] ran...","blanks":[{"correct":"cat","wrong":["dog","hat"]}]}`
+        : `Write a 5-sentence adventure story for an 8 year old named ${playerName}. Leave 4 blanks. Return JSON: {"story":"...","blanks":[{"correct":"...","wrong":["...",".."]}]}`;
+      groqFetch(GROQ_KEY_GAME, [{role:"system",content:"Return ONLY valid JSON."},{role:"user",content:prompt}])
+        .then(r => {
+          if (r.ok) {
+            const d = parseGroqJSON(r.data);
+            if (d?.story && d?.blanks) { setStoryData(d); setStoryLoading(false); return; }
+          }
+          // Fallback story
+          setStoryData({ story: `Once upon a time, ${playerName} found a [BLANK] in the forest. It was very [BLANK]. ${playerName} decided to [BLANK] it home.`,
+            blanks: [{correct:"treasure",wrong:["rock","bug"]},{correct:"shiny",wrong:["scary","boring"]},{correct:"bring",wrong:["throw","eat"]}] });
+          setStoryLoading(false);
+        });
+    }
+    const parts = storyData ? storyData.story.split("[BLANK]") : [];
+    const currentBlank = storyData?.blanks?.[storyBlankIdx];
+    const allFilled = storyData && storyBlankIdx >= (storyData.blanks?.length || 0);
+
+    return (
+      <>
+        <style>{KEYFRAMES_CSS}</style>
+        <div style={containerStyle}>
+          <div style={{ minHeight:500, background:"linear-gradient(180deg, #064e3b, #065f46, #047857)", padding:20 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+              <GameBtn color="#475569" onClick={() => { setStoryLoading(false); transitionTo("mini_games"); }}>← Back</GameBtn>
+              <div style={{ color:"#fbbf24", fontWeight:700 }}>📖 Story Time | Score: {storyScore}</div>
+            </div>
+            {storyLoading && <div style={{ textAlign:"center", color:"#fff", fontSize:18, marginTop:40 }}>📖 Writing your story...</div>}
+            {storyData && (
+              <div style={{ background:"rgba(255,255,255,0.1)", borderRadius:16, padding:20, marginTop:12 }}>
+                <div style={{ fontSize: isLucaMode ? 20 : 16, color:"#fff", lineHeight:2 }}>
+                  {parts.map((part, i) => (
+                    <span key={i}>
+                      {part}
+                      {i < parts.length - 1 && (
+                        i < storyBlankIdx
+                          ? <span style={{ color:"#22c55e", fontWeight:700, textDecoration:"underline" }}> {storyData.blanks[i].correct} </span>
+                          : <span style={{ background:"#fbbf24", color:"#000", padding:"2px 12px", borderRadius:6, fontWeight:700 }}> _____ </span>
+                      )}
+                    </span>
+                  ))}
+                </div>
+                {isLucaMode && storyData && (
+                  <button onClick={() => speakText(storyData.story.replace(/\[BLANK\]/g, "blank"))}
+                    style={{ marginTop:8, background:"none", border:"none", fontSize:24, cursor:"pointer" }}>🔊</button>
+                )}
+              </div>
+            )}
+            {currentBlank && !allFilled && (
+              <div style={{ display:"flex", gap:10, justifyContent:"center", marginTop:20, flexWrap:"wrap" }}>
+                {[currentBlank.correct, ...currentBlank.wrong].sort(() => Math.random()-0.5).map((word, i) => (
+                  <GameBtn key={i} color={word === currentBlank.correct ? "#22c55e" : "#6366f1"}
+                    onClick={() => {
+                      if (word === currentBlank.correct) {
+                        setStoryScore(s => s+1);
+                        setStoryBlankIdx(idx => idx+1);
+                        if (isLucaMode) speakText(word);
+                      }
+                    }}>
+                    {word}
+                  </GameBtn>
+                ))}
+              </div>
+            )}
+            {allFilled && (
+              <div style={{ textAlign:"center", marginTop:20 }}>
+                <div style={{ fontSize:28, fontWeight:800, color:"#fbbf24" }}>📖 Story Complete!</div>
+                <div style={{ fontSize:16, color:"#fff", marginTop:8 }}>You got {storyScore} words right!</div>
+                <GameBtn color="#22c55e" onClick={() => { awardStars(storyScore + (storyScore === (storyData?.blanks?.length||0) ? 2 : 0)); transitionTo("mini_games"); }}>
+                  Collect ⭐ {storyScore + (storyScore === (storyData?.blanks?.length||0) ? 2 : 0)} Stars!
+                </GameBtn>
+              </div>
+            )}
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // ─── CO-OP MODE ───────────────────────────────────────────
+  if (screen === "coop") {
+    const maxRounds = 10;
+    const coopDone = coopRound >= maxRounds;
+    // Generate problems if needed
+    if (!coopProblemLeft && !coopDone) {
+      const hard = { addition: true, subtraction: true, multiplication: true, division: false };
+      const easy = { addition: true, subtraction: false, multiplication: false, division: false };
+      setCoopProblemLeft(genMathProblem(hard));
+      setCoopProblemRight(genMathProblem(easy));
+    }
+    return (
+      <>
+        <style>{KEYFRAMES_CSS}</style>
+        <div style={containerStyle}>
+          <div style={{ minHeight:500, background:"linear-gradient(135deg, #1e1040, #0f2027)", padding:16 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+              <GameBtn color="#475569" onClick={() => transitionTo("mini_games")}>← Back</GameBtn>
+              <div style={{ color:"#fbbf24", fontWeight:700 }}>Round {Math.min(coopRound+1, maxRounds)}/{maxRounds}</div>
+            </div>
+            <div style={{ textAlign:"center", marginBottom:12 }}>
+              <div style={{ fontSize:20, fontWeight:800, color:"#fbbf24" }}>👫 TEAM SCORE: {coopScoreLeft + coopScoreRight}</div>
+            </div>
+            {!coopDone && (
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 4px 1fr", gap:0 }}>
+                {/* Left side (Yana/older) */}
+                <div style={{ padding:12, textAlign:"center" }}>
+                  <div style={{ fontSize:14, fontWeight:700, color:"#c084fc", marginBottom:8 }}>Yana ⭐{coopScoreLeft}</div>
+                  {coopProblemLeft && (
+                    <div>
+                      <div style={{ fontSize:22, fontWeight:800, color:"#fff", marginBottom:8 }}>{coopProblemLeft.text} = ?</div>
+                      <input value={coopAnswerLeft} onChange={e => setCoopAnswerLeft(e.target.value.replace(/[^0-9-]/g,""))}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" && coopAnswerLeft && parseInt(coopAnswerLeft) === coopProblemLeft.answer) {
+                            setCoopScoreLeft(s => s+2); setCoopAnswerLeft(""); setCoopAnswerRight("");
+                            setCoopRound(r => r+1); setCoopProblemLeft(null); setCoopProblemRight(null);
+                          }
+                        }}
+                        style={{ background:"#1e293b", color:"#fff", border:"2px solid #c084fc", borderRadius:12, padding:"10px", fontSize:20, width:80, textAlign:"center" }} />
+                    </div>
+                  )}
+                </div>
+                {/* Divider */}
+                <div style={{ background:"#fbbf24", borderRadius:2 }} />
+                {/* Right side (Luca/younger) */}
+                <div style={{ padding:12, textAlign:"center" }}>
+                  <div style={{ fontSize:14, fontWeight:700, color:"#22d3ee", marginBottom:8 }}>Luca ⭐{coopScoreRight}</div>
+                  {coopProblemRight && (
+                    <div>
+                      <div style={{ fontSize:22, fontWeight:800, color:"#fff", marginBottom:8 }}>{coopProblemRight.text} = ?</div>
+                      <input value={coopAnswerRight} onChange={e => setCoopAnswerRight(e.target.value.replace(/[^0-9-]/g,""))}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" && coopAnswerRight && parseInt(coopAnswerRight) === coopProblemRight.answer) {
+                            setCoopScoreRight(s => s+2); setCoopAnswerLeft(""); setCoopAnswerRight("");
+                            setCoopRound(r => r+1); setCoopProblemLeft(null); setCoopProblemRight(null);
+                          }
+                        }}
+                        style={{ background:"#1e293b", color:"#fff", border:"2px solid #22d3ee", borderRadius:12, padding:"10px", fontSize:20, width:80, textAlign:"center" }} />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {coopDone && (
+              <div style={{ textAlign:"center", marginTop:20 }}>
+                <div style={{ fontSize:28, fontWeight:800, color:"#fbbf24" }}>👫 TEAMWORK!</div>
+                <div style={{ fontSize:20, color:"#fff", marginTop:8 }}>Team Score: {coopScoreLeft + coopScoreRight}</div>
+                <div style={{ fontSize:14, color:"#c084fc", marginTop:4 }}>⭐ {Math.round((coopScoreLeft + coopScoreRight) / 5)} stars EACH!</div>
+                <GameBtn color="#22c55e" onClick={() => {
+                  const stars = Math.round((coopScoreLeft + coopScoreRight) / 5);
+                  awardStars(stars);
+                  transitionTo("mini_games");
+                }}>Collect Stars!</GameBtn>
+              </div>
+            )}
           </div>
         </div>
       </>
