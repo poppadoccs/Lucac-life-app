@@ -35,16 +35,19 @@ const THEMES = {
   skylight: {
     label: "Skylight", icon: "☀️", desc: "Clean white, gold accents, minimal",
     ...SHARED,
-    bgApp: "#f8f9fb", bgCard: "#ffffff", bgCardAlt: "#f3f4f6", bgInput: "#f3f4f6",
-    bgElevated: "#e8eaef", bgOverlay: "rgba(0,0,0,0.35)",
+    bgApp: "#f8f9fb", bgCard: "#ffffff", bgCardAlt: "#f4f5f7", bgInput: "#f0f1f3",
+    bgElevated: "#eaedf1", bgOverlay: "rgba(0,0,0,0.3)",
     calBgCell: "#ffffff", calBgCellHover: "#f9fafb", calBgToday: "#fffbeb",
-    calBgSelected: "#eef4ff", calBgHeader: "#ffffff", calBgWeekday: "#f8f9fb",
+    calBgSelected: "#eef4ff", calBgHeader: "#ffffff", calBgWeekday: "#fafbfc",
     borderDefault: "#e5e7eb", borderSubtle: "#d1d5db", borderAccent: "#f59e0b", borderFocus: "#3b82f6",
     textPrimary: "#1f2937", textSecondary: "#374151", textMuted: "#6b7280", textDim: "#9ca3af",
-    accent: "#f59e0b", accentGlow: "rgba(245,158,11,0.12)", accentGlowStrong: "rgba(245,158,11,0.22)",
+    accent: "#f59e0b", accentGlow: "rgba(245,158,11,0.10)", accentGlowStrong: "rgba(245,158,11,0.20)",
     success: "#16a34a", danger: "#dc2626", info: "#2563eb", purple: "#7c3aed", pink: "#db2777",
-    shadowCard: "0 1px 4px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.04)",
-    shadowModal: "0 8px 30px rgba(0,0,0,0.15)", shadowGlow: "0 0 12px rgba(245,158,11,0.12)",
+    // Soft pastel event pill palette
+    pillColors: ["#fce4ec","#e3f2fd","#e8f5e9","#f3e5f5","#fff8e1","#e0f7fa"],
+    pillTextColors: ["#ad1457","#1565c0","#2e7d32","#6a1b9a","#f57f17","#00838f"],
+    shadowCard: "0 1px 3px rgba(0,0,0,0.04), 0 1px 6px rgba(0,0,0,0.03)",
+    shadowModal: "0 8px 30px rgba(0,0,0,0.12)", shadowGlow: "0 0 12px rgba(245,158,11,0.10)",
   },
   cozyla: {
     label: "Cozyla", icon: "🕯️", desc: "Warm creams, coral accents, cozy feel",
@@ -114,21 +117,40 @@ function TimePicker({ value, onChange }) {
   );
 }
 
-function ColorPicker({ label, value, onChange }) {
+// ═══ COLOR SWATCHES ═══
+const SWATCH_COLORS = [
+  { hex:"#ef4444", label:"Red" }, { hex:"#f97316", label:"Orange" }, { hex:"#f59e0b", label:"Gold" },
+  { hex:"#eab308", label:"Yellow" }, { hex:"#22c55e", label:"Green" }, { hex:"#14b8a6", label:"Teal" },
+  { hex:"#3b82f6", label:"Blue" }, { hex:"#7c3aed", label:"Purple" }, { hex:"#ec4899", label:"Pink" },
+  { hex:"#f87171", label:"Coral" }, { hex:"#92400e", label:"Brown" }, { hex:"#6b7280", label:"Gray" },
+];
+
+function SwatchPicker({ value, onChange, label }) {
   return (
-    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
-      <span style={{ fontSize:12, color:"#94a3b8", width:80 }}>{label}</span>
-      <input type="color" value={value || "#f59e0b"} onChange={e => onChange(e.target.value)}
-        style={{ width:36, height:28, border:"none", borderRadius:6, cursor:"pointer", background:"none" }} />
-      <span style={{ fontSize:12, color:"#94a3b8" }}>{value}</span>
+    <div style={{ marginBottom:10 }}>
+      {label && <div style={{ fontSize:12, color:"#94a3b8", marginBottom:6 }}>{label}</div>}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:6 }}>
+        {SWATCH_COLORS.map(c => {
+          const sel = value === c.hex;
+          return (
+            <button key={c.hex} onClick={() => onChange(c.hex)} title={c.label}
+              style={{ width:44, height:44, borderRadius:10, background:c.hex, border: sel ? "3px solid #fff" : "2px solid transparent",
+                cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+                boxShadow: sel ? `0 0 0 2px ${c.hex}, 0 2px 8px ${c.hex}44` : "0 1px 3px rgba(0,0,0,0.15)",
+                transition:"box-shadow 0.15s, border 0.15s" }}>
+              {sel && <span style={{ color:"#fff", fontSize:18, fontWeight:700, textShadow:"0 1px 2px rgba(0,0,0,0.4)" }}>✓</span>}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
 function BlockStyleEditor({ style, onChange, onClose }) {
   const s = style || {};
-  const [bg, setBg] = useState(s.bg || "#1e3a5f");
-  const [color, setColor] = useState(s.color || "#f8fafc");
+  const [bg, setBg] = useState(s.bg || "#3b82f6");
+  const [color, setColor] = useState(s.color || "#ffffff");
   const [size, setSize] = useState(s.size || 13);
   const [bold, setBold] = useState(s.bold || false);
   const [italic, setItalic] = useState(s.italic || false);
@@ -140,27 +162,27 @@ function BlockStyleEditor({ style, onChange, onClose }) {
   }
 
   return (
-    <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:"rgba(0,0,0,0.7)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }}>
-      <div style={{ background:"#1e2235", borderRadius:12, padding:20, width:300, border:"1px solid #334155" }}>
-        <div style={{ fontWeight:700, color:"#f8fafc", marginBottom:14, fontSize:15 }}>🎨 Customize Block</div>
-        <ColorPicker label="Background" value={bg} onChange={setBg} />
-        <ColorPicker label="Font Color" value={color} onChange={setColor} />
+    <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:"rgba(0,0,0,0.5)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <div style={{ background:"#fff", borderRadius:16, padding:20, width:320, border:"1px solid #e5e7eb", boxShadow:"0 12px 40px rgba(0,0,0,0.15)" }}>
+        <div style={{ fontWeight:700, color:"#1f2937", marginBottom:14, fontSize:15 }}>🎨 Customize Block</div>
+        <SwatchPicker label="Background Color" value={bg} onChange={setBg} />
+        <SwatchPicker label="Text Color" value={color} onChange={setColor} />
         <div style={{ marginBottom:10 }}>
-          <div style={{ fontSize:12, color:"#94a3b8", marginBottom:4 }}>Font Size: {size}px</div>
+          <div style={{ fontSize:12, color:"#6b7280", marginBottom:4 }}>Font Size: {size}px</div>
           <input type="range" min={10} max={24} value={size} onChange={e => setSize(Number(e.target.value))}
             style={{ width:"100%", accentColor:"#f59e0b" }} />
         </div>
         <div style={{ display:"flex", gap:8, marginBottom:14 }}>
-          <button onClick={() => setBold(!bold)} style={{ padding:"4px 10px", borderRadius:6, border:"1px solid #334155", background: bold ? "#f59e0b" : "#2d3748", color: bold ? "#0f172a" : "#e2e8f0", fontWeight:700, cursor:"pointer" }}>B</button>
-          <button onClick={() => setItalic(!italic)} style={{ padding:"4px 10px", borderRadius:6, border:"1px solid #334155", background: italic ? "#f59e0b" : "#2d3748", color: italic ? "#0f172a" : "#e2e8f0", fontStyle:"italic", cursor:"pointer" }}>I</button>
-          <button onClick={() => setCursive(!cursive)} style={{ padding:"4px 10px", borderRadius:6, border:"1px solid #334155", background: cursive ? "#f59e0b" : "#2d3748", color: cursive ? "#0f172a" : "#e2e8f0", fontFamily:"cursive", cursor:"pointer" }}>C</button>
+          <button onClick={() => setBold(!bold)} style={{ padding:"6px 14px", borderRadius:8, border:"1px solid #d1d5db", background: bold ? "#f59e0b" : "#f3f4f6", color: bold ? "#fff" : "#374151", fontWeight:700, cursor:"pointer" }}>B</button>
+          <button onClick={() => setItalic(!italic)} style={{ padding:"6px 14px", borderRadius:8, border:"1px solid #d1d5db", background: italic ? "#f59e0b" : "#f3f4f6", color: italic ? "#fff" : "#374151", fontStyle:"italic", cursor:"pointer" }}>I</button>
+          <button onClick={() => setCursive(!cursive)} style={{ padding:"6px 14px", borderRadius:8, border:"1px solid #d1d5db", background: cursive ? "#f59e0b" : "#f3f4f6", color: cursive ? "#fff" : "#374151", fontFamily:"cursive", cursor:"pointer" }}>C</button>
         </div>
-        <div style={{ background: bg, borderRadius:8, padding:"8px 12px", marginBottom:14, fontSize:size, color, fontWeight: bold ? 700 : 400, fontStyle: italic ? "italic" : "normal", fontFamily: cursive ? "cursive" : "inherit" }}>
-          Preview text ✨
+        <div style={{ background: bg, borderRadius:10, padding:"10px 14px", marginBottom:14, fontSize:size, color, fontWeight: bold ? 700 : 400, fontStyle: italic ? "italic" : "normal", fontFamily: cursive ? "cursive" : "inherit" }}>
+          Preview text
         </div>
         <div style={{ display:"flex", gap:8 }}>
-          <button onClick={save} style={{ flex:1, padding:"8px", borderRadius:8, background:"#f59e0b", color:"#0f172a", fontWeight:700, border:"none", cursor:"pointer" }}>Save</button>
-          <button onClick={onClose} style={{ flex:1, padding:"8px", borderRadius:8, background:"#2d3748", color:"#e2e8f0", border:"none", cursor:"pointer" }}>Cancel</button>
+          <button onClick={save} style={{ flex:1, padding:"10px", borderRadius:10, background:"#f59e0b", color:"#fff", fontWeight:700, border:"none", cursor:"pointer" }}>Save</button>
+          <button onClick={onClose} style={{ flex:1, padding:"10px", borderRadius:10, background:"#f3f4f6", color:"#374151", border:"1px solid #d1d5db", cursor:"pointer" }}>Cancel</button>
         </div>
       </div>
     </div>
@@ -187,7 +209,7 @@ export default function App() {
   const [selectedDay, setSelectedDay] = useState(null);
   const [events, setEvents] = useState({});
   const [eventStyles, setEventStyles] = useState({});
-  const [addingEvents, setAddingEvents] = useState([{ title:"", time:"12:00 PM", who:"", notes:"" }]);
+  const [addingEvents, setAddingEvents] = useState([{ title:"", time:"12:00 PM", who:"", notes:"", repeat:"none", repeatEnd:"", repeatCount:0, duration:60 }]);
   const [editingStyle, setEditingStyle] = useState(null); // {dateKey, idx}
 
   // Routines & Goals
@@ -253,6 +275,15 @@ export default function App() {
   // Daily quote
   const [quote, setQuote] = useState("Every day you show up for your kids is a win. 💙");
 
+  // AI Quick Add
+  const [quickAddInput, setQuickAddInput] = useState("");
+  const [quickAddLoading, setQuickAddLoading] = useState(false);
+  const [quickAddPreview, setQuickAddPreview] = useState(null); // {events: [...]}
+
+  // Widget customization (per profile)
+  const [widgetPrefs, setWidgetPrefs] = useState({});
+  const [editingWidget, setEditingWidget] = useState(null); // widget key being edited
+
   const isAdmin = currentProfile?.type === "admin";
   const isKid = currentProfile?.type === "kid";
 
@@ -260,7 +291,7 @@ export default function App() {
   useEffect(() => {
     const keys = ["events","eventStyles","routines","routineStyles","goals","goalStyles",
       "profiles","kidsData","custodySchedule","myRules","theirRules","sharedRules",
-      "exchangeLog","foodLog","myFoods","nutritionGoals","trackedMacros","contacts","alertMinutes","themeName"];
+      "exchangeLog","foodLog","myFoods","nutritionGoals","trackedMacros","contacts","alertMinutes","themeName","widgetPrefs"];
     keys.forEach(key => {
       onValue(ref(db, key), snap => {
         if (snap.exists()) {
@@ -285,6 +316,7 @@ export default function App() {
           else if (key === "contacts") { setContactDad(val.dad||""); setContactMom(val.mom||""); }
           else if (key === "alertMinutes") setAlertMinutes(val);
           else if (key === "themeName") { if (THEMES[val]) setThemeName(val); }
+          else if (key === "widgetPrefs") setWidgetPrefs(val || {});
         }
       });
     });
@@ -316,14 +348,40 @@ export default function App() {
   function dateKey(y, m, d) { return `${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`; }
   function todayKey() { return dateKey(today.getFullYear(), today.getMonth(), today.getDate()); }
 
+  function generateRepeats(ev, startDate) {
+    const dates = [startDate];
+    if (ev.repeat === "none") return dates;
+    const maxOccurrences = ev.repeatCount > 0 ? ev.repeatCount : 52;
+    const endDate = ev.repeatEnd ? new Date(ev.repeatEnd + "T23:59:59") : null;
+    for (let i = 1; i < maxOccurrences; i++) {
+      const d = new Date(startDate);
+      if (ev.repeat === "daily") d.setDate(d.getDate() + i);
+      else if (ev.repeat === "weekly") d.setDate(d.getDate() + i * 7);
+      else if (ev.repeat === "monthly") d.setMonth(d.getMonth() + i);
+      if (endDate && d > endDate) break;
+      if (d.getFullYear() > startDate.getFullYear() + 2) break;
+      dates.push(d);
+    }
+    return dates;
+  }
+
   function saveEvents() {
     if (!selectedDay) return;
-    const dk = dateKey(calYear, calMonth, selectedDay);
     const valid = addingEvents.filter(e => e.title.trim());
     if (!valid.length) { setSelectedDay(null); return; }
-    const updated = { ...(events || {}), [dk]: [...(events?.[dk] || []), ...valid] };
+    const updated = { ...(events || {}) };
+    valid.forEach(ev => {
+      const startDate = new Date(calYear, calMonth, selectedDay);
+      const dates = generateRepeats(ev, startDate);
+      const eventData = { title: ev.title, time: ev.time, who: ev.who, notes: ev.notes, duration: ev.duration || 60 };
+      if (ev.repeat !== "none") eventData.repeat = ev.repeat;
+      dates.forEach(d => {
+        const dk = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+        updated[dk] = [...(updated[dk] || []), eventData];
+      });
+    });
     fbSet("events", updated);
-    setAddingEvents([{ title:"", time:"12:00 PM", who:"", notes:"" }]);
+    setAddingEvents([{ title:"", time:"12:00 PM", who:"", notes:"", repeat:"none", repeatEnd:"", repeatCount:0, duration:60 }]);
     setSelectedDay(null);
   }
 
@@ -378,6 +436,72 @@ export default function App() {
   }
   function deleteGoal(idx) {
     fbSet("goals", (goals||[]).filter((_,i)=>i!==idx));
+  }
+
+  // ═══ AI QUICK ADD ═══
+  async function handleQuickAdd() {
+    if (!quickAddInput.trim() || !GROQ_KEY) return;
+    setQuickAddLoading(true);
+    try {
+      const members = familyNames.join(", ");
+      const todayISO = todayStr;
+      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method:"POST", headers:{ "Content-Type":"application/json", Authorization:`Bearer ${GROQ_KEY}` },
+        body: JSON.stringify({
+          model:"llama-3.3-70b-versatile", max_tokens:800,
+          messages:[
+            { role:"system", content:`You extract calendar events from natural language. Family members: ${members}. Today is ${todayISO}. Return ONLY valid JSON array of events. Each event: {"title":"string","date":"YYYY-MM-DD","time":"HH:MM AM/PM","who":"name or empty","notes":"","repeat":"none|daily|weekly|monthly","repeatCount":number_or_0,"duration":minutes}. For repeating events, set repeatCount to total occurrences. If no repeat mentioned, use "none". If duration not mentioned, default 60. Return raw JSON array, no markdown.` },
+            { role:"user", content: quickAddInput }
+          ]
+        })
+      });
+      const data = await resp.json();
+      const raw = data.choices?.[0]?.message?.content || "[]";
+      const cleaned = raw.replace(/```json?\n?/g,"").replace(/```/g,"").trim();
+      const parsed = JSON.parse(cleaned);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        setQuickAddPreview({ events: parsed, input: quickAddInput });
+      }
+    } catch(e) { console.error("Quick add parse error", e); }
+    setQuickAddLoading(false);
+  }
+
+  function confirmQuickAdd() {
+    if (!quickAddPreview?.events?.length) return;
+    const updated = { ...(events || {}) };
+    quickAddPreview.events.forEach(ev => {
+      const startDate = new Date(ev.date + "T00:00:00");
+      const fakeEv = { ...ev, repeatEnd:"", repeatCount: ev.repeatCount || 0 };
+      const dates = generateRepeats(fakeEv, startDate);
+      const eventData = { title: ev.title, time: ev.time || "12:00 PM", who: ev.who || "", notes: ev.notes || "", duration: ev.duration || 60 };
+      if (ev.repeat && ev.repeat !== "none") eventData.repeat = ev.repeat;
+      dates.forEach(d => {
+        const dk = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+        updated[dk] = [...(updated[dk] || []), eventData];
+      });
+    });
+    fbSet("events", updated);
+    setQuickAddPreview(null);
+    setQuickAddInput("");
+  }
+
+  // ═══ WIDGET CUSTOMIZATION ═══
+  function getWidgetPref(key) {
+    const profilePrefs = (widgetPrefs || {})[currentProfile?.name] || {};
+    return profilePrefs[key] || { name: null, hidden: false };
+  }
+  function setWidgetPref(key, pref) {
+    const profilePrefs = { ...((widgetPrefs || {})[currentProfile?.name] || {}), [key]: pref };
+    const updated = { ...(widgetPrefs || {}), [currentProfile?.name]: profilePrefs };
+    fbSet("widgetPrefs", updated);
+    setWidgetPrefs(updated);
+  }
+
+  // ═══ RESIZE EVENT DURATION ═══
+  function updateEventDuration(dk, idx, newDuration) {
+    const dayEvs = [...((events||{})[dk] || [])];
+    dayEvs[idx] = { ...dayEvs[idx], duration: Math.max(30, Math.round(newDuration / 15) * 15) };
+    fbSet("events", { ...(events||{}), [dk]: dayEvs });
   }
 
   // AI chat with Tavily
@@ -563,30 +687,30 @@ export default function App() {
     }
   }
 
-  // ---- STYLES ----
+  // ---- STYLES (theme-aware) ----
   const appStyle = {
-    minHeight:"100vh", background:"#0f1729", color:"#e2e8f0",
-    fontFamily:"-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-    maxWidth:900, margin:"0 auto", paddingBottom:80
+    minHeight:"100vh", background: V.bgApp, color: V.textSecondary,
+    fontFamily: V.fontFamily, maxWidth:900, margin:"0 auto", paddingBottom:80
   };
 
   const cardStyle = {
-    background:"#1a2035", borderRadius:12, padding:16, marginBottom:12, border:"1px solid #1e2d4a"
+    background: V.bgCard, borderRadius: V.r3, padding:16, marginBottom:12,
+    border:`1px solid ${V.borderDefault}`, boxShadow: V.shadowCard
   };
 
   const btnPrimary = {
-    background:"#f59e0b", color:"#0f172a", border:"none", borderRadius:8,
+    background: V.accent, color:"#fff", border:"none", borderRadius: V.r2,
     padding:"8px 16px", fontWeight:700, cursor:"pointer", fontSize:14
   };
 
   const btnSecondary = {
-    background:"#1e2d4a", color:"#e2e8f0", border:"1px solid #334155", borderRadius:8,
+    background: V.bgElevated, color: V.textSecondary, border:`1px solid ${V.borderSubtle}`, borderRadius: V.r2,
     padding:"8px 16px", cursor:"pointer", fontSize:14
   };
 
   const inputStyle = {
-    width:"100%", background:"#1e2235", color:"#e2e8f0", border:"1px solid #334155",
-    borderRadius:8, padding:"8px 12px", fontSize:14, boxSizing:"border-box"
+    width:"100%", background: V.bgInput, color: V.textPrimary, border:`1px solid ${V.borderSubtle}`,
+    borderRadius: V.r2, padding:"8px 12px", fontSize:14, boxSizing:"border-box"
   };
 
   // ---- SCREENS ----
@@ -594,18 +718,18 @@ export default function App() {
     return (
       <div style={{ ...appStyle, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh" }}>
         <div style={{ fontSize:32, marginBottom:8 }}>👑</div>
-        <div style={{ fontSize:24, fontWeight:800, color:"#f59e0b", marginBottom:4 }}>LUCAC Life</div>
-        <div style={{ fontSize:13, color:"#64748b", marginBottom:32 }}>Who's using the app?</div>
+        <div style={{ fontSize:24, fontWeight:800, color:V.accent, marginBottom:4 }}>LUCAC Life</div>
+        <div style={{ fontSize:13, color:V.textDim, marginBottom:32 }}>Who's using the app?</div>
         <div style={{ display:"flex", flexWrap:"wrap", gap:16, justifyContent:"center", maxWidth:500 }}>
           {(profiles||[]).map(p => (
             <button key={p.id} onClick={() => handleProfileSelect(p)}
-              style={{ background:"#1a2035", border:`2px solid ${p.color||"#334155"}`, borderRadius:16, padding:"20px 24px",
-                cursor:"pointer", textAlign:"center", minWidth:120, transition:"transform 0.2s" }}
+              style={{ background:V.bgCard, border:`2px solid ${p.color||V.borderSubtle}`, borderRadius:16, padding:"20px 24px",
+                cursor:"pointer", textAlign:"center", minWidth:120, transition:"transform 0.2s", boxShadow:V.shadowCard }}
               onMouseOver={e => e.currentTarget.style.transform="scale(1.05)"}
               onMouseOut={e => e.currentTarget.style.transform="scale(1)"}>
               <div style={{ fontSize:40, marginBottom:8 }}>{p.emoji}</div>
-              <div style={{ color:p.color||"#e2e8f0", fontWeight:700, fontSize:15 }}>{p.name}</div>
-              <div style={{ color:"#64748b", fontSize:11, marginTop:2 }}>{p.type === "admin" ? "🔑 Admin" : p.type === "kid" ? "⭐ Kid" : "👤 Family"}</div>
+              <div style={{ color:p.color||V.textPrimary, fontWeight:700, fontSize:15 }}>{p.name}</div>
+              <div style={{ color:V.textDim, fontSize:11, marginTop:2 }}>{p.type === "admin" ? "🔑 Admin" : p.type === "kid" ? "⭐ Kid" : "👤 Family"}</div>
             </button>
           ))}
         </div>
@@ -617,11 +741,11 @@ export default function App() {
     return (
       <div style={{ ...appStyle, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:"100vh" }}>
         <div style={{ fontSize:40, marginBottom:12 }}>{pinTarget?.emoji}</div>
-        <div style={{ fontSize:20, fontWeight:700, color:"#f59e0b", marginBottom:4 }}>{pinTarget?.name}</div>
-        <div style={{ fontSize:13, color:"#64748b", marginBottom:24 }}>Enter your PIN</div>
+        <div style={{ fontSize:20, fontWeight:700, color:V.accent, marginBottom:4 }}>{pinTarget?.name}</div>
+        <div style={{ fontSize:13, color:V.textDim, marginBottom:24 }}>Enter your PIN</div>
         <div style={{ display:"flex", gap:8, marginBottom:16 }}>
           {[0,1,2,3,4,5].map(i => (
-            <div key={i} style={{ width:14, height:14, borderRadius:"50%", background: i < pinInput.length ? "#f59e0b" : "#334155" }} />
+            <div key={i} style={{ width:14, height:14, borderRadius:"50%", background: i < pinInput.length ? V.accent : V.borderSubtle }} />
           ))}
         </div>
         <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:16 }}>
@@ -629,13 +753,13 @@ export default function App() {
             <button key={i} onClick={() => {
               if (n === "⌫") setPinInput(p => p.slice(0,-1));
               else if (n !== "") setPinInput(p => p.length < 6 ? p + n : p);
-            }} style={{ width:64, height:64, borderRadius:12, background:"#1a2035", border:"1px solid #334155",
-              color:"#e2e8f0", fontSize:22, cursor: n==="" ? "default" : "pointer", fontWeight:600 }}>
+            }} style={{ width:64, height:64, borderRadius:12, background:V.bgCard, border:`1px solid ${V.borderSubtle}`,
+              color:V.textPrimary, fontSize:22, cursor: n==="" ? "default" : "pointer", fontWeight:600, boxShadow:V.shadowCard }}>
               {n}
             </button>
           ))}
         </div>
-        {pinError && <div style={{ color:"#ef4444", marginBottom:12 }}>{pinError}</div>}
+        {pinError && <div style={{ color:V.danger, marginBottom:12 }}>{pinError}</div>}
         <button onClick={handlePinSubmit} style={{ ...btnPrimary, width:180, padding:"12px" }}>Unlock</button>
         <button onClick={() => { setScreen("profiles"); setPinInput(""); setPinError(""); }}
           style={{ ...btnSecondary, marginTop:8, width:180, padding:"12px" }}>Back</button>
@@ -648,10 +772,11 @@ export default function App() {
     const kd = getKidData(currentProfile.name);
     return (
       <div style={appStyle}>
-        <div style={{ background:"#1a2035", padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+        <div style={{ background:V.bgCard, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center",
+          borderBottom:`1px solid ${V.borderDefault}` }}>
           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
             <span style={{ fontSize:22 }}>{currentProfile.emoji}</span>
-            <span style={{ fontWeight:700, color:"#f59e0b" }}>{currentProfile.name}</span>
+            <span style={{ fontWeight:700, color:V.accent }}>{currentProfile.name}</span>
           </div>
           <button onClick={() => { setCurrentProfile(null); setScreen("profiles"); }} style={{ ...btnSecondary, fontSize:12 }}>Switch</button>
         </div>
@@ -664,8 +789,8 @@ export default function App() {
           <div style={{ padding:16 }}>
             <div style={{ ...cardStyle, textAlign:"center" }}>
               <div style={{ fontSize:48 }}>⭐</div>
-              <div style={{ fontSize:36, fontWeight:800, color:"#f59e0b" }}>{kd.points || 0}</div>
-              <div style={{ color:"#94a3b8" }}>Total Points</div>
+              <div style={{ fontSize:36, fontWeight:800, color:V.accent }}>{kd.points || 0}</div>
+              <div style={{ color:V.textMuted }}>Total Points</div>
             </div>
             {contactDad && (
               <button onClick={() => window.location.href = `tel:${contactDad}`}
@@ -675,26 +800,26 @@ export default function App() {
             )}
             {contactMom && (
               <button onClick={() => window.location.href = `tel:${contactMom}`}
-                style={{ background:"#7c3aed", color:"#fff", border:"none", borderRadius:8,
+                style={{ background:V.purple, color:"#fff", border:"none", borderRadius:V.r2,
                   padding:14, width:"100%", marginBottom:8, fontSize:16, cursor:"pointer", fontWeight:700 }}>
                 📞 Call Mom
               </button>
             )}
             <button onClick={() => setShowGame(true)}
-              style={{ background:"#0f766e", color:"#fff", border:"none", borderRadius:8,
+              style={{ background:"#0f766e", color:"#fff", border:"none", borderRadius:V.r2,
                 padding:14, width:"100%", marginBottom:12, fontSize:16, cursor:"pointer", fontWeight:700 }}>
               🎮 Play LUCAC Legends
             </button>
             <div style={cardStyle}>
-              <div style={{ fontWeight:700, marginBottom:10, color:"#f59e0b" }}>My Tasks</div>
+              <div style={{ fontWeight:700, marginBottom:10, color:V.accent }}>My Tasks</div>
               {(kd.tasks||[]).map((task, i) => (
                 <div key={i} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
-                  <span style={{ flex:1, color: task.done ? "#64748b" : "#e2e8f0", textDecoration: task.done?"line-through":"none" }}>{task.text}</span>
+                  <span style={{ flex:1, color: task.done ? V.textDim : V.textPrimary, textDecoration: task.done?"line-through":"none" }}>{task.text}</span>
                   {!task.done && <button onClick={() => completeKidTask(currentProfile.name, i)} style={{ ...btnPrimary, padding:"4px 10px", fontSize:12 }}>✓ +10pts</button>}
-                  {task.done && <span style={{ color:"#22c55e", fontSize:12 }}>✓ Done!</span>}
+                  {task.done && <span style={{ color:V.success, fontSize:12 }}>✓ Done!</span>}
                 </div>
               ))}
-              {!(kd.tasks||[]).length && <div style={{ color:"#64748b", fontSize:13 }}>No tasks yet!</div>}
+              {!(kd.tasks||[]).length && <div style={{ color:V.textDim, fontSize:13 }}>No tasks yet!</div>}
             </div>
           </div>
         )}
@@ -711,8 +836,17 @@ export default function App() {
     { id:"settings", label:"Settings", icon:"⚙️" },
   ];
 
-  // ---- HOME TAB ----
+  // ---- HOME TAB — DISPATCHER ----
   function renderHome() {
+    if (themeName === "cozyla") return renderHomeCozyla();
+    if (themeName === "familywall") return renderHomeFamilyWall();
+    return renderHomeSkylight();
+  }
+
+  // ═══════════════════════════════════════════
+  // SKYLIGHT HOME — big monthly grid (default)
+  // ═══════════════════════════════════════════
+  function renderHomeSkylight() {
     const daysInMonth = getDaysInMonth(calYear, calMonth);
     const firstDay = getFirstDay(calYear, calMonth);
     const cells = [];
@@ -721,11 +855,45 @@ export default function App() {
     const isToday = (d) => d === today.getDate() && calMonth === today.getMonth() && calYear === today.getFullYear();
     const dk = selectedDay ? dateKey(calYear, calMonth, selectedDay) : null;
 
+    const routinePref = getWidgetPref("routines");
+    const goalPref = getWidgetPref("goals");
+    const statsPref = getWidgetPref("stats");
+
     return (
       <div style={{ padding:12 }}>
+        {/* ═══ AI QUICK ADD ═══ */}
+        <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+          <input value={quickAddInput} onChange={e => setQuickAddInput(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && handleQuickAdd()}
+            placeholder="Add anything... 'Soccer every Friday for 3 months at 4PM for Luca'"
+            style={{ ...inputStyle, flex:1, padding:"10px 14px", fontSize:13, borderRadius:24 }} />
+          <button onClick={handleQuickAdd} disabled={quickAddLoading || !quickAddInput.trim()}
+            style={{ ...btnPrimary, borderRadius:24, padding:"10px 16px", fontSize:16, opacity: quickAddLoading ? 0.6 : 1 }}>
+            {quickAddLoading ? "..." : "✨"}
+          </button>
+        </div>
+
+        {/* AI Quick Add Preview */}
+        {quickAddPreview && (
+          <div style={{ ...cardStyle, border:`2px solid ${V.accent}`, marginBottom:12 }}>
+            <div style={{ fontWeight:700, color:V.accent, marginBottom:8 }}>Creating {quickAddPreview.events.length} event{quickAddPreview.events.length>1?"s":""}</div>
+            {quickAddPreview.events.slice(0,5).map((ev,i) => (
+              <div key={i} style={{ fontSize:13, color:V.textSecondary, marginBottom:4 }}>
+                {ev.repeat && ev.repeat !== "none" && "🔁 "}{ev.title} — {ev.date} {ev.time || ""} {ev.who ? `(${ev.who})` : ""}
+                {ev.repeat && ev.repeat !== "none" && ` · ${ev.repeat}${ev.repeatCount ? ` x${ev.repeatCount}` : ""}`}
+              </div>
+            ))}
+            {quickAddPreview.events.length > 5 && <div style={{fontSize:12,color:V.textDim}}>+{quickAddPreview.events.length-5} more...</div>}
+            <div style={{ display:"flex", gap:8, marginTop:10 }}>
+              <button onClick={confirmQuickAdd} style={{ ...btnPrimary, flex:1 }}>Confirm</button>
+              <button onClick={() => setQuickAddPreview(null)} style={{ ...btnSecondary, flex:1 }}>Cancel</button>
+            </div>
+          </div>
+        )}
+
         {/* Quote */}
-        <div style={{ background:"#1a2035", borderRadius:10, padding:"10px 14px", marginBottom:12,
-          border:"1px solid #1e3a5f", fontSize:13, color:"#94a3b8", fontStyle:"italic" }}>
+        <div style={{ background: V.bgCardAlt, borderRadius:10, padding:"10px 14px", marginBottom:12,
+          border:`1px solid ${V.borderDefault}`, fontSize:13, color: V.textMuted, fontStyle:"italic" }}>
           ✦ {quote}
         </div>
 
@@ -734,7 +902,6 @@ export default function App() {
           background: V.bgCard, borderRadius: V.r3, border: `1px solid ${V.borderDefault}`,
           boxShadow: V.shadowCard, overflow: "hidden", marginBottom: V.sp3
         }}>
-          {/* Month header */}
           <div style={{
             background: V.calBgHeader, padding: `${V.sp4}px ${V.sp5}px`,
             display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -743,46 +910,26 @@ export default function App() {
             <button onClick={() => { if(calMonth===0){setCalMonth(11);setCalYear(y=>y-1);}else setCalMonth(m=>m-1); }}
               style={{ width: 40, height: 40, borderRadius: V.r2, background: V.bgElevated,
                 border: `1px solid ${V.borderSubtle}`, color: V.textSecondary, fontSize: 20,
-                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-                transition: "background 0.15s" }}
-              aria-label="Previous month">
-              ‹
-            </button>
+                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+              aria-label="Previous month">‹</button>
             <div style={{ textAlign: "center", flex: 1 }}>
-              <div style={{ fontWeight: 800, color: V.accent, fontSize: 22, letterSpacing: 0.5, lineHeight: 1.2 }}>
-                {MONTHS[calMonth]}
-              </div>
+              <div style={{ fontWeight: 800, color: V.accent, fontSize: 22, letterSpacing: 0.5, lineHeight: 1.2 }}>{MONTHS[calMonth]}</div>
               <div style={{ fontSize: 13, color: V.textDim, fontWeight: 500, marginTop: 2 }}>{calYear}</div>
               <button onClick={() => { setCalMonth(today.getMonth()); setCalYear(today.getFullYear()); }}
-                style={{ background: V.accentGlow, border: `1px solid ${V.accent}33`,
-                  color: V.accent, fontSize: 11, fontWeight: 600, cursor: "pointer",
-                  borderRadius: 20, padding: "3px 14px", marginTop: 6, transition: "background 0.15s" }}>
-                Today
-              </button>
+                style={{ background: V.accentGlow, border: `1px solid ${V.accent}33`, color: V.accent, fontSize: 11, fontWeight: 600, cursor: "pointer", borderRadius: 20, padding: "3px 14px", marginTop: 6 }}>Today</button>
             </div>
             <button onClick={() => { if(calMonth===11){setCalMonth(0);setCalYear(y=>y+1);}else setCalMonth(m=>m+1); }}
               style={{ width: 40, height: 40, borderRadius: V.r2, background: V.bgElevated,
                 border: `1px solid ${V.borderSubtle}`, color: V.textSecondary, fontSize: 20,
-                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-                transition: "background 0.15s" }}
-              aria-label="Next month">
-              ›
-            </button>
+                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+              aria-label="Next month">›</button>
           </div>
-
-          {/* Weekday headers */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)",
-            background: V.calBgWeekday, borderBottom: `1px solid ${V.borderDefault}` }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", background: V.calBgWeekday, borderBottom: `1px solid ${V.borderDefault}` }}>
             {DAYS.map(d => (
-              <div key={d} style={{ textAlign: "center", fontSize: 12, fontWeight: 700,
-                color: (d === "Sun" || d === "Sat") ? V.accent + "99" : V.textDim,
-                padding: `${V.sp2}px 0`, letterSpacing: 0.5, textTransform: "uppercase" }}>{d}</div>
+              <div key={d} style={{ textAlign: "center", fontSize: 12, fontWeight: 700, color: (d === "Sun" || d === "Sat") ? V.accent + "99" : V.textDim, padding: `${V.sp2}px 0`, letterSpacing: 0.5, textTransform: "uppercase" }}>{d}</div>
             ))}
           </div>
-
-          {/* Day cells grid */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 1,
-            background: V.borderDefault, padding: 1 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 1, background: V.borderDefault, padding: 1 }}>
             {cells.map((d, i) => {
               if (!d) return <div key={i} style={{ background: V.bgApp, minHeight: 85 }} />;
               const dk2 = dateKey(calYear, calMonth, d);
@@ -792,65 +939,43 @@ export default function App() {
               const isWeekend = (i % 7 === 0) || (i % 7 === 6);
               return (
                 <div key={i}
-                  onClick={() => { setSelectedDay(d); setAddingEvents([{ title:"", time:"12:00 PM", who:"", notes:"" }]); }}
+                  onClick={() => { setSelectedDay(d); setAddingEvents([{ title:"", time:"12:00 PM", who:"", notes:"", repeat:"none", repeatEnd:"", repeatCount:0, duration:60 }]); }}
                   style={{
                     minHeight: 85, padding: V.sp1 + 2, cursor: "pointer",
-                    background: selected ? V.calBgSelected
-                      : isTodayCell ? V.calBgToday
-                      : isWeekend ? V.bgApp
-                      : V.calBgCell,
-                    position: "relative",
-                    transition: "background 0.15s, box-shadow 0.15s",
+                    background: selected ? V.calBgSelected : isTodayCell ? V.calBgToday : isWeekend ? V.bgApp : V.calBgCell,
                     boxShadow: isTodayCell ? `inset 0 0 0 2px ${V.accent}` : selected ? `inset 0 0 0 2px ${V.info}` : "none",
                     display: "flex", flexDirection: "column"
                   }}>
-                  {/* Day number */}
-                  <div style={{
-                    fontSize: isTodayCell ? 15 : 13,
-                    fontWeight: isTodayCell ? 800 : 500,
-                    color: isTodayCell ? V.bgApp : selected ? V.textPrimary : V.textMuted,
-                    marginBottom: V.sp1,
-                    display: "flex", alignItems: "center", gap: 4
-                  }}>
+                  <div style={{ fontSize: isTodayCell ? 15 : 13, fontWeight: isTodayCell ? 800 : 500,
+                    color: isTodayCell ? V.bgApp : selected ? V.textPrimary : V.textMuted, marginBottom: V.sp1,
+                    display: "flex", alignItems: "center", gap: 4 }}>
                     {isTodayCell ? (
-                      <span style={{
-                        background: V.accent, color: V.bgApp,
-                        borderRadius: "50%", width: 26, height: 26,
+                      <span style={{ background: V.accent, color: V.bgApp, borderRadius: "50%", width: 26, height: 26,
                         display: "inline-flex", alignItems: "center", justifyContent: "center",
-                        fontWeight: 800, fontSize: 13, boxShadow: `0 0 8px ${V.accentGlowStrong}`
-                      }}>{d}</span>
-                    ) : (
-                      <span>{d}</span>
-                    )}
+                        fontWeight: 800, fontSize: 13, boxShadow: `0 0 8px ${V.accentGlowStrong}` }}>{d}</span>
+                    ) : <span>{d}</span>}
                   </div>
-                  {/* Event pills */}
                   <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2, overflow: "hidden" }}>
                     {dayEvents.slice(0,3).map((ev, idx) => {
                       const s = getEventStyle(dk2, idx);
-                      const pColor = ev.who ? getPersonColor(ev.who) : V.info;
+                      const hasPastel = V.pillColors && V.pillTextColors;
+                      const pillBg = hasPastel ? V.pillColors[idx % V.pillColors.length] : `${s?.bg || (ev.who ? getPersonColor(ev.who) : V.info)}22`;
+                      const pillText = hasPastel ? V.pillTextColors[idx % V.pillTextColors.length] : (s?.color || V.textPrimary);
+                      const pillBorder = hasPastel ? V.pillTextColors[idx % V.pillTextColors.length] + "55" : (s?.bg || (ev.who ? getPersonColor(ev.who) : V.info));
                       const initials = ev.who ? ev.who.slice(0,2) : "";
                       return (
                         <div key={idx} style={{
-                          background: `${s?.bg || pColor}22`,
-                          borderLeft: `3px solid ${s?.bg || pColor}`,
-                          color: s?.color || V.textPrimary,
-                          fontSize: 10, fontWeight: 600,
-                          borderRadius: V.r1, padding: "2px 5px",
-                          overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis",
-                          lineHeight: 1.4,
-                          fontStyle: s?.italic ? "italic" : "normal",
-                          fontFamily: s?.cursive ? "cursive" : "inherit",
+                          background: s?.bg ? `${s.bg}22` : pillBg, borderLeft: `3px solid ${s?.bg || pillBorder}`,
+                          color: s?.color || pillText, fontSize: 10, fontWeight: 600, borderRadius: V.r1, padding: "2px 5px",
+                          overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", lineHeight: 1.4,
                         }}>
+                          {ev.repeat && <span style={{ marginRight:2 }}>🔁</span>}
                           {initials ? <span style={{ fontWeight:700, marginRight:3, opacity:0.7 }}>{initials}</span> : null}
                           {ev.title}
                         </div>
                       );
                     })}
-                    {dayEvents.length > 3 && (
-                      <div style={{ fontSize: 9, color: V.textDim, fontWeight: 600, padding: "0 2px" }}>
-                        +{dayEvents.length-3} more
-                      </div>
-                    )}
+                    {dayEvents.length > 3 && <div style={{ fontSize: 9, color: V.textDim, fontWeight: 600 }}>+{dayEvents.length-3} more</div>}
                   </div>
                 </div>
               );
@@ -859,221 +984,131 @@ export default function App() {
         </div>
 
         {/* ═══ DAY DETAIL POPUP ═══ */}
-        {selectedDay && (
-          <div style={{
-            position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
-            background: V.bgOverlay, zIndex: 1000,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            padding: V.sp4, backdropFilter: "blur(4px)"
-          }}
-            onClick={e => { if(e.target === e.currentTarget) setSelectedDay(null); }}>
-            <div style={{
-              background: V.bgCard, borderRadius: V.r4, width: "100%", maxWidth: 420,
-              maxHeight: "85vh", overflowY: "auto",
-              border: `1px solid ${V.borderSubtle}`, boxShadow: V.shadowModal
-            }}>
-              {/* Popup header */}
-              <div style={{
-                padding: `${V.sp4}px ${V.sp5}px`, borderBottom: `1px solid ${V.borderDefault}`,
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                position: "sticky", top: 0, background: V.bgCard, zIndex: 1, borderRadius: `${V.r4}px ${V.r4}px 0 0`
-              }}>
-                <div>
-                  <div style={{ fontWeight: 800, color: V.accent, fontSize: 18 }}>
-                    {new Date(calYear, calMonth, selectedDay).toLocaleDateString("en-US",{weekday:"long"})}
-                  </div>
-                  <div style={{ fontSize: 13, color: V.textMuted, marginTop: 2 }}>
-                    {MONTHS[calMonth]} {selectedDay}, {calYear}
-                  </div>
+        {selectedDay && renderDayPopup(dk)}
+
+        {/* ═══ WIDGETS: Routines + Goals ═══ */}
+        {(!routinePref.hidden || !goalPref.hidden) && (
+          <div style={{ display:"grid", gridTemplateColumns: routinePref.hidden || goalPref.hidden ? "1fr" : "1fr 1fr", gap:12 }}>
+            {!routinePref.hidden && (
+              <div style={{ ...cardStyle, margin:0 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                  <div style={{ fontWeight:700, color: V.success, fontSize:14 }}>✅ {routinePref.name || "Routines"}</div>
+                  <button onClick={() => setEditingWidget("routines")} style={{ background:"none", border:"none", cursor:"pointer", fontSize:14, padding:2 }}>✏️</button>
                 </div>
-                <button onClick={() => setSelectedDay(null)}
-                  style={{ width: 36, height: 36, borderRadius: "50%", background: V.bgElevated,
-                    border: `1px solid ${V.borderSubtle}`, color: V.textMuted,
-                    fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  ✕
-                </button>
-              </div>
-
-              {/* Existing events */}
-              <div style={{ padding: V.sp5 }}>
-                {((events||{})[dk]||[]).length > 0 && (
-                  <div style={{ marginBottom: V.sp4 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: V.textDim, textTransform: "uppercase",
-                      letterSpacing: 1, marginBottom: V.sp2 }}>
-                      Events ({((events||{})[dk]||[]).length})
-                    </div>
-                    {((events||{})[dk]||[]).map((ev, idx) => {
-                      const s = getEventStyle(dk, idx);
-                      const pColor = ev.who ? getPersonColor(ev.who) : V.info;
-                      return (
-                        <div key={idx} style={{
-                          background: V.bgCardAlt, borderRadius: V.r2,
-                          padding: `${V.sp3}px ${V.sp4}px`, marginBottom: V.sp2,
-                          borderLeft: `4px solid ${s?.bg || pColor}`,
-                          transition: "background 0.15s"
-                        }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <div style={{
-                              color: s?.color || V.textPrimary, fontSize: s?.size || 15, fontWeight: s?.bold ? 700 : 600,
-                              fontStyle: s?.italic ? "italic" : "normal", fontFamily: s?.cursive ? "cursive" : "inherit"
-                            }}>
-                              {ev.title}
-                            </div>
-                            <div style={{ display: "flex", gap: V.sp1, alignItems: "center" }}>
-                              <button onClick={() => setEditingStyle({ dk, idx })}
-                                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, padding: 4 }}>🎨</button>
-                              {isAdmin && <button onClick={() => deleteEvent(dk, idx)}
-                                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: V.danger, padding: 4 }}>✕</button>}
-                            </div>
-                          </div>
-                          <div style={{ display: "flex", gap: V.sp3, marginTop: V.sp1, flexWrap: "wrap", alignItems: "center" }}>
-                            {ev.time && (
-                              <span style={{ fontSize: 12, color: V.textDim, display: "flex", alignItems: "center", gap: 4 }}>
-                                🕐 {ev.time}
-                              </span>
-                            )}
-                            {ev.who && (
-                              <span style={{
-                                fontSize: 11, color: pColor, background: `${pColor}22`,
-                                padding: "2px 8px", borderRadius: 20, fontWeight: 600
-                              }}>
-                                {ev.who}
-                              </span>
-                            )}
-                          </div>
-                          {ev.notes && <div style={{ fontSize: 12, color: V.textMuted, marginTop: V.sp2, lineHeight: 1.4 }}>{ev.notes}</div>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {((events||{})[dk]||[]).length === 0 && (
-                  <div style={{ textAlign: "center", padding: `${V.sp5}px 0 ${V.sp4}px`, color: V.textDim, fontSize: 13 }}>
-                    No events yet — add one below
-                  </div>
-                )}
-
-                {/* Add new events */}
-                <div style={{ borderTop: `1px solid ${V.borderDefault}`, paddingTop: V.sp4 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: V.textDim, textTransform: "uppercase",
-                    letterSpacing: 1, marginBottom: V.sp3 }}>
-                    Add Event{addingEvents.length > 1 ? "s" : ""}
-                  </div>
-                  {addingEvents.map((ev, i) => (
-                    <div key={i} style={{ background: V.bgCardAlt, borderRadius: V.r2, padding: V.sp3, marginBottom: V.sp2 }}>
-                      {addingEvents.length > 1 && <div style={{ fontSize: 11, color: V.textDim, marginBottom: V.sp1, fontWeight: 600 }}>Event {i+1}</div>}
-                      <input placeholder="Event title" value={ev.title} onChange={e => {
-                        const u = [...addingEvents]; u[i] = {...u[i], title:e.target.value}; setAddingEvents(u);
-                      }} style={{ ...inputStyle, marginBottom: V.sp2 }} />
-                      <div style={{ display: "flex", gap: V.sp2, marginBottom: V.sp2, flexWrap: "wrap" }}>
-                        <TimePicker value={ev.time} onChange={val => {
-                          const u = [...addingEvents]; u[i] = {...u[i], time:val}; setAddingEvents(u);
-                        }} />
-                        <select value={ev.who} onChange={e => {
-                          const u = [...addingEvents]; u[i] = {...u[i], who:e.target.value}; setAddingEvents(u);
-                        }} style={{ ...inputStyle, width: "auto", flex: 1 }}>
-                          <option value="">Who?</option>
-                          {familyNames.map(n => <option key={n} value={n}>{n}</option>)}
-                        </select>
+                {(routines||[]).map((r, i) => {
+                  const s = routineStyles?.[i] || {};
+                  return (
+                    <div key={i} style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6,
+                      background: s.bg || "transparent", borderRadius:6, padding: s.bg ? "4px 6px" : "0" }}>
+                      <div onClick={() => toggleRoutine(i)} style={{ width:18, height:18, borderRadius:4,
+                        background: r.done ? V.success : V.borderSubtle, cursor:"pointer", flexShrink:0,
+                        display:"flex", alignItems:"center", justifyContent:"center" }}>
+                        {r.done && <span style={{ color:"#fff", fontSize:11 }}>✓</span>}
                       </div>
-                      <input placeholder="Notes (optional)" value={ev.notes} onChange={e => {
-                        const u = [...addingEvents]; u[i] = {...u[i], notes:e.target.value}; setAddingEvents(u);
-                      }} style={inputStyle} />
+                      <span style={{ flex:1, fontSize: s.size||13, color: s.color||(r.done? V.textDim : V.textSecondary),
+                        textDecoration: r.done?"line-through":"none", fontWeight: s.bold?700:400 }}>{r.text}</span>
+                      <button onClick={() => setEditingRoutineStyle(i)} style={{ background:"none", border:"none", cursor:"pointer", fontSize:13 }}>🎨</button>
+                      <button onClick={() => deleteRoutine(i)} style={{ background:"none", border:"none", cursor:"pointer", fontSize:12, color: V.danger }}>✕</button>
                     </div>
-                  ))}
-                  <button onClick={() => setAddingEvents(a => [...a, { title:"", time:"12:00 PM", who:"", notes:"" }])}
-                    style={{ ...btnSecondary, width: "100%", marginBottom: V.sp2, fontSize: 13 }}>+ Add Another Event</button>
-                  <button onClick={saveEvents} style={{ ...btnPrimary, width: "100%" }}>
-                    Save {addingEvents.filter(e=>e.title.trim()).length > 1 ? `${addingEvents.filter(e=>e.title.trim()).length} Events` : "Event"}
-                  </button>
+                  );
+                })}
+                <div style={{ display:"flex", gap:4, marginTop:4 }}>
+                  <input value={newRoutine} onChange={e=>setNewRoutine(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addRoutine()}
+                    placeholder="Add routine..." style={{ ...inputStyle, flex:1, padding:"6px 10px", fontSize:12 }} />
+                  <button onClick={addRoutine} style={{ ...btnPrimary, padding:"6px 10px" }}>+</button>
                 </div>
               </div>
+            )}
+            {!goalPref.hidden && (
+              <div style={{ ...cardStyle, margin:0 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                  <div style={{ fontWeight:700, color: V.pink, fontSize:14 }}>🎯 {goalPref.name || "Goals"}</div>
+                  <button onClick={() => setEditingWidget("goals")} style={{ background:"none", border:"none", cursor:"pointer", fontSize:14, padding:2 }}>✏️</button>
+                </div>
+                {(goals||[]).map((g, i) => {
+                  const s = goalStyles?.[i] || {};
+                  return (
+                    <div key={i} style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6,
+                      background: s.bg || "transparent", borderRadius:6, padding: s.bg ? "4px 6px" : "0" }}>
+                      <div onClick={() => toggleGoal(i)} style={{ width:18, height:18, borderRadius:4,
+                        background: g.done ? V.pink : V.borderSubtle, cursor:"pointer", flexShrink:0,
+                        display:"flex", alignItems:"center", justifyContent:"center" }}>
+                        {g.done && <span style={{ color:"#fff", fontSize:11 }}>✓</span>}
+                      </div>
+                      <span style={{ flex:1, fontSize: s.size||13, color: s.color||(g.done? V.textDim : V.textSecondary),
+                        textDecoration: g.done?"line-through":"none", fontWeight: s.bold?700:400 }}>{g.text}</span>
+                      <button onClick={() => setEditingGoalStyle(i)} style={{ background:"none", border:"none", cursor:"pointer", fontSize:13 }}>🎨</button>
+                      <button onClick={() => deleteGoal(i)} style={{ background:"none", border:"none", cursor:"pointer", fontSize:12, color: V.danger }}>✕</button>
+                    </div>
+                  );
+                })}
+                <div style={{ display:"flex", gap:4, marginTop:4 }}>
+                  <input value={newGoal} onChange={e=>setNewGoal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addGoal()}
+                    placeholder="Add goal..." style={{ ...inputStyle, flex:1, padding:"6px 10px", fontSize:12 }} />
+                  <button onClick={addGoal} style={{ ...btnPrimary, padding:"6px 10px" }}>+</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Stats row */}
+        {!statsPref.hidden && (
+          <div style={{ marginTop:12 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+              <div style={{ fontSize:12, fontWeight:600, color:V.textDim, textTransform:"uppercase", letterSpacing:0.5 }}>
+                {statsPref.name || "Quick Stats"}
+              </div>
+              <button onClick={() => setEditingWidget("stats")} style={{ background:"none", border:"none", cursor:"pointer", fontSize:14, padding:2 }}>✏️</button>
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8 }}>
+              {[
+                { icon:"🔥", label:"Calories", val: todayCalories },
+                { icon:"✅", label:"Routines", val:`${(routines||[]).filter(r=>r.done).length}/${(routines||[]).length}` },
+                { icon:"🎯", label:"Goals", val:`${(goals||[]).filter(g=>g.done).length}/${(goals||[]).length}` },
+              ].map(s => (
+                <div key={s.label} style={{ background: V.bgCard, borderRadius:10, padding:"10px 8px", textAlign:"center", border:`1px solid ${V.borderDefault}`, boxShadow:V.shadowCard }}>
+                  <div style={{ fontSize:22 }}>{s.icon}</div>
+                  <div style={{ fontSize:18, fontWeight:800, color: V.accent }}>{s.val}</div>
+                  <div style={{ fontSize:11, color: V.textDim }}>{s.label}</div>
+                </div>
+              ))}
             </div>
           </div>
         )}
 
-        {/* Routines + Goals */}
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-          {/* Routines */}
-          <div style={{ ...cardStyle, margin:0 }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-              <div style={{ fontWeight:700, color:"#22c55e", fontSize:14 }}>✅ Routines</div>
-            </div>
-            {(routines||[]).map((r, i) => {
-              const s = routineStyles?.[i] || {};
-              return (
-                <div key={i} style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6,
-                  background: s.bg || "transparent", borderRadius:6, padding: s.bg ? "4px 6px" : "0" }}>
-                  <div onClick={() => toggleRoutine(i)} style={{ width:18, height:18, borderRadius:4,
-                    background: r.done ? "#22c55e" : "#334155", cursor:"pointer", flexShrink:0,
-                    display:"flex", alignItems:"center", justifyContent:"center" }}>
-                    {r.done && <span style={{ color:"#fff", fontSize:11 }}>✓</span>}
-                  </div>
-                  <span style={{ flex:1, fontSize: s.size||13, color: s.color||(r.done?"#64748b":"#e2e8f0"),
-                    textDecoration: r.done?"line-through":"none", fontWeight: s.bold?700:400,
-                    fontStyle: s.italic?"italic":"normal", fontFamily: s.cursive?"cursive":"inherit" }}>
-                    {r.text}
-                  </span>
-                  <button onClick={() => setEditingRoutineStyle(i)} style={{ background:"none", border:"none", cursor:"pointer", fontSize:13 }}>🎨</button>
-                  <button onClick={() => deleteRoutine(i)} style={{ background:"none", border:"none", cursor:"pointer", fontSize:12, color:"#ef4444" }}>✕</button>
+        {/* ═══ WIDGET EDIT MODAL ═══ */}
+        {editingWidget && (() => {
+          const wp = getWidgetPref(editingWidget);
+          const defaults = { routines:"Routines", goals:"Goals", stats:"Quick Stats" };
+          return (
+            <div style={{ position:"fixed", top:0, left:0, right:0, bottom:0, background:V.bgOverlay, zIndex:1000,
+              display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
+              onClick={e => { if(e.target === e.currentTarget) setEditingWidget(null); }}>
+              <div style={{ background:V.bgCard, borderRadius:V.r4, padding:20, width:"100%", maxWidth:340,
+                border:`1px solid ${V.borderSubtle}`, boxShadow:V.shadowModal }}>
+                <div style={{ fontWeight:700, color:V.textPrimary, fontSize:16, marginBottom:14 }}>
+                  Edit "{wp.name || defaults[editingWidget]}" Widget
                 </div>
-              );
-            })}
-            <div style={{ display:"flex", gap:4, marginTop:4 }}>
-              <input value={newRoutine} onChange={e=>setNewRoutine(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addRoutine()}
-                placeholder="Add routine..." style={{ ...inputStyle, flex:1, padding:"6px 10px", fontSize:12 }} />
-              <button onClick={addRoutine} style={{ ...btnPrimary, padding:"6px 10px" }}>+</button>
-            </div>
-          </div>
-
-          {/* Goals */}
-          <div style={{ ...cardStyle, margin:0 }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-              <div style={{ fontWeight:700, color:"#ec4899", fontSize:14 }}>🎯 Goals</div>
-            </div>
-            {(goals||[]).map((g, i) => {
-              const s = goalStyles?.[i] || {};
-              return (
-                <div key={i} style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6,
-                  background: s.bg || "transparent", borderRadius:6, padding: s.bg ? "4px 6px" : "0" }}>
-                  <div onClick={() => toggleGoal(i)} style={{ width:18, height:18, borderRadius:4,
-                    background: g.done ? "#ec4899" : "#334155", cursor:"pointer", flexShrink:0,
-                    display:"flex", alignItems:"center", justifyContent:"center" }}>
-                    {g.done && <span style={{ color:"#fff", fontSize:11 }}>✓</span>}
-                  </div>
-                  <span style={{ flex:1, fontSize: s.size||13, color: s.color||(g.done?"#64748b":"#e2e8f0"),
-                    textDecoration: g.done?"line-through":"none", fontWeight: s.bold?700:400,
-                    fontStyle: s.italic?"italic":"normal", fontFamily: s.cursive?"cursive":"inherit" }}>
-                    {g.text}
-                  </span>
-                  <button onClick={() => setEditingGoalStyle(i)} style={{ background:"none", border:"none", cursor:"pointer", fontSize:13 }}>🎨</button>
-                  <button onClick={() => deleteGoal(i)} style={{ background:"none", border:"none", cursor:"pointer", fontSize:12, color:"#ef4444" }}>✕</button>
+                <div style={{ marginBottom:12 }}>
+                  <div style={{ fontSize:12, color:V.textMuted, marginBottom:4 }}>Widget Name</div>
+                  <input value={wp.name || ""} onChange={e => setWidgetPref(editingWidget, {...wp, name: e.target.value})}
+                    placeholder={defaults[editingWidget]} style={{...inputStyle}} />
                 </div>
-              );
-            })}
-            <div style={{ display:"flex", gap:4, marginTop:4 }}>
-              <input value={newGoal} onChange={e=>setNewGoal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addGoal()}
-                placeholder="Add goal..." style={{ ...inputStyle, flex:1, padding:"6px 10px", fontSize:12 }} />
-              <button onClick={addGoal} style={{ ...btnPrimary, padding:"6px 10px" }}>+</button>
+                <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
+                  <button onClick={() => setWidgetPref(editingWidget, {...wp, hidden: !wp.hidden})}
+                    style={{ width:44, height:26, borderRadius:13, border:"none", cursor:"pointer",
+                      background: wp.hidden ? V.borderSubtle : V.success, position:"relative", transition:"background 0.2s" }}>
+                    <div style={{ width:20, height:20, borderRadius:"50%", background:"#fff",
+                      position:"absolute", top:3, left: wp.hidden ? 3 : 21, transition:"left 0.2s", boxShadow:"0 1px 3px rgba(0,0,0,0.2)" }} />
+                  </button>
+                  <span style={{ fontSize:13, color: V.textSecondary }}>{wp.hidden ? "Hidden" : "Visible"}</span>
+                </div>
+                <button onClick={() => setEditingWidget(null)} style={{ ...btnPrimary, width:"100%" }}>Done</button>
+              </div>
             </div>
-          </div>
-        </div>
-
-        {/* Stats row */}
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, marginTop:12 }}>
-          {[
-            { icon:"🔥", label:"Calories", val: todayCalories },
-            { icon:"✅", label:"Routines", val:`${(routines||[]).filter(r=>r.done).length}/${(routines||[]).length}` },
-            { icon:"🎯", label:"Goals", val:`${(goals||[]).filter(g=>g.done).length}/${(goals||[]).length}` },
-          ].map(s => (
-            <div key={s.label} style={{ background:"#1a2035", borderRadius:10, padding:"10px 8px", textAlign:"center", border:"1px solid #1e2d4a" }}>
-              <div style={{ fontSize:22 }}>{s.icon}</div>
-              <div style={{ fontSize:18, fontWeight:800, color:"#f59e0b" }}>{s.val}</div>
-              <div style={{ fontSize:11, color:"#64748b" }}>{s.label}</div>
-            </div>
-          ))}
-        </div>
+          );
+        })()}
 
         {/* Style editors */}
         {editingStyle && (
@@ -1091,6 +1126,553 @@ export default function App() {
             onChange={s => { fbSet("goalStyles", {...(goalStyles||{}), [editingGoalStyle]:s}); }}
             onClose={() => setEditingGoalStyle(null)} />
         )}
+      </div>
+    );
+  }
+
+  // Shared day detail popup — used by Skylight and Cozyla
+  function renderDayPopup(dk) {
+    return (
+      <div style={{
+        position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+        background: V.bgOverlay, zIndex: 1000,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: V.sp4, backdropFilter: "blur(4px)"
+      }}
+        onClick={e => { if(e.target === e.currentTarget) setSelectedDay(null); }}>
+        <div style={{
+          background: V.bgCard, borderRadius: V.r4, width: "100%", maxWidth: 420,
+          maxHeight: "85vh", overflowY: "auto",
+          border: `1px solid ${V.borderSubtle}`, boxShadow: V.shadowModal
+        }}>
+          <div style={{
+            padding: `${V.sp4}px ${V.sp5}px`, borderBottom: `1px solid ${V.borderDefault}`,
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            position: "sticky", top: 0, background: V.bgCard, zIndex: 1, borderRadius: `${V.r4}px ${V.r4}px 0 0`
+          }}>
+            <div>
+              <div style={{ fontWeight: 800, color: V.accent, fontSize: 18 }}>
+                {new Date(calYear, calMonth, selectedDay).toLocaleDateString("en-US",{weekday:"long"})}
+              </div>
+              <div style={{ fontSize: 13, color: V.textMuted, marginTop: 2 }}>
+                {MONTHS[calMonth]} {selectedDay}, {calYear}
+              </div>
+            </div>
+            <button onClick={() => setSelectedDay(null)}
+              style={{ width: 36, height: 36, borderRadius: "50%", background: V.bgElevated,
+                border: `1px solid ${V.borderSubtle}`, color: V.textMuted,
+                fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              ✕
+            </button>
+          </div>
+
+          <div style={{ padding: V.sp5 }}>
+            {((events||{})[dk]||[]).length > 0 && (
+              <div style={{ marginBottom: V.sp4 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: V.textDim, textTransform: "uppercase",
+                  letterSpacing: 1, marginBottom: V.sp2 }}>
+                  Events ({((events||{})[dk]||[]).length})
+                </div>
+                {((events||{})[dk]||[]).map((ev, idx) => {
+                  const s = getEventStyle(dk, idx);
+                  const pColor = ev.who ? getPersonColor(ev.who) : V.info;
+                  const dur = ev.duration || 60;
+                  return (
+                    <div key={idx} style={{
+                      background: V.bgCardAlt, borderRadius: V.r2,
+                      padding: `${V.sp3}px ${V.sp4}px`, marginBottom: V.sp2,
+                      borderLeft: `4px solid ${s?.bg || pColor}`, position:"relative",
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{
+                          color: s?.color || V.textPrimary, fontSize: s?.size || 15, fontWeight: s?.bold ? 700 : 600,
+                        }}>
+                          {ev.repeat && <span style={{ marginRight:4 }}>🔁</span>}
+                          {ev.title}
+                        </div>
+                        <div style={{ display: "flex", gap: V.sp1, alignItems: "center" }}>
+                          <button onClick={() => setEditingStyle({ dk, idx })}
+                            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, padding: 4 }}>🎨</button>
+                          {isAdmin && <button onClick={() => deleteEvent(dk, idx)}
+                            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: V.danger, padding: 4 }}>✕</button>}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: V.sp3, marginTop: V.sp1, flexWrap: "wrap", alignItems: "center" }}>
+                        {ev.time && (
+                          <span style={{ fontSize: 12, color: V.textDim, display: "flex", alignItems: "center", gap: 4 }}>
+                            🕐 {ev.time}
+                          </span>
+                        )}
+                        <span style={{ fontSize: 11, color: V.textDim }}>({dur} min)</span>
+                        {ev.who && (
+                          <span style={{ fontSize: 11, color: pColor, background: `${pColor}22`, padding: "2px 8px", borderRadius: 20, fontWeight: 600 }}>
+                            {ev.who}
+                          </span>
+                        )}
+                      </div>
+                      {ev.notes && <div style={{ fontSize: 12, color: V.textMuted, marginTop: V.sp2, lineHeight: 1.4 }}>{ev.notes}</div>}
+                      {/* Resize handle */}
+                      <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:6, paddingTop:6, borderTop:`1px dashed ${V.borderDefault}` }}>
+                        <span style={{ fontSize:11, color:V.textDim }}>Duration:</span>
+                        <input type="range" min={30} max={480} step={15} value={dur}
+                          onChange={e => updateEventDuration(dk, idx, Number(e.target.value))}
+                          style={{ flex:1, accentColor: V.accent, height:4 }} />
+                        <span style={{ fontSize:11, color:V.textMuted, fontWeight:600, minWidth:42 }}>{dur >= 60 ? `${Math.floor(dur/60)}h${dur%60 ? dur%60+"m":""}` : `${dur}m`}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {((events||{})[dk]||[]).length === 0 && (
+              <div style={{ textAlign: "center", padding: `${V.sp5}px 0 ${V.sp4}px`, color: V.textDim, fontSize: 13 }}>
+                No events yet — add one below
+              </div>
+            )}
+
+            <div style={{ borderTop: `1px solid ${V.borderDefault}`, paddingTop: V.sp4 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: V.textDim, textTransform: "uppercase",
+                letterSpacing: 1, marginBottom: V.sp3 }}>
+                Add Event{addingEvents.length > 1 ? "s" : ""}
+              </div>
+              {addingEvents.map((ev, i) => (
+                <div key={i} style={{ background: V.bgCardAlt, borderRadius: V.r2, padding: V.sp3, marginBottom: V.sp2 }}>
+                  {addingEvents.length > 1 && <div style={{ fontSize: 11, color: V.textDim, marginBottom: V.sp1, fontWeight: 600 }}>Event {i+1}</div>}
+                  <input placeholder="Event title" value={ev.title} onChange={e => {
+                    const u = [...addingEvents]; u[i] = {...u[i], title:e.target.value}; setAddingEvents(u);
+                  }} style={{ ...inputStyle, marginBottom: V.sp2 }} />
+                  <div style={{ display: "flex", gap: V.sp2, marginBottom: V.sp2, flexWrap: "wrap" }}>
+                    <TimePicker value={ev.time} onChange={val => {
+                      const u = [...addingEvents]; u[i] = {...u[i], time:val}; setAddingEvents(u);
+                    }} />
+                    <select value={ev.who} onChange={e => {
+                      const u = [...addingEvents]; u[i] = {...u[i], who:e.target.value}; setAddingEvents(u);
+                    }} style={{ ...inputStyle, width: "auto", flex: 1 }}>
+                      <option value="">Who?</option>
+                      {familyNames.map(n => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </div>
+                  <input placeholder="Notes (optional)" value={ev.notes} onChange={e => {
+                    const u = [...addingEvents]; u[i] = {...u[i], notes:e.target.value}; setAddingEvents(u);
+                  }} style={{ ...inputStyle, marginBottom: V.sp2 }} />
+                  {/* Repeat + Duration */}
+                  <div style={{ display:"flex", gap:V.sp2, flexWrap:"wrap", alignItems:"center" }}>
+                    <select value={ev.repeat} onChange={e => {
+                      const u = [...addingEvents]; u[i] = {...u[i], repeat:e.target.value}; setAddingEvents(u);
+                    }} style={{ ...inputStyle, width:"auto", flex:1 }}>
+                      <option value="none">No Repeat</option>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
+                    <select value={ev.duration} onChange={e => {
+                      const u = [...addingEvents]; u[i] = {...u[i], duration:Number(e.target.value)}; setAddingEvents(u);
+                    }} style={{ ...inputStyle, width:"auto" }}>
+                      {[30,45,60,90,120,180,240].map(m => <option key={m} value={m}>{m >= 60 ? `${m/60}h${m%60 ? " "+m%60+"m":""}` : `${m}m`}</option>)}
+                    </select>
+                  </div>
+                  {ev.repeat !== "none" && (
+                    <div style={{ display:"flex", gap:V.sp2, marginTop:V.sp2, flexWrap:"wrap", alignItems:"center" }}>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:11, color:V.textDim, marginBottom:2 }}>End date (optional)</div>
+                        <input type="date" value={ev.repeatEnd} onChange={e => {
+                          const u = [...addingEvents]; u[i] = {...u[i], repeatEnd:e.target.value}; setAddingEvents(u);
+                        }} style={{ ...inputStyle, fontSize:12 }} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize:11, color:V.textDim, marginBottom:2 }}>Or # times</div>
+                        <input type="number" min={0} max={100} value={ev.repeatCount||""} placeholder="0" onChange={e => {
+                          const u = [...addingEvents]; u[i] = {...u[i], repeatCount:Number(e.target.value)||0}; setAddingEvents(u);
+                        }} style={{ ...inputStyle, width:70, fontSize:12 }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+              <button onClick={() => setAddingEvents(a => [...a, { title:"", time:"12:00 PM", who:"", notes:"", repeat:"none", repeatEnd:"", repeatCount:0, duration:60 }])}
+                style={{ ...btnSecondary, width: "100%", marginBottom: V.sp2, fontSize: 13 }}>+ Add Another Event</button>
+              <button onClick={saveEvents} style={{ ...btnPrimary, width: "100%" }}>
+                Save {addingEvents.filter(e=>e.title.trim()).length > 1 ? `${addingEvents.filter(e=>e.title.trim()).length} Events` : "Event"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ═══════════════════════════════════════════════
+  // COZYLA HOME — warm day-view timeline layout
+  // ═══════════════════════════════════════════════
+  function renderHomeCozyla() {
+    const dk = todayKey();
+    const todayEvents = (events||{})[dk] || [];
+    const nowHour = today.getHours();
+    const greeting = nowHour < 12 ? "Good morning" : nowHour < 17 ? "Good afternoon" : "Good evening";
+    const timeSlots = [
+      { label: "Morning", range: "6 AM – 12 PM", filterFn: ev => { const p = parseTime(ev.time); const h24 = p.ampm === "AM" ? (p.h === 12 ? 0 : p.h) : (p.h === 12 ? 12 : p.h + 12); return h24 >= 6 && h24 < 12; }},
+      { label: "Afternoon", range: "12 PM – 5 PM", filterFn: ev => { const p = parseTime(ev.time); const h24 = p.ampm === "AM" ? (p.h === 12 ? 0 : p.h) : (p.h === 12 ? 12 : p.h + 12); return h24 >= 12 && h24 < 17; }},
+      { label: "Evening", range: "5 PM – 10 PM", filterFn: ev => { const p = parseTime(ev.time); const h24 = p.ampm === "AM" ? (p.h === 12 ? 0 : p.h) : (p.h === 12 ? 12 : p.h + 12); return h24 >= 17; }},
+    ];
+    const todayMeals = (foodLog||[]).filter(f => f.date === todayStr && f.profile === currentProfile?.name);
+
+    return (
+      <div style={{ padding: 0 }}>
+        {/* Warm gradient header */}
+        <div style={{
+          background: "linear-gradient(135deg, #e87f5f 0%, #f4a853 100%)",
+          padding: "24px 20px 20px", color: "#fff"
+        }}>
+          <div style={{ fontSize: 13, opacity: 0.85, fontWeight: 500 }}>{greeting}</div>
+          <div style={{ fontSize: 32, fontWeight: 800, lineHeight: 1.1, marginTop: 2 }}>
+            {today.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}
+          </div>
+          <div style={{ fontSize: 14, opacity: 0.8, marginTop: 4 }}>
+            {today.toLocaleDateString("en-US", {weekday:"long", month:"long", day:"numeric"})}
+          </div>
+        </div>
+
+        {/* Person bubbles */}
+        <div style={{
+          display: "flex", gap: 14, padding: "16px 20px 8px", overflowX: "auto",
+          background: V.bgApp
+        }}>
+          {(profiles||[]).map(p => (
+            <div key={p.id} style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:4, minWidth:52 }}>
+              <div style={{
+                width: 48, height: 48, borderRadius: "50%",
+                background: p.color || V.accent, display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 18, fontWeight: 800, color: "#fff",
+                border: `3px solid ${V.bgCard}`, boxShadow: `0 2px 8px ${p.color || V.accent}44`
+              }}>
+                {p.emoji || p.name?.charAt(0)}
+              </div>
+              <span style={{ fontSize: 11, color: V.textMuted, fontWeight: 600, textAlign:"center" }}>{p.name}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ padding: "8px 14px 14px" }}>
+          {/* Today's schedule — timeline */}
+          <div style={{
+            background: V.bgCard, borderRadius: 20, padding: 18,
+            border: `1px solid ${V.borderDefault}`, boxShadow: V.shadowCard, marginBottom: 14
+          }}>
+            <div style={{ fontWeight: 800, color: V.textPrimary, fontSize: 16, marginBottom: 14 }}>
+              Today's Schedule
+            </div>
+            {timeSlots.map(slot => {
+              const slotEvents = todayEvents.filter(slot.filterFn);
+              return (
+                <div key={slot.label} style={{ marginBottom: 14 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: V.accent, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                      {slot.label}
+                    </div>
+                    <div style={{ flex: 1, height: 1, background: V.borderDefault }} />
+                    <div style={{ fontSize: 10, color: V.textDim }}>{slot.range}</div>
+                  </div>
+                  {slotEvents.length === 0 && (
+                    <div style={{ fontSize: 12, color: V.textDim, fontStyle: "italic", padding: "4px 0 2px" }}>
+                      Nothing scheduled
+                    </div>
+                  )}
+                  {slotEvents.map((ev, idx) => {
+                    const pColor = ev.who ? getPersonColor(ev.who) : V.accent;
+                    return (
+                      <div key={idx} style={{
+                        display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
+                        background: `${pColor}12`, borderRadius: 14, marginBottom: 6,
+                        borderLeft: `4px solid ${pColor}`
+                      }}>
+                        <div style={{
+                          width: 32, height: 32, borderRadius: "50%", background: pColor,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          color: "#fff", fontSize: 12, fontWeight: 700, flexShrink: 0
+                        }}>
+                          {ev.who ? ev.who.charAt(0) : "?"}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 700, fontSize: 14, color: V.textPrimary }}>{ev.title}</div>
+                          <div style={{ fontSize: 11, color: V.textDim, marginTop: 1 }}>
+                            {ev.time}{ev.who ? ` · ${ev.who}` : ""}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+            <button onClick={() => { setSelectedDay(today.getDate()); setCalMonth(today.getMonth()); setCalYear(today.getFullYear()); setAddingEvents([{ title:"", time:"12:00 PM", who:"", notes:"", repeat:"none", repeatEnd:"", repeatCount:0, duration:60 }]); }}
+              style={{ ...btnPrimary, width: "100%", borderRadius: 14, background: V.accent, marginTop: 4 }}>
+              + Add Event
+            </button>
+          </div>
+
+          {/* Bottom two widgets */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            {/* Today's Meals */}
+            <div style={{
+              background: V.bgCard, borderRadius: 20, padding: 14,
+              border: `1px solid ${V.borderDefault}`, boxShadow: V.shadowCard
+            }}>
+              <div style={{ fontWeight: 800, fontSize: 14, color: V.textPrimary, marginBottom: 10 }}>
+                🍽️ Today's Meals
+              </div>
+              {todayMeals.length === 0 && (
+                <div style={{ fontSize: 12, color: V.textDim, fontStyle: "italic" }}>No meals logged</div>
+              )}
+              {todayMeals.slice(0,4).map((m, i) => (
+                <div key={i} style={{
+                  fontSize: 12, color: V.textSecondary, padding: "4px 0",
+                  borderBottom: i < Math.min(todayMeals.length, 4) - 1 ? `1px solid ${V.borderDefault}` : "none"
+                }}>
+                  <div style={{ fontWeight: 600 }}>{m.name}</div>
+                  <div style={{ fontSize: 11, color: V.textDim }}>{m.calories || 0} cal</div>
+                </div>
+              ))}
+              {todayMeals.length > 4 && <div style={{ fontSize: 11, color: V.textDim }}>+{todayMeals.length-4} more</div>}
+              <button onClick={() => setTab("food")}
+                style={{ fontSize: 11, color: V.accent, background: "none", border: "none", cursor: "pointer", fontWeight: 700, marginTop: 6, padding: 0 }}>
+                View all →
+              </button>
+            </div>
+
+            {/* Task Tracking */}
+            <div style={{
+              background: V.bgCard, borderRadius: 20, padding: 14,
+              border: `1px solid ${V.borderDefault}`, boxShadow: V.shadowCard
+            }}>
+              <div style={{ fontWeight: 800, fontSize: 14, color: V.textPrimary, marginBottom: 10 }}>
+                ✅ Routines
+              </div>
+              {(routines||[]).length === 0 && (
+                <div style={{ fontSize: 12, color: V.textDim, fontStyle: "italic" }}>No routines yet</div>
+              )}
+              {(routines||[]).slice(0,5).map((r, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <div onClick={() => toggleRoutine(i)} style={{
+                    width: 20, height: 20, borderRadius: "50%",
+                    background: r.done ? V.success : "transparent",
+                    border: `2px solid ${r.done ? V.success : V.borderSubtle}`,
+                    cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0
+                  }}>
+                    {r.done && <span style={{ color: "#fff", fontSize: 10 }}>✓</span>}
+                  </div>
+                  <span style={{
+                    flex: 1, fontSize: 12, color: r.done ? V.textDim : V.textSecondary,
+                    textDecoration: r.done ? "line-through" : "none"
+                  }}>{r.text}</span>
+                </div>
+              ))}
+              {(routines||[]).length > 5 && <div style={{ fontSize: 11, color: V.textDim }}>+{(routines||[]).length-5} more</div>}
+            </div>
+          </div>
+        </div>
+
+        {/* Day detail popup */}
+        {selectedDay && renderDayPopup(dateKey(calYear, calMonth, selectedDay))}
+      </div>
+    );
+  }
+
+  // ═══════════════════════════════════════════════
+  // FAMILYWALL HOME — bold widget grid layout
+  // ═══════════════════════════════════════════════
+  function renderHomeFamilyWall() {
+    const nowHour = today.getHours();
+    const greeting = nowHour < 12 ? "Good morning" : nowHour < 17 ? "Good afternoon" : "Good evening";
+    const userName = currentProfile?.name || "there";
+    const userEmoji = currentProfile?.emoji || "👑";
+
+    // Stats for widget cards
+    const dk = todayKey();
+    const todayEventCount = ((events||{})[dk] || []).length;
+    // Count events this week
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - today.getDay());
+    let weekEventCount = 0;
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(weekStart);
+      d.setDate(weekStart.getDate() + i);
+      const wk = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+      weekEventCount += ((events||{})[wk] || []).length;
+    }
+    const routinesDone = (routines||[]).filter(r=>r.done).length;
+    const routinesTotal = (routines||[]).length;
+    const goalsDone = (goals||[]).filter(g=>g.done).length;
+    const goalsTotal = (goals||[]).length;
+    const todayMeals = (foodLog||[]).filter(f => f.date === todayStr && f.profile === currentProfile?.name);
+    const allRules = [...(myRules||[]), ...(theirRules||[]), ...(sharedRules||[])];
+    const recentExchanges = (exchangeLog||[]).slice(-3);
+
+    const fwCard = {
+      background: V.bgCard, borderRadius: V.r3, padding: 16,
+      border: `2px solid ${V.borderDefault}`,
+      boxShadow: "0 2px 6px rgba(10,20,50,0.08), 0 4px 14px rgba(10,20,50,0.04)",
+      cursor: "pointer", transition: "box-shadow 0.15s, border-color 0.15s"
+    };
+
+    const widgets = [
+      {
+        icon: "📅", title: "Calendar", stat: `${todayEventCount} today · ${weekEventCount} this week`,
+        action: () => setTab("home"),
+        content: (() => {
+          // Mini month grid
+          const daysInMonth = getDaysInMonth(calYear, calMonth);
+          const firstDay = getFirstDay(calYear, calMonth);
+          const miniCells = [];
+          for (let i = 0; i < firstDay; i++) miniCells.push(null);
+          for (let d = 1; d <= daysInMonth; d++) miniCells.push(d);
+          const isTodayD = (d) => d === today.getDate() && calMonth === today.getMonth() && calYear === today.getFullYear();
+          return (
+            <div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 1, marginTop: 8 }}>
+                {["S","M","T","W","T","F","S"].map((d,i) => (
+                  <div key={i} style={{ textAlign:"center", fontSize:9, fontWeight:700, color: V.textDim, padding:"2px 0" }}>{d}</div>
+                ))}
+                {miniCells.map((d, i) => {
+                  if (!d) return <div key={i} />;
+                  const dk2 = dateKey(calYear, calMonth, d);
+                  const hasEv = ((events||{})[dk2]||[]).length > 0;
+                  return (
+                    <div key={i} onClick={e => { e.stopPropagation(); setSelectedDay(d); setAddingEvents([{title:"",time:"12:00 PM",who:"",notes:""}]); }}
+                      style={{
+                        textAlign: "center", fontSize: 10, padding: "3px 0", borderRadius: "50%",
+                        fontWeight: isTodayD(d) ? 800 : hasEv ? 700 : 400,
+                        color: isTodayD(d) ? "#fff" : hasEv ? V.accent : V.textMuted,
+                        background: isTodayD(d) ? V.accent : "transparent",
+                        cursor: "pointer"
+                      }}>{d}</div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()
+      },
+      {
+        icon: "✅", title: "Routines", stat: `${routinesDone}/${routinesTotal} done`,
+        action: () => {},
+        content: (
+          <div style={{ marginTop: 8 }}>
+            {(routines||[]).slice(0,4).map((r,i) => (
+              <div key={i} style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}>
+                <div onClick={e => { e.stopPropagation(); toggleRoutine(i); }} style={{
+                  width:16, height:16, borderRadius:3, flexShrink:0, cursor:"pointer",
+                  background: r.done ? V.success : "transparent",
+                  border: `2px solid ${r.done ? V.success : V.borderSubtle}`,
+                  display:"flex", alignItems:"center", justifyContent:"center"
+                }}>
+                  {r.done && <span style={{color:"#fff",fontSize:9}}>✓</span>}
+                </div>
+                <span style={{ fontSize:12, color: r.done ? V.textDim : V.textPrimary,
+                  textDecoration: r.done ? "line-through" : "none" }}>{r.text}</span>
+              </div>
+            ))}
+            {routinesTotal > 4 && <div style={{fontSize:11,color:V.textDim}}>+{routinesTotal-4} more</div>}
+          </div>
+        )
+      },
+      {
+        icon: "🎯", title: "Goals", stat: `${goalsDone}/${goalsTotal} achieved`,
+        action: () => {},
+        content: (
+          <div style={{ marginTop: 8 }}>
+            {(goals||[]).slice(0,4).map((g,i) => (
+              <div key={i} style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}>
+                <div onClick={e => { e.stopPropagation(); toggleGoal(i); }} style={{
+                  width:16, height:16, borderRadius:3, flexShrink:0, cursor:"pointer",
+                  background: g.done ? V.pink : "transparent",
+                  border: `2px solid ${g.done ? V.pink : V.borderSubtle}`,
+                  display:"flex", alignItems:"center", justifyContent:"center"
+                }}>
+                  {g.done && <span style={{color:"#fff",fontSize:9}}>✓</span>}
+                </div>
+                <span style={{ fontSize:12, color: g.done ? V.textDim : V.textPrimary,
+                  textDecoration: g.done ? "line-through" : "none" }}>{g.text}</span>
+              </div>
+            ))}
+            {goalsTotal > 4 && <div style={{fontSize:11,color:V.textDim}}>+{goalsTotal-4} more</div>}
+          </div>
+        )
+      },
+      {
+        icon: "🔥", title: "Food Log", stat: `${todayCalories} cal today`,
+        action: () => setTab("food"),
+        content: (
+          <div style={{ marginTop: 8 }}>
+            {todayMeals.length === 0 && <div style={{fontSize:12,color:V.textDim,fontStyle:"italic"}}>No meals logged</div>}
+            {todayMeals.slice(0,3).map((m,i) => (
+              <div key={i} style={{ fontSize:12, color: V.textSecondary, marginBottom:3 }}>
+                {m.name} <span style={{color:V.textDim}}>· {m.calories||0} cal</span>
+              </div>
+            ))}
+            {todayMeals.length > 3 && <div style={{fontSize:11,color:V.textDim}}>+{todayMeals.length-3} more</div>}
+          </div>
+        )
+      },
+      {
+        icon: "📋", title: "Family Rules", stat: `${allRules.length} rules`,
+        action: () => { setTab("family"); setFamilySubTab("rules"); },
+        content: (
+          <div style={{ marginTop: 8 }}>
+            {allRules.length === 0 && <div style={{fontSize:12,color:V.textDim,fontStyle:"italic"}}>No rules set</div>}
+            {allRules.slice(0,3).map((r,i) => (
+              <div key={i} style={{ fontSize:12, color: V.textSecondary, marginBottom:3, overflow:"hidden", whiteSpace:"nowrap", textOverflow:"ellipsis" }}>
+                · {typeof r === "string" ? r : r.text || r}
+              </div>
+            ))}
+            {allRules.length > 3 && <div style={{fontSize:11,color:V.textDim}}>+{allRules.length-3} more</div>}
+          </div>
+        )
+      },
+      {
+        icon: "🔄", title: "Exchange Log", stat: `${(exchangeLog||[]).length} entries`,
+        action: () => { setTab("family"); setFamilySubTab("exchange"); },
+        content: (
+          <div style={{ marginTop: 8 }}>
+            {recentExchanges.length === 0 && <div style={{fontSize:12,color:V.textDim,fontStyle:"italic"}}>No exchanges yet</div>}
+            {recentExchanges.map((ex,i) => (
+              <div key={i} style={{ fontSize:11, color: V.textSecondary, marginBottom:3 }}>
+                {typeof ex === "string" ? ex : (ex.date || "") + " " + (ex.type || ex.note || "")}
+              </div>
+            ))}
+          </div>
+        )
+      },
+    ];
+
+    return (
+      <div style={{ padding: 14 }}>
+        {/* Big greeting */}
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 26, fontWeight: 900, color: V.textPrimary, lineHeight: 1.2 }}>
+            {greeting}, {userName}! {userEmoji}
+          </div>
+          <div style={{ fontSize: 13, color: V.textDim, marginTop: 4 }}>
+            {today.toLocaleDateString("en-US", {weekday:"long", month:"long", day:"numeric", year:"numeric"})}
+          </div>
+        </div>
+
+        {/* Widget grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          {widgets.map((w, i) => (
+            <div key={i} onClick={w.action} style={fwCard}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <span style={{ fontSize: 24 }}>{w.icon}</span>
+                <div style={{ fontWeight: 800, fontSize: 15, color: V.accent }}>{w.title}</div>
+              </div>
+              <div style={{ fontSize: 12, color: V.textMuted, fontWeight: 600 }}>{w.stat}</div>
+              {w.content}
+            </div>
+          ))}
+        </div>
+
+        {/* Day detail popup */}
+        {selectedDay && renderDayPopup(dateKey(calYear, calMonth, selectedDay))}
       </div>
     );
   }
@@ -1572,15 +2154,16 @@ export default function App() {
   return (
     <div style={appStyle}>
       {/* Header */}
-      <div style={{background:"#1a2035",padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid #1e2d4a"}}>
+      <div style={{background:V.bgCard,padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",
+        borderBottom:`1px solid ${V.borderDefault}`,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:18}}>👑</span>
-          <span style={{fontWeight:800,color:"#f59e0b",fontSize:16,letterSpacing:1}}>LUCAC</span>
-          <span style={{fontSize:11,color:"#22c55e",background:"#0d2818",padding:"2px 6px",borderRadius:10}}>✦ Live</span>
+          <span style={{fontWeight:800,color:V.accent,fontSize:16,letterSpacing:1}}>LUCAC</span>
+          <span style={{fontSize:11,color:V.success,background:`${V.success}18`,padding:"2px 6px",borderRadius:10}}>✦ Live</span>
         </div>
         <div style={{textAlign:"right"}}>
-          <div style={{fontWeight:700,color:"#e2e8f0",fontSize:14}}>{new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</div>
-          <div style={{fontSize:11,color:"#64748b"}}>{new Date().toLocaleDateString([],{weekday:"short",month:"short",day:"numeric"})}</div>
+          <div style={{fontWeight:700,color:V.textPrimary,fontSize:14}}>{new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</div>
+          <div style={{fontSize:11,color:V.textDim}}>{new Date().toLocaleDateString([],{weekday:"short",month:"short",day:"numeric"})}</div>
         </div>
       </div>
 
@@ -1595,40 +2178,41 @@ export default function App() {
 
       {/* Bottom nav */}
       <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:900,
-        background:"#1a2035",borderTop:"1px solid #1e2d4a",display:"flex",justifyContent:"space-around",padding:"8px 0",zIndex:100}}>
+        background:V.bgCard,borderTop:`1px solid ${V.borderDefault}`,display:"flex",justifyContent:"space-around",
+        padding:"8px 0",zIndex:100,boxShadow:"0 -1px 4px rgba(0,0,0,0.04)"}}>
         {tabs.map(t => (
           <button key={t.id} onClick={()=>setTab(t.id)} style={{background:"none",border:"none",cursor:"pointer",
             display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"4px 8px",
             opacity: tab===t.id ? 1 : 0.5}}>
             <span style={{fontSize:20}}>{t.icon}</span>
-            <span style={{fontSize:10,color:tab===t.id?"#f59e0b":"#64748b",fontWeight:tab===t.id?700:400}}>{t.label}</span>
+            <span style={{fontSize:10,color:tab===t.id?V.accent:V.textDim,fontWeight:tab===t.id?700:400}}>{t.label}</span>
           </button>
         ))}
       </div>
 
       {/* Floating AI */}
       <button onClick={()=>setAiOpen(!aiOpen)} style={{position:"fixed",bottom:70,right:16,width:50,height:50,borderRadius:"50%",
-        background:"#f59e0b",border:"none",cursor:"pointer",fontSize:22,boxShadow:"0 4px 12px rgba(245,158,11,0.4)",zIndex:200}}>
+        background:V.accent,border:"none",cursor:"pointer",fontSize:22,boxShadow:`0 4px 12px ${V.accentGlowStrong}`,zIndex:200}}>
         🤖
       </button>
       {aiOpen && (
-        <div style={{position:"fixed",bottom:130,right:16,width:320,height:400,background:"#1a2035",borderRadius:16,
-          border:"1px solid #334155",display:"flex",flexDirection:"column",boxShadow:"0 8px 32px rgba(0,0,0,0.5)",zIndex:200}}>
-          <div style={{padding:"12px 16px",borderBottom:"1px solid #334155",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <span style={{fontWeight:700,color:"#f59e0b",fontSize:14}}>🤖 Ask the App</span>
-            <button onClick={()=>setAiOpen(false)} style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontSize:18}}>✕</button>
+        <div style={{position:"fixed",bottom:130,right:16,width:320,height:400,background:V.bgCard,borderRadius:16,
+          border:`1px solid ${V.borderSubtle}`,display:"flex",flexDirection:"column",boxShadow:V.shadowModal,zIndex:200}}>
+          <div style={{padding:"12px 16px",borderBottom:`1px solid ${V.borderDefault}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontWeight:700,color:V.accent,fontSize:14}}>🤖 Ask the App</span>
+            <button onClick={()=>setAiOpen(false)} style={{background:"none",border:"none",color:V.textDim,cursor:"pointer",fontSize:18}}>✕</button>
           </div>
           <div style={{flex:1,overflowY:"auto",padding:12,display:"flex",flexDirection:"column",gap:8}}>
             {aiMessages.map((m,i) => (
-              <div key={i} style={{background:m.role==="user"?"#1e3a5f":"#1e2235",borderRadius:10,padding:"8px 12px",
-                alignSelf:m.role==="user"?"flex-end":"flex-start",maxWidth:"85%",fontSize:13,color:"#e2e8f0",lineHeight:1.5}}>
+              <div key={i} style={{background:m.role==="user"?`${V.accent}18`:V.bgCardAlt,borderRadius:10,padding:"8px 12px",
+                alignSelf:m.role==="user"?"flex-end":"flex-start",maxWidth:"85%",fontSize:13,color:V.textPrimary,lineHeight:1.5}}>
                 {m.content}
               </div>
             ))}
-            {aiLoading && <div style={{background:"#1e2235",borderRadius:10,padding:"8px 12px",fontSize:13,color:"#64748b"}}>thinking...</div>}
-            {!aiMessages.length && <div style={{color:"#64748b",fontSize:12,textAlign:"center",marginTop:20}}>Ask me anything! Weather, recipes, advice...</div>}
+            {aiLoading && <div style={{background:V.bgCardAlt,borderRadius:10,padding:"8px 12px",fontSize:13,color:V.textDim}}>thinking...</div>}
+            {!aiMessages.length && <div style={{color:V.textDim,fontSize:12,textAlign:"center",marginTop:20}}>Ask me anything! Weather, recipes, advice...</div>}
           </div>
-          <div style={{padding:8,borderTop:"1px solid #334155",display:"flex",gap:6}}>
+          <div style={{padding:8,borderTop:`1px solid ${V.borderDefault}`,display:"flex",gap:6}}>
             <input value={aiInput} onChange={e=>setAiInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendAI()}
               placeholder="Ask anything..." style={{...inputStyle,flex:1,padding:"6px 10px",fontSize:13}} />
             <button onClick={sendAI} style={{...btnPrimary,padding:"6px 10px"}} disabled={aiLoading}>→</button>
