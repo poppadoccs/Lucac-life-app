@@ -291,6 +291,8 @@ export default function App() {
   const [quickAddInput, setQuickAddInput] = useState("");
   const [quickAddLoading, setQuickAddLoading] = useState(false);
   const [quickAddPreview, setQuickAddPreview] = useState(null); // {events: [...]}
+  const [quickAddDeleteMatches, setQuickAddDeleteMatches] = useState(null); // {keyword, matches: [{dk, idx, ev}]}
+  const [quickAddEditPreview, setQuickAddEditPreview] = useState(null); // {dk, idx, ev, changes}
 
   // Widget customization (per profile)
   const [widgetPrefs, setWidgetPrefs] = useState({});
@@ -547,89 +549,117 @@ export default function App() {
 
   // ═══ AI QUICK ADD ═══
   // ═══ AI QUICK ADD (with update-existing support) ═══
+  // ═══ SEARCH EVENTS BY KEYWORD ═══
+  function searchEvents(keyword) {
+    const matches = [];
+    const kw = keyword.toLowerCase();
+    Object.entries(events || {}).forEach(([dk, dayEvs]) => {
+      (dayEvs || []).forEach((ev, idx) => {
+        if (ev.title.toLowerCase().includes(kw)) matches.push({ dk, idx, ev });
+      });
+    });
+    return matches;
+  }
+
+  function executeDeleteMatch(dk, idx) {
+    const updated = { ...(events || {}) };
+    updated[dk] = (updated[dk] || []).filter((_, i) => i !== idx);
+    if (!updated[dk].length) delete updated[dk];
+    fbSet("events", updated);
+    showToast("Event deleted!", "success");
+    setQuickAddDeleteMatches(null);
+  }
+
+  function executeEditMatch(dk, idx, changes) {
+    const updated = { ...(events || {}) };
+    updated[dk] = [...(updated[dk] || [])];
+    updated[dk][idx] = { ...updated[dk][idx], ...changes };
+    fbSet("events", updated);
+    showToast("Event updated!", "success");
+    setQuickAddEditPreview(null);
+  }
+
   async function handleQuickAdd() {
-    if (!quickAddInput.trim() || !GROQ_KEY) return;
+    if (!quickAddInput.trim()) return;
+    if (!GROQ_KEY) { showToast("No Groq API key configured", "error"); return; }
     setQuickAddLoading(true);
     const members = familyNames.join(", ");
     const input = quickAddInput.trim();
 
-    // Detect DELETE commands: "delete/remove [event name]"
-    const deleteMatch = input.match(/^(delete|remove|cancel)\s+(?:my\s+)?(.+?)(?:\s+events?)?$/i);
+    // ── DELETE: show matching events as cards ──
+    const deleteMatch = input.match(/^(delete|remove|cancel)\s+(?:my\s+|all\s+)?(.+?)(?:\s+events?)?$/i);
     if (deleteMatch) {
-      const keyword = deleteMatch[2].toLowerCase().trim();
-      const updated = { ...(events || {}) };
-      let count = 0;
-      Object.entries(updated).forEach(([dk, dayEvs]) => {
-        const filtered = (dayEvs || []).filter(ev => {
-          if (ev.title.toLowerCase().includes(keyword)) { count++; return false; }
-          return true;
-        });
-        if (filtered.length) updated[dk] = filtered;
-        else delete updated[dk];
-      });
-      if (count > 0) {
-        fbSet("events", updated);
-        showToast(`Deleted ${count} "${deleteMatch[2]}" event${count>1?"s":""}`, "success");
+      const keyword = deleteMatch[2].trim();
+      const matches = searchEvents(keyword);
+      if (matches.length === 0) {
+        showToast(`I couldn't find anything called "${keyword}"`, "error");
+      } else if (matches.length === 1) {
+        setQuickAddDeleteMatches({ keyword, matches, single: true });
       } else {
-        showToast(`No events found matching "${deleteMatch[2]}"`, "error");
+        setQuickAddDeleteMatches({ keyword, matches, single: false });
       }
       setQuickAddLoading(false); setQuickAddInput(""); return;
     }
 
-    // Detect UPDATE/COLOR commands: "make X red", "change X color to Y"
-    const updatePatterns = /^(make|change|set|update)\s+(.+?)\s+(?:color\s+(?:to\s+)?)?(red|orange|gold|yellow|green|teal|blue|purple|pink|coral|brown|gray|#[0-9a-f]{6})/i;
-    const updateMatch = input.match(updatePatterns);
-    if (updateMatch) {
-      const keyword = updateMatch[2].toLowerCase().replace(/\s*(events?|color|to)\s*/g," ").trim();
-      const colorName = updateMatch[3].toLowerCase();
-      const colorMap = {};
-      SWATCH_COLORS.forEach(c => { colorMap[c.label.toLowerCase()] = c.hex; });
-      const targetColor = colorMap[colorName] || colorName;
-      const updated = { ...(eventStyles || {}) };
-      let count = 0;
-      Object.entries(events || {}).forEach(([dk, dayEvs]) => {
-        (dayEvs || []).forEach((ev, idx) => {
-          if (ev.title.toLowerCase().includes(keyword)) {
-            updated[`${dk}_${idx}`] = { ...(updated[`${dk}_${idx}`] || {}), bg: targetColor };
-            count++;
-          }
-        });
-      });
-      if (count > 0) {
+    // ── EDIT: change time or rename ──
+    const editTimeMatch = input.match(/^(?:change|move|set)\s+(.+?)\s+to\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i);
+    const renameMatch = input.match(/^rename\s+(.+?)\s+to\s+(.+)$/i);
+    if (editTimeMatch || renameMatch) {
+      const keyword = (editTimeMatch ? editTimeMatch[1] : renameMatch[1]).trim();
+      const matches = searchEvents(keyword);
+      if (matches.length === 0) {
+        showToast(`I couldn't find anything called "${keyword}"`, "error");
+      } else {
+        const m = matches[0]; // take first match
+        const changes = editTimeMatch
+          ? { time: editTimeMatch[2].trim().toUpperCase() }
+          : { title: renameMatch[2].trim() };
+        setQuickAddEditPreview({ ...m, changes, keyword });
+      }
+      setQuickAddLoading(false); setQuickAddInput(""); return;
+    }
+
+    // ── COLOR: make X red ──
+    const colorMatch = input.match(/^(make|change|set|update)\s+(.+?)\s+(?:color\s+(?:to\s+)?)?(red|orange|gold|yellow|green|teal|blue|purple|pink|coral|brown|gray|#[0-9a-f]{6})/i);
+    if (colorMatch) {
+      const keyword = colorMatch[2].toLowerCase().replace(/\s*(events?|color|to)\s*/g," ").trim();
+      const colorMap = {}; SWATCH_COLORS.forEach(c => { colorMap[c.label.toLowerCase()] = c.hex; });
+      const targetColor = colorMap[colorMatch[3].toLowerCase()] || colorMatch[3];
+      const matches = searchEvents(keyword);
+      if (matches.length > 0) {
+        const updated = { ...(eventStyles || {}) };
+        matches.forEach(m => { updated[`${m.dk}_${m.idx}`] = { ...(updated[`${m.dk}_${m.idx}`] || {}), bg: targetColor }; });
         fbSet("eventStyles", updated);
-        showToast(`Updated ${count} event${count>1?"s":""} to ${updateMatch[3]}`, "success");
+        showToast(`Updated ${matches.length} event${matches.length>1?"s":""} to ${colorMatch[3]}`, "success");
       } else {
-        showToast(`No events found matching "${keyword}"`, "error");
+        showToast(`I couldn't find anything called "${keyword}"`, "error");
       }
       setQuickAddLoading(false); setQuickAddInput(""); return;
     }
 
-    // Normal event creation via Groq
+    // ── CREATE: normal Groq event creation ──
     const result = await groqFetch(GROQ_KEY, [
-      { role: "system", content: `You extract calendar events from natural language. Family members: ${members}. Today is ${todayStr}. Return ONLY valid JSON array of events. Each event: {"title":"string","date":"YYYY-MM-DD","time":"HH:MM AM/PM","who":"name or empty","notes":"","repeat":"none|daily|weekly|monthly","repeatCount":number_or_0,"duration":minutes}. For repeating events, set repeatCount to total occurrences (e.g. "every Friday for 3 months" = 12). If no repeat mentioned, use "none". If duration not mentioned, default 60. Return raw JSON array, no markdown.` },
+      { role: "system", content: `You extract calendar events from natural language. Family members: ${members}. Today is ${todayStr}. Return ONLY valid JSON array. Each event: {"title":"string","date":"YYYY-MM-DD","time":"HH:MM AM/PM","who":"name or empty","notes":"","repeat":"none|daily|weekly|monthly","repeatCount":number_or_0,"duration":minutes}. For repeating, set repeatCount to total occurrences. Default duration 60. Return raw JSON array only.` },
       { role: "user", content: input }
     ]);
 
     if (!result.ok) {
-      showToast(result.error, "error");
-      setQuickAddLoading(false);
-      return;
+      showToast(`I heard "${input}" but couldn't process it — ${result.error}`, "error");
+      setQuickAddLoading(false); return;
     }
 
     const parsed = parseGroqJSON(result.data);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      // Calculate total instances for preview
       let totalInstances = 0;
       parsed.forEach(ev => {
         const fakeEv = { ...ev, repeatEnd: "", repeatCount: ev.repeatCount || 0 };
-        const startDate = new Date(ev.date + "T00:00:00");
-        totalInstances += generateRepeats(fakeEv, startDate).length;
+        totalInstances += generateRepeats(fakeEv, new Date(ev.date + "T00:00:00")).length;
       });
       const repeatDesc = parsed.some(e => e.repeat && e.repeat !== "none")
         ? ` (${parsed[0].repeat} x${totalInstances})` : "";
       setQuickAddPreview({ events: parsed, totalInstances, repeatDesc, input });
     } else {
-      showToast("Couldn't parse that — try rephrasing", "error");
+      showToast(`I heard "${input}" but couldn't understand it — try rephrasing`, "error");
     }
     setQuickAddLoading(false);
   }
@@ -1203,6 +1233,66 @@ export default function App() {
             <div style={{ display:"flex", gap:8, marginTop:10 }}>
               <button onClick={confirmQuickAdd} style={{ ...btnPrimary, flex:1 }}>Confirm</button>
               <button onClick={() => setQuickAddPreview(null)} style={{ ...btnSecondary, flex:1 }}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {/* Delete confirmation cards */}
+        {quickAddDeleteMatches && (
+          <div style={{ ...cardStyle, border:`2px solid ${V.danger}`, marginBottom:12 }}>
+            <div style={{ fontWeight:700, color:V.danger, marginBottom:8 }}>
+              🗑️ Found {quickAddDeleteMatches.matches.length} "{quickAddDeleteMatches.keyword}" event{quickAddDeleteMatches.matches.length>1?"s":""}
+            </div>
+            {quickAddDeleteMatches.single ? (
+              <div>
+                <div style={{ fontSize:13, color:V.textSecondary, marginBottom:8 }}>
+                  {quickAddDeleteMatches.matches[0].ev.title} — {quickAddDeleteMatches.matches[0].dk} {quickAddDeleteMatches.matches[0].ev.time || ""}
+                </div>
+                <div style={{ display:"flex", gap:8 }}>
+                  <button onClick={() => executeDeleteMatch(quickAddDeleteMatches.matches[0].dk, quickAddDeleteMatches.matches[0].idx)}
+                    style={{ ...btnPrimary, flex:1, background:V.danger }}>Delete</button>
+                  <button onClick={() => setQuickAddDeleteMatches(null)} style={{ ...btnSecondary, flex:1 }}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div style={{ fontSize:12, color:V.textDim, marginBottom:8 }}>Tap the one you want to delete:</div>
+                {quickAddDeleteMatches.matches.slice(0,8).map((m, i) => (
+                  <div key={i} onClick={() => executeDeleteMatch(m.dk, m.idx)}
+                    style={{ padding:"10px 12px", background:V.bgCardAlt, borderRadius:V.r2, marginBottom:6, cursor:"pointer",
+                      border:`1px solid ${V.borderDefault}`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                    <div>
+                      <div style={{ fontWeight:600, color:V.textPrimary, fontSize:13 }}>{m.ev.title}</div>
+                      <div style={{ fontSize:11, color:V.textDim }}>{m.dk} {m.ev.time || ""} {m.ev.who ? `· ${m.ev.who}` : ""}</div>
+                    </div>
+                    <span style={{ color:V.danger, fontSize:18 }}>🗑️</span>
+                  </div>
+                ))}
+                <button onClick={() => setQuickAddDeleteMatches(null)} style={{ ...btnSecondary, width:"100%", marginTop:4 }}>Cancel</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Edit confirmation card */}
+        {quickAddEditPreview && (
+          <div style={{ ...cardStyle, border:`2px solid ${V.info}`, marginBottom:12 }}>
+            <div style={{ fontWeight:700, color:V.info, marginBottom:8 }}>✏️ Edit Event</div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:8, alignItems:"center", marginBottom:10 }}>
+              <div style={{ padding:8, background:V.bgCardAlt, borderRadius:V.r2, fontSize:13, color:V.textMuted }}>
+                <div style={{ fontWeight:600 }}>{quickAddEditPreview.ev.title}</div>
+                <div style={{ fontSize:11 }}>{quickAddEditPreview.ev.time || "no time"}</div>
+              </div>
+              <span style={{ fontSize:18 }}>→</span>
+              <div style={{ padding:8, background:`${V.info}15`, borderRadius:V.r2, fontSize:13, color:V.textPrimary, border:`1px solid ${V.info}33` }}>
+                <div style={{ fontWeight:600 }}>{quickAddEditPreview.changes.title || quickAddEditPreview.ev.title}</div>
+                <div style={{ fontSize:11 }}>{quickAddEditPreview.changes.time || quickAddEditPreview.ev.time || "no time"}</div>
+              </div>
+            </div>
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={() => executeEditMatch(quickAddEditPreview.dk, quickAddEditPreview.idx, quickAddEditPreview.changes)}
+                style={{ ...btnPrimary, flex:1 }}>Confirm</button>
+              <button onClick={() => setQuickAddEditPreview(null)} style={{ ...btnSecondary, flex:1 }}>Cancel</button>
             </div>
           </div>
         )}
