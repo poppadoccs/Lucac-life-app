@@ -1,707 +1,1645 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 
 // ═══════════════════════════════════════════════════════════
-// GAME DATA
+// LUCAC LEGENDS — Full Adventure RPG for Kids
 // ═══════════════════════════════════════════════════════════
 
-const PLAYERS = [
-  { id:"yana",  name:"Yana",  nickname:"Ya Naynay",           emoji:"👧", color:"#f43f5e", unlockLevel:0 },
-  { id:"luca",  name:"Luca",  nickname:"Lulu Sama The Slayer",emoji:"👦", color:"#3b82f6", unlockLevel:0 },
-  { id:"dada",  name:"Dada",  nickname:"The OG",              emoji:"👑", color:"#f59e0b", unlockLevel:0 },
-  { id:"p4",    name:"Player 4", nickname:"The Newcomer",     emoji:"🌟", color:"#4ade80", unlockLevel:0 },
-];
+// ─── CONSTANTS ───────────────────────────────────────────
+
+const MAX_HP = 5;
 
 const WORLDS = [
-  { id:"jungle",     name:"Jungle of Doom",     emoji:"🌴", color:"#4ade80", bg:"#0d1f12", unlockLevel:0,  boss:{ name:"Chief Stinkybreath", title:"The Gorilla Warlord",     emoji:"🦍", color:"#4ade80", hp:5, insults:["You smell like a banana peel!","My grandma swings better than you!","Even the monkeys laugh at you!","You couldn't climb a ladder!","STINKYBREATH SMASH!"] }},
-  { id:"space",      name:"Outer Space",         emoji:"🚀", color:"#38bdf8", bg:"#030712", unlockLevel:5,  boss:{ name:"Emperor Zorblon",    title:"The Destroyer of Worlds",  emoji:"👾", color:"#38bdf8", hp:6, insults:["Your planet is TRASH!","I have destroyed 1000 worlds better than yours!","You are but a tiny speck!","ZORBLON OBLITERATE!","Resistance is FUTILE!"] }},
-  { id:"underwater", name:"The Deep",            emoji:"🌊", color:"#06b6d4", bg:"#0c1445", unlockLevel:10, boss:{ name:"Baron Blubberfish", title:"Lord of the Deep Dark",    emoji:"🐡", color:"#06b6d4", hp:6, insults:["You can't even swim properly!","Blub blub blub LOSER!","You're all wet!","I've seen better heroes in a fish tank!","BLUBBERFISH BUBBLES OF DOOM!"] }},
-  { id:"fantasy",    name:"Dark Kingdom",        emoji:"🏰", color:"#f43f5e", bg:"#1a0a10", unlockLevel:15, boss:{ name:"Danyells",           title:"The Dark Queen of Doom",  emoji:"👩‍🦹", color:"#f43f5e", hp:7, insults:["You call yourself a HERO?! HA!","My houseplant is braver than you!","You couldn't defeat a ROCK!","WHERE WERE YOU WHEN WE NEEDED YOU?!","You're getting served... DEFEAT! 💅","I've seen better heroes in a fairy tale!","DANYELLS ULTIMATE DARK ATTACK! 💅"] }},
-  { id:"volcano",    name:"Volcano Peak",        emoji:"🌋", color:"#fb923c", bg:"#1a0500", unlockLevel:20, boss:{ name:"MAGMAZILLA",         title:"The Destroyer of Everything",emoji:"🦖", color:"#fb923c", hp:8, insults:["MAGMAZILLA HUNGRY!","YOUR PUNY DRAWINGS MEAN NOTHING!","MAGMAZILLA SMASH EVERYTHING!","THE VOLCANO IS MY HOUSE!","RAAAAAAAWRRRR! 🔥","MAGMAZILLA ULTIMATE LAVA DESTRUCTION!","YOU ARE NO MATCH FOR MAGMAZILLA!","FINAL FORM ACTIVATED! 💥"] }},
+  {
+    id: "forest", name: "Enchanted Forest", emoji: "🌲", color: "#2d5a27",
+    unlockLevel: 0, difficulty: 1,
+    scenes: [
+      { type: "forest", title: "The Whispering Woods", desc: "Strange sounds echo through the ancient trees..." },
+      { type: "forest", title: "The Mushroom Clearing", desc: "Giant glowing mushrooms light the path ahead." },
+      { type: "forest", title: "The Troll Bridge", desc: "A grumpy troll blocks your way across the river!" },
+    ],
+    boss: { name: "Thornvine", title: "Guardian of the Green", emoji: "🌳", hp: 4, color: "#2d5a27",
+      attacks: ["Vine Whip", "Root Slam", "Leaf Storm", "Thorn Shield"],
+      taunts: ["My roots run deeper than your courage!", "The forest answers to ME!", "You are but a leaf in my wind!", "THORNVINE SMASH!"] },
+  },
+  {
+    id: "cave", name: "Crystal Caverns", emoji: "💎", color: "#6366f1",
+    unlockLevel: 1, difficulty: 2,
+    scenes: [
+      { type: "cave", title: "The Echoing Entrance", desc: "Dripping water echoes through the darkness..." },
+      { type: "cave", title: "The Crystal Chamber", desc: "Crystals glow with mysterious energy all around you." },
+      { type: "cave", title: "The Underground Lake", desc: "A vast lake stretches out in the cavern depths." },
+    ],
+    boss: { name: "Gloomfang", title: "The Shadow Dweller", emoji: "🦇", hp: 5, color: "#6366f1",
+      attacks: ["Shadow Bite", "Echo Scream", "Dark Wing", "Void Pulse"],
+      taunts: ["You fear the dark... I AM the dark!", "No light reaches my domain!", "SCREEEECH!", "Gloomfang hungers!"] },
+  },
+  {
+    id: "mountain", name: "Skybreak Summit", emoji: "🏔️", color: "#667eea",
+    unlockLevel: 2, difficulty: 3,
+    scenes: [
+      { type: "mountain", title: "The Frozen Trail", desc: "Ice and snow cover every step of the climb." },
+      { type: "mountain", title: "The Eagle's Nest", desc: "A giant eagle watches you from above..." },
+      { type: "mountain", title: "The Avalanche Pass", desc: "Rumbling snow threatens to bury you!" },
+    ],
+    boss: { name: "Stormwing", title: "Lord of Lightning", emoji: "🦅", hp: 6, color: "#667eea",
+      attacks: ["Lightning Strike", "Thunder Clap", "Wind Slash", "Storm Fury"],
+      taunts: ["The sky bows to ME!", "Feel the thunder!", "You cannot fly this high, little one!", "STORMWING DESCENDS!"] },
+  },
+  {
+    id: "village", name: "Shadow Village", emoji: "🏘️", color: "#f59e0b",
+    unlockLevel: 3, difficulty: 4,
+    scenes: [
+      { type: "village", title: "The Haunted Market", desc: "Empty stalls creak in the ghost wind..." },
+      { type: "village", title: "The Cursed Well", desc: "Dark water bubbles and glows green." },
+      { type: "village", title: "The Clock Tower", desc: "The clock strikes 13... impossible!" },
+    ],
+    boss: { name: "Danyells", title: "The Dark Queen", emoji: "👩‍🦳", hp: 7, color: "#f43f5e",
+      attacks: ["Doom Glare", "Shadow Serve", "Dark Decree", "Ultimate Sass"],
+      taunts: ["You call yourself a HERO?!", "My houseplant is braver than you!", "You are getting SERVED!", "DANYELLS ULTIMATE ATTACK! 💅"] },
+  },
+  {
+    id: "volcano", name: "Magma Core", emoji: "🌋", color: "#ef4444",
+    unlockLevel: 4, difficulty: 5,
+    scenes: [
+      { type: "boss_arena", title: "The Lava Fields", desc: "Rivers of lava flow all around you!" },
+      { type: "boss_arena", title: "The Fire Chamber", desc: "Flames erupt from cracks in the ground!" },
+      { type: "boss_arena", title: "The Dragon's Lair", desc: "A massive shadow moves in the smoke..." },
+    ],
+    boss: { name: "MAGMAZILLA", title: "Destroyer of Everything", emoji: "🐉", hp: 8, color: "#ef4444",
+      attacks: ["Lava Breath", "Magma Slam", "Fire Storm", "MEGA ERUPTION"],
+      taunts: ["MAGMAZILLA HUNGRY!", "YOUR WORLD WILL BURN!", "RAAAAWWWRRR!", "MAGMAZILLA ULTIMATE DESTRUCTION!"] },
+  },
 ];
 
-const LEVELS = [
-  // Jungle
-  { world:"jungle", level:1, title:"The Fallen Tree",       puzzle:"A huge tree blocks the path! Draw something to get past it.",          solutions:["axe","saw","chainsaw","ladder","bridge","ramp","jump","wings","rocket","fly","sword","knife","cut"], reward:5,  bg:"🌿🌴🌿" },
-  { world:"jungle", level:2, title:"The Hungry Tiger",      puzzle:"A tiger is blocking the cave entrance! Draw something to scare it away.",solutions:["fire","torch","water gun","spray","noise","drum","gun","shield","armor","cage","net","trap","mouse","cat"],    reward:6,  bg:"🐅🌴🌿" },
-  { world:"jungle", level:3, title:"The Wide River",        puzzle:"The river is too wide to jump! Draw something to cross it.",            solutions:["bridge","boat","raft","swim","rope","vine","plank","surfboard","canoe","helicopter","fly","wings"],             reward:7,  bg:"🌊🌴💧" },
-  { world:"jungle", level:4, title:"The Poison Berries",    puzzle:"You're hungry but all the berries are poison! Draw safe food.",         solutions:["apple","bread","sandwich","pizza","chicken","fruit","banana","mango","fish","coconut","candy","cake"],          reward:8,  bg:"🍒🌿🌴" },
-  { world:"jungle", level:5, title:"BOSS: Chief Stinkybreath", puzzle:"CHIEF STINKYBREATH appears! Draw your weapon to defeat him!",        solutions:["sword","spear","bow","arrow","gun","laser","shield","armor","potion","magic","wand","bomb","trap","cage","net","banana","banana peel"], reward:15, boss:true, bg:"🦍💥🌴" },
-  // Space
-  { world:"space",  level:1, title:"Broken Rocket",         puzzle:"Your rocket has a hole in it! Draw something to fix it.",               solutions:["patch","tape","glue","weld","seal","bandage","metal","shield","cover","fill","plug"],                            reward:8,  bg:"🚀⭐🌑" },
-  { world:"space",  level:2, title:"The Asteroid Field",    puzzle:"Asteroids are flying at you! Draw something to survive!",               solutions:["shield","laser","gun","dodge","rocket","boost","wall","barrier","helmet","armor","deflector","force field"],     reward:9,  bg:"☄️🚀⭐" },
-  { world:"space",  level:3, title:"Zero Gravity",          puzzle:"You're floating away into space! Draw something to stay grounded.",      solutions:["anchor","rope","magnet","hook","boots","glue","weight","chain","tether","gravity gun","jetpack"],                reward:10, bg:"🌌⭐🚀" },
-  { world:"space",  level:4, title:"The Alien Lockbox",     puzzle:"An alien locked a door with a weird code! Draw the key.",               solutions:["key","code","laser","hacksaw","password","computer","hack","drill","bomb","crowbar","magnet","sonic screwdriver"], reward:11, bg:"👽🔒⭐" },
-  { world:"space",  level:5, title:"BOSS: Emperor Zorblon", puzzle:"EMPEROR ZORBLON appears to destroy your world! Draw your weapon!",      solutions:["laser","cannon","missile","sword","shield","bomb","rocket","spaceship","armor","force field","black hole","sun"], reward:20, boss:true, bg:"👾💥🚀" },
-  // Underwater
-  { world:"underwater", level:1, title:"The Shark",         puzzle:"A great white shark is chasing you! Draw something to escape!",         solutions:["cage","submarine","speed","torpedo","spear","knife","repellent","noise","electric","shield","rocket","jet","bubble"],reward:10, bg:"🦈🌊💧" },
-  { world:"underwater", level:2, title:"The Dark Deep",     puzzle:"It's pitch black down here! Draw something to see.",                    solutions:["flashlight","torch","lamp","lantern","light","glow","fire","candle","headlamp","submarine light","bioluminescence"], reward:11, bg:"🌑🌊🐟" },
-  { world:"underwater", level:3, title:"The Whirlpool",     puzzle:"A massive whirlpool is pulling you in! Draw something to escape!",      solutions:["anchor","rope","submarine","rocket","boost","motor","propeller","hook","chain","jetpack","swim fast"],             reward:12, bg:"🌀🌊💧" },
-  { world:"underwater", level:4, title:"The Sunken Chest",  puzzle:"A treasure chest is locked at the bottom! Draw something to open it.", solutions:["key","crowbar","drill","bomb","laser","hacksaw","pickaxe","hammer","chisel","dynamite","magic wand"],              reward:13, bg:"💰🌊🐙" },
-  { world:"underwater", level:5, title:"BOSS: Baron Blubberfish", puzzle:"BARON BLUBBERFISH rises from the deep! Draw your weapon!",        solutions:["harpoon","net","hook","torpedo","electric","spear","laser","cage","submarine","giant fork","fishing rod","shark","whale"], reward:25, boss:true, bg:"🐡💥🌊" },
-  // Fantasy
-  { world:"fantasy", level:1, title:"The Dragon Gate",      puzzle:"A sleeping dragon guards the gate! Draw something to sneak past.",      solutions:["invisible","cloak","silence","distract","food","sheep","decoy","invisibility potion","shadow","stealth","disguise"], reward:12, bg:"🐉🏰✨" },
-  { world:"fantasy", level:2, title:"The Cursed Bridge",    puzzle:"The bridge crumbles when you step on it! Draw something to cross.",     solutions:["fly","wings","dragon","magic carpet","rope","zipline","teleport","portal","jump","trampoline","balloon","broom"],   reward:13, bg:"🌉🏰⚡" },
-  { world:"fantasy", level:3, title:"The Spell Lock",       puzzle:"An evil spell is blocking the door! Draw something to break it.",       solutions:["magic wand","counter spell","sword","shield","crystal","potion","staff","rune","holy water","rainbow","light","sun"],  reward:14, bg:"🔮🏰✨" },
-  { world:"fantasy", level:4, title:"The Evil Mirror",      puzzle:"The evil mirror shows your worst fear! Draw something brave!",          solutions:["shield","sword","courage","mirror","smash","hammer","rock","truth","light","love","heart","family","friendship"],      reward:15, bg:"🪞🏰😨" },
-  { world:"fantasy", level:5, title:"BOSS: DANYELLS",       puzzle:"DANYELLS the Dark Queen appears and unleashes her dark powers! Draw your weapon to defeat her!!", solutions:["shield","earmuffs","lawyer","judge","restraining order","sword","armor","magic","love","family","heart","court","bodyguard","light","rainbow"], reward:30, boss:true, bg:"👩‍🦹💅🏰" },
-  // Volcano
-  { world:"volcano", level:1, title:"The Lava Floor",       puzzle:"The floor is literally lava! Draw something to walk on!",              solutions:["stilts","platform","bridge","rock","stone","metal boots","hover","fly","wings","jump pads","trampoline","skateboard"], reward:15, bg:"🌋🔥💥" },
-  { world:"volcano", level:2, title:"The Fire Bats",        puzzle:"Fire bats are dive bombing you! Draw something to protect yourself!",   solutions:["shield","helmet","armor","net","racket","bat","swatter","water","ice","fan","umbrella","force field"],               reward:16, bg:"🦇🔥🌋" },
-  { world:"volcano", level:3, title:"The Magma River",      puzzle:"A river of magma blocks the path! Draw something to cross!",            solutions:["ice bridge","metal bridge","flying machine","wings","helicopter","rocket","jump","pole vault","freeze ray","water cannon"],reward:17, bg:"🌊🔥🌋" },
-  { world:"volcano", level:4, title:"The Volcano Rumbles",  puzzle:"The volcano is about to explode! Draw something to stop it!",          solutions:["cork","plug","seal","giant rock","ice","water","drain","valve","stopper","bomb it first","nuclear option","science"],   reward:18, bg:"💥🌋🔥" },
-  { world:"volcano", level:5, title:"BOSS: MAGMAZILLA",     puzzle:"MAGMAZILLA FINAL BOSS ULTIMATE DESTRUCTION MODE ACTIVATED! Draw the most powerful thing you can imagine!!", solutions:["ice cannon","water bomb","freeze ray","ocean","glacier","blizzard","mega sword","nuclear","giant","mega","ultimate","anything"], reward:50, boss:true, bg:"🦖💥🌋" },
-];
-
-const DRAW_PROMPTS = [
-  "What are you drawing? 🤔",
-  "Hmm let me think about this...",
-  "Interesting choice! 🧐",
-  "That could work!",
-  "Getting creative! 🎨",
-];
-
-const store = {
-  get: async (k) => { try { const r = await window.storage.get(k); return r ? JSON.parse(r.value) : null; } catch { return null; } },
-  set: async (k, v) => { try { await window.storage.set(k, JSON.stringify(v)); } catch {} },
+const ITEMS = {
+  sword:  { emoji: "🗡️", name: "Sword", desc: "+2 Attack", stat: "attack", value: 2 },
+  shield: { emoji: "🛡️", name: "Shield", desc: "-1 Damage taken", stat: "defense", value: 1 },
+  potion: { emoji: "❤️", name: "Health Potion", desc: "+2 HP", stat: "heal", value: 2 },
+  star:   { emoji: "⭐", name: "Star Token", desc: "+1 Star", stat: "star", value: 1 },
+  bow:    { emoji: "🏹", name: "Bow", desc: "+1 Attack", stat: "attack", value: 1 },
+  ring:   { emoji: "💍", name: "Magic Ring", desc: "+1 to all", stat: "all", value: 1 },
+  boots:  { emoji: "👢", name: "Speed Boots", desc: "Dodge chance", stat: "dodge", value: 1 },
+  crown:  { emoji: "👑", name: "Hero Crown", desc: "+3 Attack", stat: "attack", value: 3 },
 };
 
-// ═══════════════════════════════════════════════════════════
-// DRAWING CANVAS
-// ═══════════════════════════════════════════════════════════
-function DrawingCanvas({ onSave, onClose, title, subtitle, color, height = 280, showLabel = true }) {
-  const canvasRef = useRef(null);
-  const [drawing, setDrawing] = useState(false);
-  const [label, setLabel] = useState("");
-  const [hasDrawn, setHasDrawn] = useState(false);
-  const lastPos = useRef(null);
+const SCENE_CHOICES = {
+  forest: [
+    { prompt: "You hear rustling in the bushes. What do you do?",
+      options: [
+        { text: "🔍 Investigate carefully", correct: true, reward: "potion", msg: "You found a Health Potion hidden in the leaves!" },
+        { text: "🏃 Run away fast!", correct: false, msg: "You tripped on a root! Ouch!" },
+        { text: "🗣️ Call out hello!", correct: true, reward: "star", msg: "A friendly fairy gives you a star!" },
+      ] },
+    { prompt: "A fork in the path: left is dark, right has flowers.",
+      options: [
+        { text: "⬅️ Go left (dark path)", correct: true, reward: "sword", msg: "You found a shiny sword in the shadows!" },
+        { text: "➡️ Go right (flowers)", correct: false, msg: "The flowers were poison ivy! Itchy!" },
+        { text: "⬆️ Climb a tree to see ahead", correct: true, reward: "star", msg: "Great view! You spot a shortcut and earn a star!" },
+      ] },
+    { prompt: "A sleeping bear blocks the trail!",
+      options: [
+        { text: "🤫 Sneak past quietly", correct: true, reward: "boots", msg: "You found Speed Boots behind the bear!" },
+        { text: "📢 Yell to scare it", correct: false, msg: "The bear woke up angry! It swiped at you!" },
+        { text: "🍯 Leave some honey", correct: true, reward: "star", msg: "The bear loves it and moves aside! +1 star!" },
+      ] },
+  ],
+  cave: [
+    { prompt: "The cave splits into two tunnels. One glows, one is silent.",
+      options: [
+        { text: "✨ Follow the glow", correct: true, reward: "ring", msg: "A magic ring floats in the crystal light!" },
+        { text: "🤫 Take the silent tunnel", correct: false, msg: "You walked into a spider web! Gross!" },
+        { text: "👂 Listen first, then choose", correct: true, reward: "star", msg: "Smart! You hear treasure ahead. +1 star!" },
+      ] },
+    { prompt: "Bats swarm around you in the dark!",
+      options: [
+        { text: "🛡️ Duck and cover", correct: true, reward: "shield", msg: "You found a shield wedged in the rock!" },
+        { text: "👊 Swing at them", correct: false, msg: "You missed and hit the wall! Ouch!" },
+        { text: "🔦 Light a torch", correct: true, reward: "star", msg: "The bats flee from the light! +1 star!" },
+      ] },
+    { prompt: "You see strange writing on the cave wall.",
+      options: [
+        { text: "📖 Try to read it", correct: true, reward: "star", msg: "It is a treasure map clue! +1 star!" },
+        { text: "🖐️ Touch the writing", correct: false, msg: "ZAP! It was a trap!" },
+        { text: "📝 Copy it down", correct: true, reward: "potion", msg: "The writing reveals a hidden potion!" },
+      ] },
+  ],
+  mountain: [
+    { prompt: "An icy bridge stretches across a chasm!",
+      options: [
+        { text: "🧊 Slide across carefully", correct: true, reward: "star", msg: "Smooth crossing! +1 star!" },
+        { text: "🏃 Run across fast", correct: false, msg: "You slipped on the ice!" },
+        { text: "🧗 Climb underneath", correct: true, reward: "bow", msg: "You found a bow under the bridge!" },
+      ] },
+    { prompt: "A snow yeti appears and stares at you!",
+      options: [
+        { text: "🤝 Offer friendship", correct: true, reward: "potion", msg: "The yeti gives you a health potion!" },
+        { text: "🏃 Run down the mountain", correct: false, msg: "You slid into a snowbank!" },
+        { text: "💃 Do a funny dance", correct: true, reward: "star", msg: "The yeti laughs and lets you pass! +1 star!" },
+      ] },
+    { prompt: "An eagle drops something shiny near you!",
+      options: [
+        { text: "🖐️ Pick it up", correct: true, reward: "crown", msg: "It is a Hero Crown! +3 Attack!" },
+        { text: "🦅 Chase the eagle", correct: false, msg: "You ran off a small ledge! Ouch!" },
+        { text: "🙏 Thank the eagle", correct: true, reward: "star", msg: "The eagle nods and flies away! +1 star!" },
+      ] },
+  ],
+  village: [
+    { prompt: "A ghost merchant floats before you with glowing wares.",
+      options: [
+        { text: "🛒 Browse the shop", correct: true, reward: "shield", msg: "You got a magic shield for free!" },
+        { text: "👻 Scream and run", correct: false, msg: "You tripped over a bucket!" },
+        { text: "👋 Wave hello", correct: true, reward: "star", msg: "The ghost likes your bravery! +1 star!" },
+      ] },
+    { prompt: "The cursed well whispers your name...",
+      options: [
+        { text: "💧 Drop a coin in", correct: true, reward: "potion", msg: "The curse breaks! A potion floats up!" },
+        { text: "👀 Look inside", correct: false, msg: "Spooky! Something splashed you!" },
+        { text: "🏃 Back away slowly", correct: true, reward: "star", msg: "Wise choice! A star appears at your feet!" },
+      ] },
+    { prompt: "A locked chest sits in the abandoned house.",
+      options: [
+        { text: "🔑 Search for a key", correct: true, reward: "sword", msg: "Key found! Inside: a powerful sword!" },
+        { text: "👊 Smash it open", correct: false, msg: "It was booby-trapped! BONK!" },
+        { text: "🧠 Solve the riddle lock", correct: true, reward: "star", msg: "Clever! The chest opens. +1 star!" },
+      ] },
+  ],
+  boss_arena: [
+    { prompt: "Lava pools bubble ahead. Which way?",
+      options: [
+        { text: "⬅️ Hop left on rocks", correct: true, reward: "potion", msg: "Safe! You found a potion on a rock!" },
+        { text: "➡️ Jump right", correct: false, msg: "Too hot! The rock crumbled!" },
+        { text: "⬆️ Find high ground", correct: true, reward: "star", msg: "Smart! You see the path clearly. +1 star!" },
+      ] },
+    { prompt: "A fire spirit appears and offers a deal!",
+      options: [
+        { text: "🤝 Accept the deal", correct: true, reward: "sword", msg: "The spirit gives you a flame sword!" },
+        { text: "👊 Fight it", correct: false, msg: "Fire burns! Bad idea!" },
+        { text: "🧠 Ask what the deal is first", correct: true, reward: "star", msg: "Smart negotiation! +1 star!" },
+      ] },
+    { prompt: "You see dragon eggs near the final door!",
+      options: [
+        { text: "🥚 Leave them alone", correct: true, reward: "star", msg: "Respectful! The dragon mother gives you a star!" },
+        { text: "🥚 Take one", correct: false, msg: "MAMA DRAGON IS MAD!" },
+        { text: "🛡️ Guard them", correct: true, reward: "crown", msg: "The dragon blesses you with a Hero Crown!" },
+      ] },
+  ],
+};
 
-  const getPos = (e, canvas) => {
-    const rect = canvas.getBoundingClientRect();
-    const touch = e.touches?.[0] || e;
-    return { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
-  };
+const DEFAULT_REWARDS = [
+  { name: "30 min screen time", cost: 10, emoji: "📱" },
+  { name: "Pick dinner tonight", cost: 15, emoji: "🍕" },
+  { name: "Movie night choice", cost: 25, emoji: "🎬" },
+  { name: "Stay up 30 min late", cost: 20, emoji: "🌙" },
+  { name: "New small toy", cost: 50, emoji: "🎁" },
+];
 
-  const startDraw = (e) => {
-    e.preventDefault();
-    setDrawing(true);
-    setHasDrawn(true);
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    const pos = getPos(e, canvas);
-    lastPos.current = pos;
-    ctx.beginPath();
-    ctx.moveTo(pos.x, pos.y);
-  };
+// ─── INJECTED KEYFRAMES ─────────────────────────────────
 
-  const draw = (e) => {
-    e.preventDefault();
-    if (!drawing) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    const pos = getPos(e, canvas);
-    ctx.lineWidth = 4;
-    ctx.lineCap = "round";
-    ctx.strokeStyle = color || "#f59e0b";
-    ctx.lineJoin = "round";
-    ctx.beginPath();
-    ctx.moveTo(lastPos.current.x, lastPos.current.y);
-    ctx.lineTo(pos.x, pos.y);
-    ctx.stroke();
-    lastPos.current = pos;
-  };
+const KEYFRAMES_CSS = `
+@keyframes ll-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+@keyframes ll-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-6px); }
+  80% { transform: translateX(4px); }
+}
+@keyframes ll-jump {
+  0% { transform: translateY(0) scale(1); }
+  30% { transform: translateY(-30px) scale(1.1); }
+  50% { transform: translateY(-40px) scale(1.15); }
+  70% { transform: translateY(-20px) scale(1.05); }
+  100% { transform: translateY(0) scale(1); }
+}
+@keyframes ll-float-up {
+  0% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-60px) scale(1.5); }
+}
+@keyframes ll-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+@keyframes ll-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+@keyframes ll-fade-in {
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes ll-slash {
+  0% { transform: translateX(0) rotate(0deg); opacity: 1; }
+  50% { transform: translateX(40px) rotate(30deg); opacity: 1; }
+  100% { transform: translateX(80px) rotate(60deg); opacity: 0; }
+}
+@keyframes ll-confetti {
+  0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(200px) rotate(720deg); opacity: 0; }
+}
+@keyframes ll-leaf-fall {
+  0% { transform: translateY(-20px) translateX(0px) rotate(0deg); opacity: 0.8; }
+  50% { transform: translateY(100px) translateX(30px) rotate(180deg); opacity: 0.6; }
+  100% { transform: translateY(220px) translateX(-10px) rotate(360deg); opacity: 0; }
+}
+@keyframes ll-glow-eyes {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+@keyframes ll-snow-fall {
+  0% { transform: translateY(-10px) translateX(0); opacity: 0.9; }
+  100% { transform: translateY(200px) translateX(20px); opacity: 0; }
+}
+@keyframes ll-smoke {
+  0% { transform: translateY(0) scale(1); opacity: 0.6; }
+  100% { transform: translateY(-40px) scale(2); opacity: 0; }
+}
+@keyframes ll-lightning {
+  0%, 90%, 100% { opacity: 0; }
+  92%, 95% { opacity: 1; }
+}
+@keyframes ll-screen-shake {
+  0%, 100% { transform: translate(0); }
+  10% { transform: translate(-4px, 2px); }
+  20% { transform: translate(4px, -2px); }
+  30% { transform: translate(-3px, 3px); }
+  40% { transform: translate(3px, -1px); }
+  50% { transform: translate(-2px, 2px); }
+}
+@keyframes ll-damage-number {
+  0% { opacity: 1; transform: translateY(0) scale(1); }
+  60% { opacity: 1; transform: translateY(-40px) scale(1.4); }
+  100% { opacity: 0; transform: translateY(-70px) scale(0.8); }
+}
+@keyframes ll-impact-text {
+  0% { opacity: 0; transform: scale(0.3) rotate(-10deg); }
+  50% { opacity: 1; transform: scale(1.3) rotate(5deg); }
+  100% { opacity: 0; transform: scale(1) rotate(0deg); }
+}
+`;
 
-  const stopDraw = () => setDrawing(false);
+// ─── SCENE BACKGROUND COMPONENTS ────────────────────────
 
-  const clearCanvas = () => {
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    setHasDrawn(false);
-  };
+function ForestBG() {
+  return (
+    <div style={{ position: "absolute", inset: 0, overflow: "hidden",
+      background: "linear-gradient(180deg, #1a472a 0%, #2d5a27 40%, #1a3a1a 100%)" }}>
+      {/* Ground */}
+      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "30%",
+        background: "linear-gradient(180deg, #1a3a1a, #0d2010)" }} />
+      {/* Trees */}
+      {[10, 25, 45, 65, 80, 92].map((l, i) => (
+        <div key={i} style={{ position: "absolute", bottom: "28%", left: `${l}%`,
+          fontSize: i % 2 === 0 ? 48 : 36, transform: "translateX(-50%)" }}>
+          {i % 2 === 0 ? "🌲" : "🌳"}
+        </div>
+      ))}
+      {/* Floating leaves */}
+      {[0,1,2,3,4].map(i => (
+        <div key={`leaf${i}`} style={{ position: "absolute", top: -20,
+          left: `${15 + i * 18}%`, fontSize: 20,
+          animation: `ll-leaf-fall ${3 + i * 0.7}s ease-in-out ${i * 0.8}s infinite` }}>
+          🍃
+        </div>
+      ))}
+      {/* Fireflies */}
+      {[0,1,2].map(i => (
+        <div key={`fly${i}`} style={{ position: "absolute", top: `${30 + i * 15}%`,
+          left: `${20 + i * 25}%`, width: 6, height: 6, borderRadius: "50%",
+          background: "#ffe066", boxShadow: "0 0 8px #ffe066",
+          animation: `ll-pulse ${2 + i * 0.5}s ease-in-out infinite` }} />
+      ))}
+    </div>
+  );
+}
 
-  const saveDrawing = () => {
-    const canvas = canvasRef.current;
-    const dataUrl = canvas.toDataURL();
-    onSave(dataUrl, label);
-  };
+function CaveBG() {
+  return (
+    <div style={{ position: "absolute", inset: 0, overflow: "hidden",
+      background: "linear-gradient(180deg, #0a0a1a 0%, #1a1a2e 50%, #16213e 100%)" }}>
+      {/* Stalactites */}
+      {[10, 30, 55, 75, 90].map((l, i) => (
+        <div key={i} style={{ position: "absolute", top: 0, left: `${l}%`,
+          width: 0, height: 0,
+          borderLeft: `${8 + i * 3}px solid transparent`,
+          borderRight: `${8 + i * 3}px solid transparent`,
+          borderTop: `${30 + i * 10}px solid #2a2a4e` }} />
+      ))}
+      {/* Glowing eyes */}
+      {[0,1,2].map(i => (
+        <div key={`eyes${i}`} style={{ position: "absolute", top: `${25 + i * 20}%`,
+          left: `${15 + i * 30}%`, fontSize: 20,
+          animation: `ll-glow-eyes ${2 + i}s ease-in-out ${i * 0.5}s infinite` }}>
+          👀
+        </div>
+      ))}
+      {/* Crystals */}
+      {[20, 50, 80].map((l, i) => (
+        <div key={`crystal${i}`} style={{ position: "absolute", bottom: `${5 + i * 5}%`,
+          left: `${l}%`, fontSize: 28, animation: `ll-pulse ${3 + i}s ease-in-out infinite` }}>
+          💎
+        </div>
+      ))}
+    </div>
+  );
+}
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "rgba(255,255,255,0.03)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  }, []);
+function MountainBG() {
+  return (
+    <div style={{ position: "absolute", inset: 0, overflow: "hidden",
+      background: "linear-gradient(180deg, #667eea 0%, #a8c0ff 40%, #d4e0ff 100%)" }}>
+      {/* Mountain peaks */}
+      <div style={{ position: "absolute", bottom: 0, left: "5%",
+        width: 0, height: 0,
+        borderLeft: "80px solid transparent", borderRight: "80px solid transparent",
+        borderBottom: "120px solid #556b9e" }} />
+      <div style={{ position: "absolute", bottom: 0, left: "35%",
+        width: 0, height: 0,
+        borderLeft: "100px solid transparent", borderRight: "100px solid transparent",
+        borderBottom: "160px solid #4a5f8e" }} />
+      <div style={{ position: "absolute", bottom: 0, right: "10%",
+        width: 0, height: 0,
+        borderLeft: "70px solid transparent", borderRight: "70px solid transparent",
+        borderBottom: "100px solid #5e72a8" }} />
+      {/* Snow cap */}
+      <div style={{ position: "absolute", bottom: 130, left: "calc(35% + 50px)",
+        width: 0, height: 0,
+        borderLeft: "30px solid transparent", borderRight: "30px solid transparent",
+        borderBottom: "30px solid white" }} />
+      {/* Snowflakes */}
+      {[0,1,2,3,4,5].map(i => (
+        <div key={`snow${i}`} style={{ position: "absolute", top: -10,
+          left: `${8 + i * 16}%`, fontSize: 16,
+          animation: `ll-snow-fall ${4 + i * 0.5}s linear ${i * 0.6}s infinite` }}>
+          ❄️
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function VillageBG() {
+  return (
+    <div style={{ position: "absolute", inset: 0, overflow: "hidden",
+      background: "linear-gradient(180deg, #f6d365 0%, #fda085 60%, #e8956a 100%)" }}>
+      {/* Ground */}
+      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "25%",
+        background: "linear-gradient(180deg, #8B7355, #6B5B45)" }} />
+      {/* Houses */}
+      {[15, 40, 65, 85].map((l, i) => (
+        <div key={i} style={{ position: "absolute", bottom: "23%", left: `${l}%`,
+          fontSize: i % 2 === 0 ? 40 : 32, transform: "translateX(-50%)" }}>
+          {i % 2 === 0 ? "🏠" : "🏡"}
+        </div>
+      ))}
+      {/* Smoke from chimneys */}
+      {[15, 65].map((l, i) => (
+        <div key={`smoke${i}`} style={{ position: "absolute", bottom: "52%", left: `${l + 2}%`,
+          fontSize: 20, animation: `ll-smoke 3s ease-out ${i * 1.5}s infinite` }}>
+          ☁️
+        </div>
+      ))}
+      {/* Sun */}
+      <div style={{ position: "absolute", top: 20, right: 30, fontSize: 40,
+        animation: "ll-pulse 4s ease-in-out infinite" }}>
+        🌅
+      </div>
+    </div>
+  );
+}
+
+function BossArenaBG({ shake }) {
+  return (
+    <div style={{ position: "absolute", inset: 0, overflow: "hidden",
+      background: "linear-gradient(180deg, #870000 0%, #3d0000 50%, #190a05 100%)",
+      animation: shake ? "ll-screen-shake 0.4s ease-in-out" : "none" }}>
+      {/* Lava ground */}
+      <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "20%",
+        background: "linear-gradient(180deg, #ff4500, #cc3700, #8b0000)",
+        animation: "ll-pulse 2s ease-in-out infinite" }} />
+      {/* Lightning */}
+      {[0,1,2].map(i => (
+        <div key={`lt${i}`} style={{ position: "absolute", top: 10,
+          left: `${20 + i * 30}%`, fontSize: 36,
+          animation: `ll-lightning ${1.5 + i * 0.3}s ease-in-out ${i * 0.7}s infinite` }}>
+          ⚡
+        </div>
+      ))}
+      {/* Fire emojis */}
+      {[0,1,2,3].map(i => (
+        <div key={`fire${i}`} style={{ position: "absolute", bottom: "18%",
+          left: `${10 + i * 25}%`, fontSize: 28,
+          animation: `ll-pulse ${1 + i * 0.3}s ease-in-out infinite` }}>
+          🔥
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function VictoryBG() {
+  const confettiEmojis = ["🎊", "🎉", "⭐", "✨", "💫", "🌟", "🎆", "🏆"];
+  return (
+    <div style={{ position: "absolute", inset: 0, overflow: "hidden",
+      background: "linear-gradient(135deg, #a8edea 0%, #fed6e3 35%, #d299c2 65%, #a8edea 100%)" }}>
+      {confettiEmojis.map((e, i) => (
+        <div key={i} style={{ position: "absolute", top: -30,
+          left: `${5 + i * 12}%`, fontSize: 28,
+          animation: `ll-confetti ${2 + i * 0.3}s ease-in ${i * 0.2}s infinite` }}>
+          {e}
+        </div>
+      ))}
+      {/* Fireworks */}
+      <div style={{ position: "absolute", top: "20%", left: "20%", fontSize: 50,
+        animation: "ll-pulse 1s ease-in-out infinite" }}>🎆</div>
+      <div style={{ position: "absolute", top: "15%", right: "20%", fontSize: 50,
+        animation: "ll-pulse 1.3s ease-in-out 0.3s infinite" }}>🎇</div>
+    </div>
+  );
+}
+
+function SceneBG({ type, shake }) {
+  switch (type) {
+    case "forest": return <ForestBG />;
+    case "cave": return <CaveBG />;
+    case "mountain": return <MountainBG />;
+    case "village": return <VillageBG />;
+    case "boss_arena": return <BossArenaBG shake={shake} />;
+    case "victory": return <VictoryBG />;
+    default: return <ForestBG />;
+  }
+}
+
+// ─── AVATAR COMPONENT ───────────────────────────────────
+
+const EMOTION_MAP = {
+  happy: "😊", scared: "😨", determined: "😤", victorious: "🎉", hurt: "😣", idle: null,
+};
+
+function Avatar({ emoji, emotion, anim, size = 60, style: extraStyle }) {
+  const face = EMOTION_MAP[emotion] || null;
+  let animName = "none";
+  if (anim === "bounce") animName = "ll-bounce 0.6s ease-in-out infinite";
+  if (anim === "shake") animName = "ll-shake 0.5s ease-in-out";
+  if (anim === "jump") animName = "ll-jump 0.8s ease-in-out";
+  if (anim === "pulse") animName = "ll-pulse 1s ease-in-out infinite";
 
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:1000, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"16px" }}>
-      <div style={{ width:"100%", maxWidth:"480px" }}>
-        <div style={{ textAlign:"center", marginBottom:"14px" }}>
-          <div style={{ fontSize:"22px", fontWeight:"bold", color: color||"#f59e0b", fontFamily:"Georgia,serif" }}>{title}</div>
-          {subtitle && <div style={{ fontSize:"13px", color:"#94a3b8", marginTop:"4px" }}>{subtitle}</div>}
+    <div style={{ position: "relative", display: "inline-block", animation: animName, ...extraStyle }}>
+      <div style={{ fontSize: size, lineHeight: 1 }}>{emoji}</div>
+      {face && (
+        <div style={{ position: "absolute", bottom: -4, right: -4, fontSize: size * 0.4,
+          background: "rgba(0,0,0,0.5)", borderRadius: "50%", width: size * 0.45, height: size * 0.45,
+          display: "flex", alignItems: "center", justifyContent: "center" }}>
+          {face}
         </div>
+      )}
+    </div>
+  );
+}
 
-        <div style={{ position:"relative", borderRadius:"16px", overflow:"hidden", border:`3px solid ${color||"#f59e0b"}`, boxShadow:`0 0 30px ${color||"#f59e0b"}44` }}>
-          <canvas
-            ref={canvasRef}
-            width={440}
-            height={height}
-            style={{ display:"block", background:"#0a0a1a", width:"100%", touchAction:"none", cursor:"crosshair" }}
-            onMouseDown={startDraw} onMouseMove={draw} onMouseUp={stopDraw} onMouseLeave={stopDraw}
-            onTouchStart={startDraw} onTouchMove={draw} onTouchEnd={stopDraw}
-          />
-          {!hasDrawn && (
-            <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", pointerEvents:"none" }}>
-              <div style={{ color:"#ffffff22", fontSize:"18px", textAlign:"center", fontFamily:"Georgia,serif" }}>✏️ Draw here with your finger!</div>
-            </div>
-          )}
-        </div>
+// ─── HP DISPLAY ─────────────────────────────────────────
 
-        {showLabel && (
-          <input
-            style={{ width:"100%", background:"#1a1a2e", border:`1px solid ${color||"#f59e0b"}44`, borderRadius:"10px", padding:"10px 14px", color:"white", fontSize:"14px", marginTop:"10px", boxSizing:"border-box", fontFamily:"Georgia,serif" }}
-            placeholder="What did you draw? (type it here)"
-            value={label}
-            onChange={e => setLabel(e.target.value)}
-          />
-        )}
+function HPDisplay({ current, max, label, color }) {
+  const hearts = [];
+  for (let i = 0; i < max; i++) {
+    hearts.push(
+      <span key={i} style={{ fontSize: 22, opacity: i < current ? 1 : 0.25,
+        transition: "opacity 0.3s, transform 0.3s",
+        transform: i < current ? "scale(1)" : "scale(0.8)",
+        filter: i < current ? "none" : "grayscale(1)" }}>
+        ❤️
+      </span>
+    );
+  }
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+      {label && <span style={{ fontSize: 14, fontWeight: 700, color: color || "#fff",
+        textShadow: "0 1px 3px rgba(0,0,0,0.5)" }}>{label}</span>}
+      <div style={{ display: "flex", gap: 2 }}>{hearts}</div>
+    </div>
+  );
+}
 
-        <div style={{ display:"flex", gap:"10px", marginTop:"12px" }}>
-          <button onClick={clearCanvas} style={{ flex:1, background:"none", border:"1px solid #444", borderRadius:"10px", padding:"12px", color:"#94a3b8", fontSize:"14px", cursor:"pointer" }}>🗑️ Clear</button>
-          {onClose && <button onClick={onClose} style={{ flex:1, background:"none", border:"1px solid #444", borderRadius:"10px", padding:"12px", color:"#94a3b8", fontSize:"14px", cursor:"pointer" }}>Cancel</button>}
-          <button onClick={saveDrawing} disabled={!hasDrawn} style={{ flex:2, background:hasDrawn?(color||"#f59e0b"):"#333", border:"none", borderRadius:"10px", padding:"12px", color:hasDrawn?"#000":"#666", fontSize:"14px", fontWeight:"bold", cursor:hasDrawn?"pointer":"not-allowed" }}>
-            {hasDrawn ? "✅ Use This!" : "Draw something first!"}
-          </button>
-        </div>
+// ─── BOSS HP BAR ────────────────────────────────────────
+
+function BossHPBar({ current, max, emoji, name, color }) {
+  const pct = Math.max(0, (current / max) * 100);
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <span style={{ fontSize: 32 }}>{emoji}</span>
+        <span style={{ fontSize: 16, fontWeight: 700, color: "#fff",
+          textShadow: "0 1px 4px rgba(0,0,0,0.6)" }}>{name}</span>
+      </div>
+      <div style={{ background: "rgba(0,0,0,0.5)", borderRadius: 10, height: 20,
+        overflow: "hidden", border: "2px solid rgba(255,255,255,0.3)" }}>
+        <div style={{ height: "100%", width: `${pct}%`, borderRadius: 8,
+          background: pct > 50 ? (color || "#ef4444") : pct > 25 ? "#f59e0b" : "#ef4444",
+          transition: "width 0.5s ease-out",
+          boxShadow: `0 0 10px ${pct > 50 ? (color || "#ef4444") : "#ef4444"}` }} />
+      </div>
+      <div style={{ fontSize: 13, color: "rgba(255,255,255,0.8)", textAlign: "right", marginTop: 2,
+        textShadow: "0 1px 2px rgba(0,0,0,0.5)" }}>
+        {current} / {max} HP
       </div>
     </div>
   );
 }
 
-// ═══════════════════════════════════════════════════════════
-// AI PUZZLE JUDGE
-// ═══════════════════════════════════════════════════════════
-async function judgeDrawing(levelData, drawnLabel) {
-  const label = drawnLabel.toLowerCase().trim();
-  if (!label) return { success: false, message: "Type what you drew first! 🎨" };
+// ─── FLOATING TEXT ───────────────────────────────────────
 
-  // Check local solutions first for speed
-  const localMatch = levelData.solutions.some(sol =>
-    label.includes(sol) || sol.includes(label) ||
-    label.split(" ").some(word => sol.includes(word) && word.length > 2)
+function FloatingText({ text, color, x, y }) {
+  return (
+    <div style={{ position: "absolute", left: x || "50%", top: y || "40%",
+      transform: "translateX(-50%)", color: color || "#fff",
+      fontSize: 28, fontWeight: 900, textShadow: `0 0 10px ${color || "#fff"}`,
+      animation: "ll-damage-number 1s ease-out forwards", pointerEvents: "none",
+      zIndex: 100 }}>
+      {text}
+    </div>
   );
-  if (localMatch) {
-    const wins = ["AMAZING!! That works perfectly! 🎉", "GENIUS!! You figured it out! 🔥", "WOW!! Perfect solution! ⭐", "INCREDIBLE!! Great thinking! 💪", "YES!! That's exactly right! 🏆"];
-    return { success: true, message: wins[Math.floor(Math.random() * wins.length)] };
-  }
+}
 
-  // Ask AI for creative solutions
-  try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514", max_tokens: 150,
-        messages: [{ role: "user", content: `A child drew "${drawnLabel}" to solve this puzzle: "${levelData.puzzle}". Would this creative solution work? Be very generous and fun for kids. Reply with JSON only: {"success":true/false,"message":"fun encouraging message under 20 words"}` }]
-      })
-    });
-    const data = await res.json();
-    const text = data.content.map(c => c.text || "").join("");
-    const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
-    return parsed;
-  } catch {
-    // Fallback — be generous with kids
-    const creative = ["That's a VERY creative solution! We'll allow it! 🎨✅", "Wow that's outside the box thinking! It works! 🧠✅", "Nobody's ever tried that before! Brilliant! 🌟✅"];
-    return { success: true, message: creative[Math.floor(Math.random() * creative.length)] };
-  }
+function ImpactText({ text }) {
+  return (
+    <div style={{ position: "absolute", inset: 0, display: "flex",
+      alignItems: "center", justifyContent: "center", zIndex: 100, pointerEvents: "none" }}>
+      <div style={{ fontSize: 48, fontWeight: 900, color: "#fff",
+        textShadow: "0 0 20px #ff0, 0 0 40px #f80, 2px 2px 0 #000",
+        animation: "ll-impact-text 0.8s ease-out forwards",
+        letterSpacing: 4 }}>
+        {text}
+      </div>
+    </div>
+  );
+}
+
+// ─── INVENTORY DISPLAY ──────────────────────────────────
+
+function InventoryBar({ inventory }) {
+  if (!inventory || inventory.length === 0) return null;
+  const counts = {};
+  inventory.forEach(id => { counts[id] = (counts[id] || 0) + 1; });
+  return (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: "6px 0" }}>
+      {Object.entries(counts).map(([id, count]) => {
+        const item = ITEMS[id];
+        if (!item) return null;
+        return (
+          <div key={id} style={{ background: "rgba(255,255,255,0.15)", borderRadius: 8,
+            padding: "4px 8px", display: "flex", alignItems: "center", gap: 4,
+            border: "1px solid rgba(255,255,255,0.2)" }}>
+            <span style={{ fontSize: 18 }}>{item.emoji}</span>
+            {count > 1 && <span style={{ fontSize: 12, color: "#fff", fontWeight: 700 }}>x{count}</span>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── BUTTON COMPONENT ───────────────────────────────────
+
+function GameBtn({ children, onClick, color, disabled, big, style: extra }) {
+  const bg = disabled ? "#555" : (color || "#3b82f6");
+  return (
+    <button
+      onClick={disabled ? undefined : onClick}
+      style={{
+        background: bg,
+        color: "#fff",
+        border: "none",
+        borderRadius: 12,
+        padding: big ? "16px 24px" : "12px 18px",
+        fontSize: big ? 20 : 16,
+        fontWeight: 700,
+        cursor: disabled ? "not-allowed" : "pointer",
+        minHeight: 48,
+        minWidth: 48,
+        textAlign: "center",
+        boxShadow: disabled ? "none" : `0 4px 12px ${bg}66`,
+        opacity: disabled ? 0.5 : 1,
+        transition: "all 0.2s",
+        width: "100%",
+        ...extra,
+      }}
+    >
+      {children}
+    </button>
+  );
 }
 
 // ═══════════════════════════════════════════════════════════
-// MAIN GAME
+// MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════
-export default function LucacLegends() {
-  const [screen, setScreen] = useState("title");
-  const [selectedPlayer, setSelectedPlayer] = useState(null);
-  const [playerData, setPlayerData] = useState({});
-  const [showAvatarDraw, setShowAvatarDraw] = useState(false);
-  const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
-  const [selectedWorld, setSelectedWorld] = useState(null);
-  const [currentLevel, setCurrentLevel] = useState(null);
-  const [showDrawCanvas, setShowDrawCanvas] = useState(false);
-  const [drawLabel, setDrawLabel] = useState("");
-  const [judging, setJudging] = useState(false);
-  const [judgeResult, setJudgeResult] = useState(null);
-  const [bossHP, setBossHP] = useState(0);
-  const [bossAttacking, setBossAttacking] = useState(false);
-  const [bossInsult, setBossInsult] = useState("");
-  const [currentInsultIdx, setCurrentInsultIdx] = useState(0);
-  const [showLevelComplete, setShowLevelComplete] = useState(false);
-  const [showWorldComplete, setShowWorldComplete] = useState(false);
-  const [particles, setParticles] = useState([]);
 
-  useEffect(() => {
-    (async () => {
-      const pd = await store.get("legendsPlayerData");
-      if (pd) setPlayerData(pd);
-    })();
-  }, []);
+export default function LucacLegends({ profile, kidsData, fbSet }) {
+  // ─── STATE ──────────────────────────────────────────────
+  const [screen, setScreen] = useState("menu"); // menu, world_select, adventure, battle, victory, game_over, store, chores
+  const [currentWorld, setCurrentWorld] = useState(0);
+  const [currentScene, setCurrentScene] = useState(0);
+  const [hp, setHp] = useState(MAX_HP);
+  const [inventory, setInventory] = useState([]);
+  const [starsEarned, setStarsEarned] = useState(0);
+  const [totalStarsSession, setTotalStarsSession] = useState(0);
+  const [worldsCompleted, setWorldsCompleted] = useState([]);
+  const [choiceResult, setChoiceResult] = useState(null); // {correct, msg, reward}
+  const [emotion, setEmotion] = useState("idle");
+  const [avatarAnim, setAvatarAnim] = useState("bounce");
+  const [fadeIn, setFadeIn] = useState(true);
 
-  const savePlayerData = (data) => { setPlayerData(data); store.set("legendsPlayerData", data); };
+  // Battle state
+  const [bossHp, setBossHp] = useState(0);
+  const [bossMaxHp, setBossMaxHp] = useState(0);
+  const [battlePhase, setBattlePhase] = useState("intro"); // intro, player_turn, boss_turn, won, lost
+  const [battleMsg, setBattleMsg] = useState("");
+  const [floatingTexts, setFloatingTexts] = useState([]);
+  const [impactText, setImpactText] = useState(null);
+  const [screenShake, setScreenShake] = useState(false);
+  const [battleTurn, setBattleTurn] = useState(0);
 
-  const getPlayer = (pid) => playerData[pid] || { totalPoints: 0, completedLevels: [], avatar: null, avatarCount: 0 };
+  const timerRef = useRef(null);
+  const floatIdRef = useRef(0);
 
-  const selectPlayer = (player) => {
-    setSelectedPlayer(player);
-    const pd = getPlayer(player.id);
-    // Check if should upgrade avatar
-    const milestones = [25, 50, 100, 200];
-    if (pd.avatar && milestones.includes(pd.totalPoints) && !pd[`upgraded_${pd.totalPoints}`]) {
-      setShowUpgradePrompt(true);
-    } else if (!pd.avatar) {
-      setShowAvatarDraw(true);
-    } else {
-      setScreen("worldmap");
+  // Profile data
+  const playerName = profile?.name || "Hero";
+  const playerEmoji = profile?.emoji || "🦸";
+  const playerColor = profile?.color || "#3b82f6";
+  const kd = kidsData?.[playerName] || {};
+  const currentPoints = kd.points || 0;
+
+  // ─── HELPERS ────────────────────────────────────────────
+
+  function addStars(n) {
+    setStarsEarned(s => s + n);
+    setTotalStarsSession(s => s + n);
+    // Write to Firebase
+    if (fbSet && kidsData && profile?.name) {
+      const updated = { ...kd, points: (kd.points || 0) + n };
+      fbSet("kidsData", { ...kidsData, [profile.name]: updated });
     }
-  };
+  }
 
-  const saveAvatar = (dataUrl, label) => {
-    const pd = getPlayer(selectedPlayer.id);
-    const updated = { ...playerData, [selectedPlayer.id]: { ...pd, avatar: dataUrl, avatarLabel: label || "My Character", avatarCount: (pd.avatarCount || 0) + 1 } };
-    if (showUpgradePrompt) {
-      const pts = pd.totalPoints;
-      updated[selectedPlayer.id][`upgraded_${pts}`] = true;
+  function addItem(itemId) {
+    if (ITEMS[itemId]) {
+      setInventory(inv => [...inv, itemId]);
+      if (itemId === "star") addStars(1);
     }
-    savePlayerData(updated);
-    setShowAvatarDraw(false);
-    setShowUpgradePrompt(false);
-    setScreen("worldmap");
-  };
+  }
 
-  const startLevel = (levelData) => {
-    setCurrentLevel(levelData);
-    setJudgeResult(null);
-    setDrawLabel("");
-    if (levelData.boss) {
-      const world = WORLDS.find(w => w.id === levelData.world);
-      setBossHP(world.boss.hp);
-      setCurrentInsultIdx(0);
-    }
-    setScreen("level");
-  };
-
-  const submitDrawing = async () => {
-    if (!drawLabel.trim()) { setJudgeResult({ success: false, message: "Type what you drew first! ✏️" }); return; }
-    setJudging(true);
-    setShowDrawCanvas(false);
-
-    if (currentLevel.boss) {
-      // Boss fight logic
-      const world = WORLDS.find(w => w.id === currentLevel.world);
-      const result = await judgeDrawing(currentLevel, drawLabel);
-      setJudging(false);
-
-      if (result.success) {
-        const newHP = bossHP - 1;
-        setBossHP(newHP);
-        if (newHP <= 0) {
-          setJudgeResult({ success: true, message: result.message, bossDefeated: true });
-          completeLevelSuccess();
-        } else {
-          // Boss counter attacks
-          setBossAttacking(true);
-          const insult = world.boss.insults[currentInsultIdx % world.boss.insults.length];
-          setBossInsult(insult);
-          setCurrentInsultIdx(i => i + 1);
-          setTimeout(() => setBossAttacking(false), 2000);
-          setJudgeResult({ success: true, message: `${result.message} Boss HP: ${newHP}/${world.boss.hp} ❤️`, bossHit: true });
-        }
-      } else {
-        // Boss taunts on miss
-        setBossAttacking(true);
-        const insult = world.boss.insults[currentInsultIdx % world.boss.insults.length];
-        setBossInsult(insult);
-        setCurrentInsultIdx(i => i + 1);
-        setTimeout(() => setBossAttacking(false), 2000);
-        setJudgeResult({ success: false, message: result.message || "That didn't work! Try again! 💪" });
+  function takeDamage(amount) {
+    const defense = inventory.filter(i => i === "shield").length + inventory.filter(i => i === "ring").length;
+    const actual = Math.max(1, amount - defense);
+    setHp(h => {
+      const newHp = Math.max(0, h - actual);
+      if (newHp <= 0) {
+        setTimeout(() => setScreen("game_over"), 800);
       }
-    } else {
-      const result = await judgeDrawing(currentLevel, drawLabel);
-      setJudging(false);
-      setJudgeResult(result);
-      if (result.success) completeLevelSuccess();
+      return newHp;
+    });
+    setEmotion("hurt");
+    setAvatarAnim("shake");
+    setTimeout(() => { setEmotion("determined"); setAvatarAnim("bounce"); }, 1000);
+    return actual;
+  }
+
+  function getAttackPower() {
+    let base = 1;
+    inventory.forEach(id => {
+      const item = ITEMS[id];
+      if (item && item.stat === "attack") base += item.value;
+      if (item && item.stat === "all") base += item.value;
+    });
+    return base;
+  }
+
+  function canDodge() {
+    return inventory.some(id => id === "boots") && Math.random() < 0.25;
+  }
+
+  function healFromPotions() {
+    const potionIdx = inventory.indexOf("potion");
+    if (potionIdx >= 0) {
+      setInventory(inv => {
+        const next = [...inv];
+        next.splice(potionIdx, 1);
+        return next;
+      });
+      setHp(h => Math.min(MAX_HP, h + 2));
+      return true;
     }
-  };
+    return false;
+  }
 
-  const completeLevelSuccess = () => {
-    const pd = getPlayer(selectedPlayer.id);
-    const levelKey = `${currentLevel.world}_${currentLevel.level}`;
-    const alreadyDone = pd.completedLevels?.includes(levelKey);
-    const newPoints = pd.totalPoints + (alreadyDone ? 0 : currentLevel.reward);
-    const newCompleted = alreadyDone ? pd.completedLevels : [...(pd.completedLevels || []), levelKey];
+  function transitionTo(newScreen) {
+    setFadeIn(false);
+    setTimeout(() => {
+      setScreen(newScreen);
+      setFadeIn(true);
+    }, 300);
+  }
 
-    // Spawn particles
-    setParticles([...Array(12)].map((_, i) => ({ id: i, x: 20 + Math.random() * 60, delay: i * 0.1 })));
-    setTimeout(() => setParticles([]), 2000);
+  function addFloatingText(text, color) {
+    const id = ++floatIdRef.current;
+    setFloatingTexts(ft => [...ft, { id, text, color }]);
+    setTimeout(() => setFloatingTexts(ft => ft.filter(f => f.id !== id)), 1000);
+  }
 
-    const updated = { ...playerData, [selectedPlayer.id]: { ...pd, totalPoints: newPoints, completedLevels: newCompleted } };
-    savePlayerData(updated);
+  function showImpact(text) {
+    setImpactText(text);
+    setTimeout(() => setImpactText(null), 800);
+  }
+
+  function triggerShake() {
+    setScreenShake(true);
+    setTimeout(() => setScreenShake(false), 400);
+  }
+
+  // ─── START ADVENTURE ────────────────────────────────────
+
+  function startWorld(worldIdx) {
+    setCurrentWorld(worldIdx);
+    setCurrentScene(0);
+    setChoiceResult(null);
+    setEmotion("determined");
+    setAvatarAnim("bounce");
+    transitionTo("adventure");
+  }
+
+  function startBoss() {
+    const world = WORLDS[currentWorld];
+    const boss = world.boss;
+    setBossHp(boss.hp);
+    setBossMaxHp(boss.hp);
+    setBattlePhase("intro");
+    setBattleMsg(`${boss.emoji} ${boss.name} appears! "${boss.taunts[0]}"`);
+    setBattleTurn(0);
+    setEmotion("scared");
+    setAvatarAnim("shake");
+    transitionTo("battle");
+    setTimeout(() => {
+      setBattlePhase("player_turn");
+      setEmotion("determined");
+      setAvatarAnim("bounce");
+      setBattleMsg("Your turn! Choose your action!");
+    }, 2000);
+  }
+
+  // ─── SCENE CHOICE HANDLER ──────────────────────────────
+
+  function handleChoice(option) {
+    if (option.correct) {
+      setEmotion("happy");
+      setAvatarAnim("jump");
+      if (option.reward) addItem(option.reward);
+      setChoiceResult({ correct: true, msg: option.msg, reward: option.reward });
+      addFloatingText("+1 ⭐", "#fbbf24");
+    } else {
+      const dmg = takeDamage(1);
+      setChoiceResult({ correct: false, msg: option.msg });
+      addFloatingText(`-${dmg} HP`, "#ef4444");
+    }
+  }
+
+  function nextScene() {
+    const world = WORLDS[currentWorld];
+    const nextIdx = currentScene + 1;
+    setChoiceResult(null);
+
+    if (nextIdx >= world.scenes.length) {
+      // All scenes done, boss time
+      startBoss();
+    } else {
+      setCurrentScene(nextIdx);
+      setEmotion("determined");
+      setAvatarAnim("bounce");
+    }
+  }
+
+  // ─── BATTLE ACTIONS ─────────────────────────────────────
+
+  function playerAttack() {
+    if (battlePhase !== "player_turn") return;
+    const power = getAttackPower();
+    const damage = Math.min(power, bossHp);
+    setBossHp(h => Math.max(0, h - damage));
+    showImpact("SLASH!");
+    addFloatingText(`-${damage}`, "#ef4444");
+    triggerShake();
+    setEmotion("determined");
+    setAvatarAnim("jump");
+
+    if (bossHp - damage <= 0) {
+      // Boss defeated
+      setTimeout(() => {
+        setBattlePhase("won");
+        setBattleMsg("VICTORY! The boss is defeated!");
+        setEmotion("victorious");
+        setAvatarAnim("jump");
+        addStars(5);
+        addFloatingText("+5 ⭐", "#fbbf24");
+        setWorldsCompleted(wc => [...wc, WORLDS[currentWorld].id]);
+      }, 600);
+    } else {
+      // Boss turn
+      setBattlePhase("boss_turn");
+      setBattleMsg("Boss is attacking...");
+      setTimeout(() => bossTurn(), 1200);
+    }
+  }
+
+  function playerDefend() {
+    if (battlePhase !== "player_turn") return;
+    setBattlePhase("boss_turn");
+    setBattleMsg("You brace yourself! Damage reduced!");
+    setEmotion("determined");
 
     setTimeout(() => {
-      if (currentLevel.boss) setShowWorldComplete(true);
-      else setShowLevelComplete(true);
-    }, 1500);
+      const world = WORLDS[currentWorld];
+      const boss = world.boss;
+      const atkIdx = Math.min(battleTurn, boss.attacks.length - 1);
+      const baseDmg = Math.ceil(world.difficulty / 2);
+
+      if (canDodge()) {
+        showImpact("DODGE!");
+        addFloatingText("MISS!", "#22c55e");
+        setBattleMsg("You dodged the attack!");
+      } else {
+        const reducedDmg = Math.max(1, baseDmg - 1);
+        takeDamage(reducedDmg);
+        showImpact(boss.attacks[atkIdx] + "!");
+        addFloatingText(`-${reducedDmg}`, "#ef4444");
+        triggerShake();
+        setBattleMsg(`${boss.name} used ${boss.attacks[atkIdx]}! But your defense helped!`);
+      }
+
+      setBattleTurn(t => t + 1);
+      setTimeout(() => {
+        setBattlePhase("player_turn");
+        setBattleMsg("Your turn! Choose your action!");
+        setEmotion("determined");
+        setAvatarAnim("bounce");
+      }, 1200);
+    }, 800);
+  }
+
+  function playerHeal() {
+    if (battlePhase !== "player_turn") return;
+    if (healFromPotions()) {
+      addFloatingText("+2 HP", "#22c55e");
+      showImpact("HEAL!");
+      setBattleMsg("You used a Health Potion! +2 HP!");
+      setEmotion("happy");
+      setBattlePhase("boss_turn");
+      setTimeout(() => bossTurn(), 1200);
+    } else {
+      setBattleMsg("No potions left! Choose another action.");
+    }
+  }
+
+  function bossTurn() {
+    const world = WORLDS[currentWorld];
+    const boss = world.boss;
+    const atkIdx = Math.min(battleTurn, boss.attacks.length - 1);
+    const tauntIdx = Math.min(battleTurn + 1, boss.taunts.length - 1);
+    const baseDmg = Math.ceil(world.difficulty * 0.8);
+
+    if (canDodge()) {
+      showImpact("DODGE!");
+      addFloatingText("MISS!", "#22c55e");
+      setBattleMsg(`${boss.name}: "${boss.taunts[tauntIdx]}" — but you dodged!`);
+    } else {
+      const dmg = takeDamage(baseDmg);
+      showImpact(boss.attacks[atkIdx] + "!");
+      addFloatingText(`-${dmg}`, "#ef4444");
+      triggerShake();
+      setBattleMsg(`${boss.name} used ${boss.attacks[atkIdx]}! "${boss.taunts[tauntIdx]}"`);
+    }
+
+    setBattleTurn(t => t + 1);
+    setTimeout(() => {
+      if (hp > 0) {
+        setBattlePhase("player_turn");
+        setBattleMsg("Your turn! Choose your action!");
+        setEmotion("determined");
+        setAvatarAnim("bounce");
+      }
+    }, 1200);
+  }
+
+  // ─── RESET / RETRY ─────────────────────────────────────
+
+  function retryWorld() {
+    setHp(MAX_HP);
+    setCurrentScene(0);
+    setChoiceResult(null);
+    setStarsEarned(0);
+    setEmotion("determined");
+    setAvatarAnim("bounce");
+    transitionTo("adventure");
+  }
+
+  function backToMenu() {
+    setHp(MAX_HP);
+    setStarsEarned(0);
+    setInventory([]);
+    setChoiceResult(null);
+    setEmotion("idle");
+    setAvatarAnim("bounce");
+    transitionTo("menu");
+  }
+
+  // ─── CLEANUP ────────────────────────────────────────────
+
+  useEffect(() => {
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, []);
+
+  // ─── RENDER SCREENS ─────────────────────────────────────
+
+  const fadeStyle = {
+    animation: fadeIn ? "ll-fade-in 0.4s ease-out" : "none",
+    opacity: fadeIn ? 1 : 0,
+    transition: "opacity 0.3s",
   };
 
-  const pd = selectedPlayer ? getPlayer(selectedPlayer.id) : null;
-  const totalLevelsCompleted = pd?.completedLevels?.length || 0;
-  const worldLevels = selectedWorld ? LEVELS.filter(l => l.world === selectedWorld.id) : [];
+  const containerStyle = {
+    position: "relative",
+    minHeight: 500,
+    borderRadius: 16,
+    overflow: "hidden",
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    ...fadeStyle,
+  };
 
-  const isLevelComplete = (l) => pd?.completedLevels?.includes(`${l.world}_${l.level}`);
-  const isLevelUnlocked = (l, idx) => idx === 0 || isLevelComplete(worldLevels[idx - 1]);
-  const isWorldUnlocked = (w) => totalLevelsCompleted >= w.unlockLevel;
+  // ─── MENU SCREEN ────────────────────────────────────────
 
-  // ── TITLE SCREEN
-  if (screen === "title") return (
-    <div style={{ minHeight:"100vh", background:"#030712", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"20px", fontFamily:"Georgia,serif", overflow:"hidden", position:"relative" }}>
-      <div style={{ position:"absolute", inset:0, overflow:"hidden" }}>
-        {[...Array(30)].map((_,i) => (
-          <div key={i} style={{ position:"absolute", width:"2px", height:"2px", background:"white", borderRadius:"50%", left:`${(i*7+3)%100}%`, top:`${(i*11+5)%100}%`, opacity:0.6, animation:`twinkle ${2+Math.random()*3}s infinite`, animationDelay:`${Math.random()*3}s` }}/>
-        ))}
-      </div>
-      <style>{`@keyframes twinkle{0%,100%{opacity:0.2}50%{opacity:1}} @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}} @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}`}</style>
-
-      <div style={{ textAlign:"center", zIndex:1 }}>
-        <div style={{ fontSize:"64px", animation:"float 3s infinite", marginBottom:"8px" }}>👑</div>
-        <div style={{ fontSize:"36px", fontWeight:"bold", background:"linear-gradient(135deg, #f59e0b, #f43f5e, #a78bfa)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", letterSpacing:"3px", marginBottom:"4px" }}>LUCAC</div>
-        <div style={{ fontSize:"24px", color:"#f59e0b", letterSpacing:"6px", marginBottom:"4px" }}>LEGENDS</div>
-        <div style={{ color:"#64748b", fontSize:"12px", letterSpacing:"2px", marginBottom:"32px" }}>DRAW YOUR WAY TO VICTORY</div>
-
-        <button onClick={() => setScreen("players")} style={{ background:"linear-gradient(135deg, #f59e0b, #f97316)", border:"none", borderRadius:"16px", padding:"16px 48px", fontSize:"20px", fontWeight:"bold", color:"#000", cursor:"pointer", boxShadow:"0 0 30px #f59e0b66", letterSpacing:"1px" }}>
-          ▶ PLAY
-        </button>
-        <button onClick={() => setScreen("leaderboard")} style={{ display:"block", margin:"14px auto 0", background:"none", border:"1px solid #f59e0b44", borderRadius:"12px", padding:"10px 28px", fontSize:"14px", color:"#f59e0b", cursor:"pointer" }}>
-          🏆 LEADERBOARD
-        </button>
-      </div>
-    </div>
-  );
-
-  // ── PLAYER SELECT
-  if (screen === "players") return (
-    <div style={{ minHeight:"100vh", background:"#030712", fontFamily:"Georgia,serif", padding:"20px" }}>
-      <div style={{ textAlign:"center", marginBottom:"28px" }}>
-        <div style={{ fontSize:"22px", fontWeight:"bold", color:"#f59e0b", letterSpacing:"2px" }}>WHO'S PLAYING?</div>
-        <div style={{ color:"#64748b", fontSize:"13px", marginTop:"4px" }}>Choose your hero</div>
-      </div>
-
-      {PLAYERS.map(player => {
-        const pd = getPlayer(player.id);
-        return (
-          <div key={player.id} onClick={() => selectPlayer(player)}
-            style={{ background:`linear-gradient(135deg, #0f0f1a, #1a1a2e)`, border:`2px solid ${player.color}44`, borderRadius:"20px", padding:"18px", marginBottom:"14px", cursor:"pointer", display:"flex", alignItems:"center", gap:"16px", boxShadow:`0 4px 20px ${player.color}22` }}>
-            {pd.avatar
-              ? <img src={pd.avatar} style={{ width:"64px", height:"64px", borderRadius:"50%", border:`3px solid ${player.color}`, objectFit:"cover", background:"#0a0a1a" }} alt="avatar"/>
-              : <div style={{ width:"64px", height:"64px", borderRadius:"50%", border:`3px solid ${player.color}`, background:"#0a0a1a", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"28px" }}>{player.emoji}</div>
-            }
-            <div style={{ flex:1 }}>
-              <div style={{ fontSize:"18px", fontWeight:"bold", color:player.color }}>{player.name}</div>
-              <div style={{ fontSize:"12px", color:"#64748b", marginTop:"2px" }}>{player.nickname}</div>
-              <div style={{ fontSize:"12px", color:"#f59e0b", marginTop:"4px" }}>⭐ {pd.totalPoints} pts • {pd.completedLevels?.length || 0} levels</div>
-            </div>
-            <div style={{ fontSize:"24px" }}>▶</div>
-          </div>
-        );
-      })}
-
-      <button onClick={() => setScreen("title")} style={{ background:"none", border:"none", color:"#64748b", cursor:"pointer", fontSize:"14px", display:"block", margin:"16px auto" }}>← Back</button>
-
-      {showAvatarDraw && (
-        <DrawingCanvas
-          title={`Draw your character, ${selectedPlayer?.name}! 🎨`}
-          subtitle="This is YOUR hero! Draw them with your finger!"
-          color={selectedPlayer?.color}
-          onSave={saveAvatar}
-          onClose={() => { setShowAvatarDraw(false); setSelectedPlayer(null); }}
-          height={300}
-        />
-      )}
-
-      {showUpgradePrompt && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.9)", zIndex:1000, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"20px" }}>
-          <div style={{ textAlign:"center", maxWidth:"360px" }}>
-            <div style={{ fontSize:"48px", marginBottom:"12px" }}>🎨</div>
-            <div style={{ fontSize:"22px", fontWeight:"bold", color:selectedPlayer?.color, marginBottom:"8px" }}>LEVEL UP YOUR AVATAR!</div>
-            <div style={{ color:"#94a3b8", fontSize:"14px", marginBottom:"24px", lineHeight:1.7 }}>
-              You've earned {pd?.totalPoints} points {selectedPlayer?.name}!<br/>
-              You can redraw your character to show how far you've come! 💪
-            </div>
-            <div style={{ display:"flex", gap:"12px", justifyContent:"center" }}>
-              <button onClick={() => { setShowUpgradePrompt(false); setShowAvatarDraw(true); }} style={{ background:selectedPlayer?.color, border:"none", borderRadius:"12px", padding:"12px 24px", fontSize:"15px", fontWeight:"bold", color:"#000", cursor:"pointer" }}>✏️ Redraw!</button>
-              <button onClick={() => { setShowUpgradePrompt(false); setScreen("worldmap"); }} style={{ background:"none", border:`1px solid ${selectedPlayer?.color}`, borderRadius:"12px", padding:"12px 24px", fontSize:"15px", color:selectedPlayer?.color, cursor:"pointer" }}>Keep Mine</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
-  // ── LEADERBOARD
-  if (screen === "leaderboard") return (
-    <div style={{ minHeight:"100vh", background:"#030712", fontFamily:"Georgia,serif", padding:"20px" }}>
-      <div style={{ textAlign:"center", marginBottom:"24px" }}>
-        <div style={{ fontSize:"40px" }}>🏆</div>
-        <div style={{ fontSize:"22px", fontWeight:"bold", color:"#f59e0b", letterSpacing:"2px" }}>LEADERBOARD</div>
-      </div>
-      {[...PLAYERS].sort((a, b) => getPlayer(b.id).totalPoints - getPlayer(a.id).totalPoints).map((player, i) => {
-        const pd = getPlayer(player.id);
-        const medals = ["🥇","🥈","🥉","🏅"];
-        return (
-          <div key={player.id} style={{ background:`linear-gradient(135deg, #0f0f1a, #1a1a2e)`, border:`2px solid ${i===0?"#f59e0b":player.color}44`, borderRadius:"16px", padding:"16px", marginBottom:"10px", display:"flex", alignItems:"center", gap:"14px" }}>
-            <div style={{ fontSize:"28px" }}>{medals[i]}</div>
-            {pd.avatar
-              ? <img src={pd.avatar} style={{ width:"48px", height:"48px", borderRadius:"50%", border:`2px solid ${player.color}`, objectFit:"cover", background:"#0a0a1a" }} alt="avatar"/>
-              : <div style={{ width:"48px", height:"48px", borderRadius:"50%", border:`2px solid ${player.color}`, background:"#0a0a1a", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"22px" }}>{player.emoji}</div>
-            }
-            <div style={{ flex:1 }}>
-              <div style={{ fontWeight:"bold", color:player.color }}>{player.name}</div>
-              <div style={{ fontSize:"12px", color:"#64748b" }}>{pd.completedLevels?.length || 0} levels complete</div>
-            </div>
-            <div style={{ fontSize:"20px", fontWeight:"bold", color:"#f59e0b" }}>⭐ {pd.totalPoints}</div>
-          </div>
-        );
-      })}
-      <button onClick={() => setScreen("title")} style={{ background:"none", border:"none", color:"#64748b", cursor:"pointer", fontSize:"14px", display:"block", margin:"16px auto" }}>← Back</button>
-    </div>
-  );
-
-  // ── WORLD MAP
-  if (screen === "worldmap") return (
-    <div style={{ minHeight:"100vh", background:"#030712", fontFamily:"Georgia,serif", padding:"20px", paddingBottom:"40px" }}>
-      <div style={{ display:"flex", alignItems:"center", gap:"12px", marginBottom:"20px" }}>
-        {pd?.avatar
-          ? <img src={pd.avatar} style={{ width:"44px", height:"44px", borderRadius:"50%", border:`2px solid ${selectedPlayer?.color}`, objectFit:"cover", background:"#0a0a1a" }} alt="avatar"/>
-          : <div style={{ width:"44px", height:"44px", borderRadius:"50%", border:`2px solid ${selectedPlayer?.color}`, background:"#0a0a1a", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"20px" }}>{selectedPlayer?.emoji}</div>
-        }
-        <div>
-          <div style={{ fontWeight:"bold", color:selectedPlayer?.color, fontSize:"16px" }}>{selectedPlayer?.name}</div>
-          <div style={{ fontSize:"12px", color:"#f59e0b" }}>⭐ {pd?.totalPoints || 0} pts</div>
-        </div>
-        <button onClick={() => setScreen("players")} style={{ marginLeft:"auto", background:"none", border:"none", color:"#64748b", cursor:"pointer", fontSize:"20px" }}>←</button>
-      </div>
-
-      <div style={{ textAlign:"center", marginBottom:"20px" }}>
-        <div style={{ fontSize:"20px", fontWeight:"bold", color:"#f59e0b", letterSpacing:"2px" }}>CHOOSE YOUR WORLD</div>
-        <div style={{ fontSize:"12px", color:"#64748b", marginTop:"4px" }}>Complete levels to unlock new worlds!</div>
-      </div>
-
-      {WORLDS.map((world) => {
-        const unlocked = isWorldUnlocked(world);
-        const worldComplete = LEVELS.filter(l => l.world === world.id).every(l => isLevelComplete(l));
-        const completedCount = LEVELS.filter(l => l.world === world.id && isLevelComplete(l)).length;
-        return (
-          <div key={world.id} onClick={() => { if(unlocked){ setSelectedWorld(world); setScreen("levels"); } }}
-            style={{ background:`linear-gradient(135deg, #0f0f1a, ${unlocked?world.bg:"#0a0a0a"})`, border:`2px solid ${unlocked?world.color:"#333"}`, borderRadius:"20px", padding:"18px", marginBottom:"14px", cursor:unlocked?"pointer":"not-allowed", opacity:unlocked?1:0.5, position:"relative", overflow:"hidden" }}>
-            {worldComplete && <div style={{ position:"absolute", top:"10px", right:"10px", background:"#f59e0b", borderRadius:"20px", padding:"2px 10px", fontSize:"11px", fontWeight:"bold", color:"#000" }}>✅ DONE!</div>}
-            <div style={{ display:"flex", alignItems:"center", gap:"14px" }}>
-              <div style={{ fontSize:"44px" }}>{world.emoji}</div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:"18px", fontWeight:"bold", color:unlocked?world.color:"#444" }}>{world.name}</div>
-                <div style={{ fontSize:"12px", color:"#64748b", marginTop:"3px" }}>{completedCount}/5 levels • Boss: {world.boss.name}</div>
-                {!unlocked && <div style={{ fontSize:"11px", color:"#64748b", marginTop:"3px" }}>🔒 Complete {world.unlockLevel} levels to unlock</div>}
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-
-  // ── LEVEL SELECT
-  if (screen === "levels" && selectedWorld) return (
-    <div style={{ minHeight:"100vh", background:selectedWorld.bg, fontFamily:"Georgia,serif", padding:"20px" }}>
-      <div style={{ display:"flex", alignItems:"center", gap:"12px", marginBottom:"24px" }}>
-        <button onClick={() => setScreen("worldmap")} style={{ background:"none", border:"none", color:"#94a3b8", cursor:"pointer", fontSize:"20px" }}>←</button>
-        <div style={{ fontSize:"32px" }}>{selectedWorld.emoji}</div>
-        <div>
-          <div style={{ fontSize:"18px", fontWeight:"bold", color:selectedWorld.color }}>{selectedWorld.name}</div>
-          <div style={{ fontSize:"12px", color:"#64748b" }}>Defeat {selectedWorld.boss.name} to conquer this world!</div>
-        </div>
-      </div>
-
-      {worldLevels.map((level, idx) => {
-        const done = isLevelComplete(level);
-        const unlocked = isLevelUnlocked(level, idx);
-        return (
-          <div key={idx} onClick={() => unlocked && startLevel(level)}
-            style={{ background:done?"#0f2010":unlocked?"#1a1a2e":"#0a0a0a", border:`2px solid ${done?"#4ade80":unlocked?selectedWorld.color:"#222"}`, borderRadius:"16px", padding:"16px", marginBottom:"12px", cursor:unlocked?"pointer":"not-allowed", opacity:unlocked?1:0.5, display:"flex", alignItems:"center", gap:"14px" }}>
-            <div style={{ width:"44px", height:"44px", borderRadius:"50%", background:done?"#4ade8022":unlocked?`${selectedWorld.color}22`:"#222", border:`2px solid ${done?"#4ade80":unlocked?selectedWorld.color:"#333"}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"20px", flexShrink:0 }}>
-              {done?"✅":unlocked?level.boss?"👾":"⚔️":"🔒"}
-            </div>
-            <div style={{ flex:1 }}>
-              <div style={{ fontWeight:"bold", color:done?"#4ade80":unlocked?selectedWorld.color:"#444", fontSize:"15px" }}>{level.title}</div>
-              <div style={{ fontSize:"12px", color:"#64748b", marginTop:"3px" }}>{level.bg}</div>
-            </div>
-            <div style={{ textAlign:"right" }}>
-              <div style={{ fontSize:"13px", color:"#f59e0b", fontWeight:"bold" }}>+{level.reward}⭐</div>
-              {done && <div style={{ fontSize:"10px", color:"#4ade80" }}>Done!</div>}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-
-  // ── LEVEL SCREEN
-  if (screen === "level" && currentLevel) {
-    const world = WORLDS.find(w => w.id === currentLevel.world);
+  if (screen === "menu") {
     return (
-      <div style={{ minHeight:"100vh", background:world.bg, fontFamily:"Georgia,serif", padding:"20px", position:"relative" }}>
-        <style>{`@keyframes bossShake{0%,100%{transform:scale(1) rotate(0)}25%{transform:scale(1.1) rotate(-3deg)}75%{transform:scale(1.1) rotate(3deg)}} @keyframes popUp{0%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-200%) scale(1.5)}}`}</style>
+      <>
+        <style>{KEYFRAMES_CSS}</style>
+        <div style={containerStyle}>
+          <div style={{ position: "relative", minHeight: 500,
+            background: "linear-gradient(135deg, #0f0c29, #302b63, #24243e)",
+            padding: 20 }}>
+            {/* Decorative stars */}
+            {[0,1,2,3,4,5,6,7].map(i => (
+              <div key={i} style={{ position: "absolute",
+                top: `${10 + (i * 13) % 60}%`, left: `${5 + (i * 17) % 90}%`,
+                fontSize: 14 + (i % 3) * 6, opacity: 0.3,
+                animation: `ll-pulse ${2 + i * 0.3}s ease-in-out ${i * 0.2}s infinite` }}>
+                ✨
+              </div>
+            ))}
 
-        {/* Particles */}
-        {particles.map(p => (
-          <div key={p.id} style={{ position:"fixed", left:`${p.x}%`, top:"50%", fontSize:"24px", animation:`popUp 1s ease-out forwards`, animationDelay:`${p.delay}s`, zIndex:999, pointerEvents:"none", transform:"translate(-50%,-50%)" }}>⭐</div>
-        ))}
+            <div style={{ position: "relative", zIndex: 1, textAlign: "center" }}>
+              {/* Title */}
+              <div style={{ fontSize: 32, fontWeight: 900, color: "#fbbf24",
+                textShadow: "0 0 20px rgba(251,191,36,0.5), 2px 2px 0 #92400e",
+                marginBottom: 8, letterSpacing: 2 }}>
+                LUCAC LEGENDS
+              </div>
+              <div style={{ fontSize: 14, color: "rgba(255,255,255,0.6)", marginBottom: 20 }}>
+                An Epic Adventure Awaits
+              </div>
 
-        {/* Header */}
-        <div style={{ display:"flex", alignItems:"center", gap:"10px", marginBottom:"16px" }}>
-          <button onClick={() => { setScreen("levels"); setJudgeResult(null); }} style={{ background:"none", border:"none", color:"#94a3b8", cursor:"pointer", fontSize:"20px" }}>←</button>
-          <div style={{ flex:1 }}>
-            <div style={{ fontSize:"16px", fontWeight:"bold", color:world.color }}>{currentLevel.title}</div>
-            <div style={{ fontSize:"11px", color:"#64748b" }}>Reward: +{currentLevel.reward}⭐</div>
+              {/* Avatar */}
+              <div style={{ marginBottom: 16 }}>
+                <Avatar emoji={playerEmoji} emotion={emotion} anim="pulse" size={70} />
+                <div style={{ fontSize: 18, fontWeight: 700, color: "#fff", marginTop: 8 }}>
+                  {playerName}
+                </div>
+                <div style={{ fontSize: 14, color: "#fbbf24" }}>
+                  ⭐ {currentPoints} stars
+                </div>
+              </div>
+
+              {/* Main buttons */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 300, margin: "0 auto" }}>
+                <GameBtn color="#22c55e" big onClick={() => transitionTo("world_select")}>
+                  ⚔️ Start Adventure
+                </GameBtn>
+                <GameBtn color="#8b5cf6" onClick={() => transitionTo("store")}>
+                  🏪 Star Store
+                </GameBtn>
+                <GameBtn color="#f59e0b" onClick={() => transitionTo("chores")}>
+                  📋 My Chores
+                </GameBtn>
+              </div>
+
+              {/* Quick stats */}
+              <div style={{ marginTop: 20, display: "flex", justifyContent: "center", gap: 16, flexWrap: "wrap" }}>
+                <div style={{ background: "rgba(255,255,255,0.1)", borderRadius: 10, padding: "8px 14px" }}>
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>Worlds Beaten</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: "#22c55e" }}>{worldsCompleted.length}</div>
+                </div>
+                <div style={{ background: "rgba(255,255,255,0.1)", borderRadius: 10, padding: "8px 14px" }}>
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>Stars Today</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: "#fbbf24" }}>{totalStarsSession}</div>
+                </div>
+                <div style={{ background: "rgba(255,255,255,0.1)", borderRadius: 10, padding: "8px 14px" }}>
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>Items</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: "#a78bfa" }}>{inventory.length}</div>
+                </div>
+              </div>
+            </div>
           </div>
-          <div style={{ fontSize:"12px", color:"#f59e0b" }}>⭐ {pd?.totalPoints}</div>
         </div>
-
-        {/* Boss HP bar */}
-        {currentLevel.boss && (
-          <div style={{ background:"#1a1a2e", border:`1px solid ${world.color}`, borderRadius:"12px", padding:"12px", marginBottom:"14px" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"6px" }}>
-              <span style={{ color:world.color, fontWeight:"bold", fontSize:"14px" }}>{world.boss.name}</span>
-              <span style={{ color:"#f43f5e", fontSize:"13px" }}>{[...Array(bossHP)].map(()=>"❤️").join("")}</span>
-            </div>
-            <div style={{ background:"#0a0a1a", borderRadius:"8px", height:"8px", overflow:"hidden" }}>
-              <div style={{ height:"100%", background:"#f43f5e", width:`${(bossHP/world.boss.hp)*100}%`, transition:"width 0.5s", borderRadius:"8px" }}/>
-            </div>
-          </div>
-        )}
-
-        {/* Boss emoji */}
-        {currentLevel.boss && (
-          <div style={{ textAlign:"center", marginBottom:"14px", position:"relative" }}>
-            <div style={{ fontSize:"80px", animation:bossAttacking?"bossShake 0.5s infinite":"none", display:"inline-block" }}>{world.boss.emoji}</div>
-            {bossAttacking && bossInsult && (
-              <div style={{ background:"#1a0a10", border:"2px solid #f43f5e", borderRadius:"12px", padding:"10px 14px", marginTop:"8px", color:"#fda4af", fontSize:"14px", fontStyle:"italic", textAlign:"center" }}>
-                💬 "{bossInsult}"
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Puzzle */}
-        <div style={{ background:"#1a1a2e", border:`1px solid ${world.color}44`, borderRadius:"16px", padding:"16px", marginBottom:"16px" }}>
-          <div style={{ fontSize:"11px", color:"#64748b", textTransform:"uppercase", letterSpacing:"1px", marginBottom:"8px" }}>THE PUZZLE</div>
-          <div style={{ fontSize:"15px", lineHeight:1.7, color:"#f1f5f9" }}>{currentLevel.puzzle}</div>
-        </div>
-
-        {/* Judge result */}
-        {judging && (
-          <div style={{ background:"#1a1a2e", borderRadius:"16px", padding:"20px", textAlign:"center", marginBottom:"16px" }}>
-            <div style={{ fontSize:"32px", marginBottom:"8px" }}>🤔</div>
-            <div style={{ color:"#94a3b8", fontSize:"14px" }}>Hmm, let me think about this...</div>
-          </div>
-        )}
-
-        {judgeResult && !judging && (
-          <div style={{ background:judgeResult.success?"#0f2010":"#1a0a0a", border:`2px solid ${judgeResult.success?"#4ade80":"#f43f5e"}`, borderRadius:"16px", padding:"16px", marginBottom:"16px", textAlign:"center" }}>
-            <div style={{ fontSize:"32px", marginBottom:"8px" }}>{judgeResult.bossDefeated?"🏆":judgeResult.success?"🎉":"😤"}</div>
-            <div style={{ color:judgeResult.success?"#4ade80":"#f43f5e", fontSize:"15px", fontWeight:"bold" }}>{judgeResult.message}</div>
-          </div>
-        )}
-
-        {/* Draw button */}
-        {!judgeResult?.bossDefeated && (
-          <button onClick={() => setShowDrawCanvas(true)} style={{ width:"100%", background:`linear-gradient(135deg, ${world.color}, ${world.color}88)`, border:"none", borderRadius:"16px", padding:"16px", fontSize:"18px", fontWeight:"bold", color:"#000", cursor:"pointer", marginBottom:"12px", boxShadow:`0 4px 20px ${world.color}44` }}>
-            ✏️ {judgeResult ? "Try Again! Draw Something Else!" : "Draw Your Solution!"}
-          </button>
-        )}
-
-        {judgeResult?.bossDefeated && (
-          <button onClick={() => setShowWorldComplete(true)} style={{ width:"100%", background:"linear-gradient(135deg, #f59e0b, #f97316)", border:"none", borderRadius:"16px", padding:"16px", fontSize:"18px", fontWeight:"bold", color:"#000", cursor:"pointer" }}>
-            🏆 WORLD CONQUERED! Continue!
-          </button>
-        )}
-
-        {/* Drawing canvas */}
-        {showDrawCanvas && (
-          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.95)", zIndex:500, display:"flex", flexDirection:"column", padding:"20px" }}>
-            <div style={{ textAlign:"center", marginBottom:"14px" }}>
-              <div style={{ fontSize:"18px", fontWeight:"bold", color:world.color }}>✏️ Draw your solution!</div>
-              <div style={{ fontSize:"13px", color:"#64748b", marginTop:"4px" }}>{currentLevel.puzzle}</div>
-            </div>
-            <canvas
-              id="solveCanvas"
-              width={400} height={260}
-              style={{ background:"#0a0a1a", borderRadius:"14px", border:`2px solid ${world.color}`, width:"100%", touchAction:"none" }}
-              onMouseDown={e=>{const c=e.target;const ctx=c.getContext("2d");ctx.beginPath();const r=c.getBoundingClientRect();ctx.moveTo(e.clientX-r.left,e.clientY-r.top);c._drawing=true;}}
-              onMouseMove={e=>{const c=e.target;if(!c._drawing)return;const ctx=c.getContext("2d");const r=c.getBoundingClientRect();ctx.lineWidth=4;ctx.lineCap="round";ctx.strokeStyle=world.color;ctx.lineTo(e.clientX-r.left,e.clientY-r.top);ctx.stroke();ctx.beginPath();ctx.moveTo(e.clientX-r.left,e.clientY-r.top);}}
-              onMouseUp={e=>e.target._drawing=false}
-              onTouchStart={e=>{e.preventDefault();const c=e.target;const ctx=c.getContext("2d");const r=c.getBoundingClientRect();const t=e.touches[0];ctx.beginPath();ctx.moveTo(t.clientX-r.left,t.clientY-r.top);c._drawing=true;}}
-              onTouchMove={e=>{e.preventDefault();const c=e.target;if(!c._drawing)return;const ctx=c.getContext("2d");const r=c.getBoundingClientRect();const t=e.touches[0];ctx.lineWidth=4;ctx.lineCap="round";ctx.strokeStyle=world.color;ctx.lineTo(t.clientX-r.left,t.clientY-r.top);ctx.stroke();ctx.beginPath();ctx.moveTo(t.clientX-r.left,t.clientY-r.top);}}
-              onTouchEnd={e=>e.target._drawing=false}
-            />
-            <input
-              style={{ background:"#1a1a2e", border:`1px solid ${world.color}44`, borderRadius:"10px", padding:"10px 14px", color:"white", fontSize:"15px", marginTop:"10px", fontFamily:"Georgia,serif" }}
-              placeholder="What did you draw? Type it here!"
-              value={drawLabel}
-              onChange={e => setDrawLabel(e.target.value)}
-              onKeyDown={e => e.key==="Enter" && submitDrawing()}
-            />
-            <div style={{ display:"flex", gap:"10px", marginTop:"10px" }}>
-              <button onClick={() => setShowDrawCanvas(false)} style={{ flex:1, background:"none", border:"1px solid #444", borderRadius:"10px", padding:"12px", color:"#94a3b8", cursor:"pointer" }}>Cancel</button>
-              <button onClick={submitDrawing} style={{ flex:2, background:world.color, border:"none", borderRadius:"10px", padding:"12px", fontWeight:"bold", color:"#000", cursor:"pointer", fontSize:"15px" }}>
-                🎯 Submit Drawing!
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Level complete modal */}
-        {showLevelComplete && (
-          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.92)", zIndex:900, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"20px" }}>
-            <div style={{ textAlign:"center", maxWidth:"360px" }}>
-              <div style={{ fontSize:"72px", marginBottom:"12px" }}>🎉</div>
-              <div style={{ fontSize:"26px", fontWeight:"bold", color:"#4ade80", marginBottom:"8px" }}>LEVEL COMPLETE!</div>
-              <div style={{ color:"#f59e0b", fontSize:"20px", marginBottom:"6px" }}>+{currentLevel.reward} ⭐ STARS!</div>
-              <div style={{ color:"#94a3b8", fontSize:"14px", marginBottom:"24px" }}>Total: {pd?.totalPoints} stars</div>
-              <div style={{ display:"flex", gap:"12px", justifyContent:"center" }}>
-                <button onClick={() => { setShowLevelComplete(false); setScreen("levels"); setJudgeResult(null); }} style={{ background:"linear-gradient(135deg,#4ade80,#22c55e)", border:"none", borderRadius:"14px", padding:"14px 28px", fontSize:"16px", fontWeight:"bold", color:"#000", cursor:"pointer" }}>Next Level! ▶</button>
-                <button onClick={() => { setShowLevelComplete(false); setJudgeResult(null); setDrawLabel(""); }} style={{ background:"none", border:"1px solid #4ade80", borderRadius:"14px", padding:"14px 20px", fontSize:"14px", color:"#4ade80", cursor:"pointer" }}>Play Again</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* World complete modal */}
-        {showWorldComplete && (
-          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.95)", zIndex:900, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:"20px" }}>
-            <div style={{ textAlign:"center", maxWidth:"380px" }}>
-              <div style={{ fontSize:"72px", marginBottom:"12px" }}>🏆</div>
-              <div style={{ fontSize:"28px", fontWeight:"bold", color:world.color, marginBottom:"6px" }}>{world.name}</div>
-              <div style={{ fontSize:"20px", color:"#4ade80", marginBottom:"8px" }}>CONQUERED! 👑</div>
-              <div style={{ background:"#1a1a2e", borderRadius:"14px", padding:"16px", marginBottom:"20px" }}>
-                <div style={{ color:"#f59e0b", fontSize:"22px", fontWeight:"bold", marginBottom:"4px" }}>+{currentLevel.reward} ⭐</div>
-                <div style={{ color:"#64748b", fontSize:"13px" }}>{world.boss.name} has been defeated!</div>
-                {currentLevel.world === "fantasy" && <div style={{ color:"#f43f5e", fontSize:"13px", marginTop:"8px", fontStyle:"italic" }}>Danyells has been defeated! 💅👊</div>}
-              </div>
-              <button onClick={() => { setShowWorldComplete(false); setScreen("worldmap"); setJudgeResult(null); }} style={{ background:`linear-gradient(135deg, ${world.color}, #f59e0b)`, border:"none", borderRadius:"14px", padding:"16px 40px", fontSize:"18px", fontWeight:"bold", color:"#000", cursor:"pointer" }}>
-                🗺️ Back to World Map!
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+      </>
     );
   }
 
-  return <div style={{ minHeight:"100vh", background:"#030712", display:"flex", alignItems:"center", justifyContent:"center", color:"white", fontFamily:"Georgia,serif" }}>Loading LUCAC LEGENDS... 👑</div>;
+  // ─── WORLD SELECT ───────────────────────────────────────
+
+  if (screen === "world_select") {
+    return (
+      <>
+        <style>{KEYFRAMES_CSS}</style>
+        <div style={containerStyle}>
+          <div style={{ position: "relative", minHeight: 500,
+            background: "linear-gradient(180deg, #0f0c29, #302b63)", padding: 16 }}>
+            <div style={{ position: "relative", zIndex: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                <GameBtn color="#64748b" onClick={backToMenu}
+                  style={{ width: "auto", padding: "10px 16px" }}>
+                  ← Back
+                </GameBtn>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#fff" }}>Choose Your World</div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {WORLDS.map((world, idx) => {
+                  const locked = idx > worldsCompleted.length;
+                  const beaten = worldsCompleted.includes(world.id);
+                  return (
+                    <button key={world.id}
+                      onClick={() => !locked && startWorld(idx)}
+                      style={{
+                        background: locked ? "rgba(255,255,255,0.05)" :
+                          `linear-gradient(135deg, ${world.color}33, ${world.color}11)`,
+                        border: `2px solid ${locked ? "rgba(255,255,255,0.1)" : world.color}`,
+                        borderRadius: 14,
+                        padding: 16,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 14,
+                        cursor: locked ? "not-allowed" : "pointer",
+                        opacity: locked ? 0.4 : 1,
+                        transition: "all 0.2s",
+                        width: "100%",
+                        textAlign: "left",
+                      }}>
+                      <div style={{ fontSize: 40 }}>{locked ? "🔒" : world.emoji}</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 18, fontWeight: 700, color: "#fff" }}>
+                          {world.name}
+                          {beaten && <span style={{ marginLeft: 8, fontSize: 14 }}>✅</span>}
+                        </div>
+                        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginTop: 2 }}>
+                          Boss: {world.boss.emoji} {world.boss.name}
+                        </div>
+                        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>
+                          Difficulty: {"⭐".repeat(world.difficulty)}
+                        </div>
+                      </div>
+                      {!locked && !beaten && (
+                        <div style={{ fontSize: 24, animation: "ll-bounce 1s ease-in-out infinite" }}>▶️</div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // ─── ADVENTURE SCENE ────────────────────────────────────
+
+  if (screen === "adventure") {
+    const world = WORLDS[currentWorld];
+    const scene = world.scenes[currentScene];
+    const sceneType = scene?.type || "forest";
+    const choices = SCENE_CHOICES[sceneType];
+    const choiceSet = choices ? choices[currentScene % choices.length] : null;
+
+    return (
+      <>
+        <style>{KEYFRAMES_CSS}</style>
+        <div style={containerStyle}>
+          <SceneBG type={sceneType} />
+
+          {/* Floating texts */}
+          {floatingTexts.map(ft => (
+            <FloatingText key={ft.id} text={ft.text} color={ft.color} />
+          ))}
+
+          <div style={{ position: "relative", zIndex: 1, padding: 16, minHeight: 500,
+            display: "flex", flexDirection: "column" }}>
+            {/* Top bar */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start",
+              marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+              <div>
+                <HPDisplay current={hp} max={MAX_HP} label={playerName} color={playerColor} />
+                <InventoryBar inventory={inventory} />
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ background: "rgba(0,0,0,0.4)", borderRadius: 8, padding: "4px 10px",
+                  fontSize: 14, color: "#fbbf24", fontWeight: 700 }}>
+                  ⭐ {starsEarned}
+                </div>
+                <GameBtn color="#64748b" onClick={backToMenu}
+                  style={{ width: "auto", padding: "6px 12px", minHeight: 36, fontSize: 14 }}>
+                  ✕
+                </GameBtn>
+              </div>
+            </div>
+
+            {/* Scene info */}
+            <div style={{ background: "rgba(0,0,0,0.5)", borderRadius: 14, padding: 16,
+              marginBottom: 12, backdropFilter: "blur(4px)" }}>
+              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", marginBottom: 4 }}>
+                {world.emoji} {world.name} — Scene {currentScene + 1}/{world.scenes.length}
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", marginBottom: 6 }}>
+                {scene.title}
+              </div>
+              <div style={{ fontSize: 15, color: "rgba(255,255,255,0.85)", lineHeight: 1.5 }}>
+                {scene.desc}
+              </div>
+            </div>
+
+            {/* Avatar in scene */}
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
+              <Avatar emoji={playerEmoji} emotion={emotion} anim={avatarAnim} size={56} />
+            </div>
+
+            {/* Choice area */}
+            {!choiceResult && choiceSet && (
+              <div style={{ background: "rgba(0,0,0,0.4)", borderRadius: 14, padding: 14 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 12,
+                  textAlign: "center" }}>
+                  {choiceSet.prompt}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {choiceSet.options.map((opt, i) => (
+                    <GameBtn key={i} color={["#3b82f6", "#8b5cf6", "#06b6d4"][i]}
+                      onClick={() => handleChoice(opt)}>
+                      {opt.text}
+                    </GameBtn>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Result */}
+            {choiceResult && (
+              <div style={{ background: choiceResult.correct ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)",
+                border: `2px solid ${choiceResult.correct ? "#22c55e" : "#ef4444"}`,
+                borderRadius: 14, padding: 16, textAlign: "center" }}>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>
+                  {choiceResult.correct ? "✅" : "💥"}
+                </div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 8 }}>
+                  {choiceResult.correct ? "Great Choice!" : "Ouch!"}
+                </div>
+                <div style={{ fontSize: 14, color: "rgba(255,255,255,0.85)", marginBottom: 4 }}>
+                  {choiceResult.msg}
+                </div>
+                {choiceResult.reward && ITEMS[choiceResult.reward] && (
+                  <div style={{ fontSize: 14, color: "#fbbf24", marginTop: 4 }}>
+                    Found: {ITEMS[choiceResult.reward].emoji} {ITEMS[choiceResult.reward].name}!
+                  </div>
+                )}
+                <div style={{ marginTop: 14 }}>
+                  {hp > 0 ? (
+                    <GameBtn color="#22c55e" big onClick={nextScene}>
+                      {currentScene + 1 >= world.scenes.length ? "⚔️ Face the Boss!" : "➡️ Continue"}
+                    </GameBtn>
+                  ) : null}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // ─── BOSS BATTLE ────────────────────────────────────────
+
+  if (screen === "battle") {
+    const world = WORLDS[currentWorld];
+    const boss = world.boss;
+    const hasPotions = inventory.includes("potion");
+
+    return (
+      <>
+        <style>{KEYFRAMES_CSS}</style>
+        <div style={containerStyle}>
+          <BossArenaBG shake={screenShake} />
+
+          {/* Floating texts */}
+          {floatingTexts.map(ft => (
+            <FloatingText key={ft.id} text={ft.text} color={ft.color} />
+          ))}
+
+          {/* Impact text */}
+          {impactText && <ImpactText text={impactText} />}
+
+          <div style={{ position: "relative", zIndex: 1, padding: 16, minHeight: 500,
+            display: "flex", flexDirection: "column" }}>
+            {/* Boss HP */}
+            <BossHPBar current={bossHp} max={bossMaxHp} emoji={boss.emoji}
+              name={boss.name} color={boss.color} />
+
+            {/* Boss avatar area */}
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+              <div style={{
+                fontSize: 64,
+                animation: bossHp > 0 ? "ll-pulse 2s ease-in-out infinite" : "ll-shake 0.5s ease-in-out",
+                filter: bossHp <= 0 ? "grayscale(1)" : "none",
+                transition: "filter 0.5s",
+              }}>
+                {boss.emoji}
+              </div>
+            </div>
+
+            {/* VS divider */}
+            <div style={{ textAlign: "center", fontSize: 14, fontWeight: 900, color: "#fbbf24",
+              textShadow: "0 0 10px #fbbf24", marginBottom: 4, letterSpacing: 4 }}>
+              ─── VS ───
+            </div>
+
+            {/* Player area */}
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+              <Avatar emoji={playerEmoji} emotion={emotion} anim={avatarAnim} size={52} />
+            </div>
+            <div style={{ marginBottom: 12 }}>
+              <HPDisplay current={hp} max={MAX_HP} label={playerName} color={playerColor} />
+              <InventoryBar inventory={inventory} />
+            </div>
+
+            {/* Battle message */}
+            <div style={{ background: "rgba(0,0,0,0.6)", borderRadius: 12, padding: 14,
+              marginBottom: 12, textAlign: "center", minHeight: 50,
+              border: "1px solid rgba(255,255,255,0.15)" }}>
+              <div style={{ fontSize: 15, color: "#fff", fontWeight: 600, lineHeight: 1.5 }}>
+                {battleMsg}
+              </div>
+            </div>
+
+            {/* Battle actions */}
+            {battlePhase === "player_turn" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10,
+                animation: "ll-fade-in 0.3s ease-out" }}>
+                <GameBtn color="#ef4444" big onClick={playerAttack}>
+                  ⚔️ Attack! (Power: {getAttackPower()})
+                </GameBtn>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <GameBtn color="#3b82f6" onClick={playerDefend}>
+                    🛡️ Defend
+                  </GameBtn>
+                  <GameBtn color="#22c55e" onClick={playerHeal}
+                    disabled={!hasPotions}>
+                    ❤️ Heal {hasPotions ? "" : "(empty)"}
+                  </GameBtn>
+                </div>
+              </div>
+            )}
+
+            {battlePhase === "boss_turn" && (
+              <div style={{ textAlign: "center", padding: 20 }}>
+                <div style={{ fontSize: 40, animation: "ll-spin 1s linear infinite" }}>⏳</div>
+              </div>
+            )}
+
+            {battlePhase === "won" && (
+              <div style={{ textAlign: "center", animation: "ll-fade-in 0.5s ease-out" }}>
+                <div style={{ fontSize: 40, marginBottom: 8 }}>🏆</div>
+                <div style={{ fontSize: 22, fontWeight: 900, color: "#fbbf24",
+                  textShadow: "0 0 15px #fbbf24", marginBottom: 8 }}>
+                  VICTORY!
+                </div>
+                <div style={{ fontSize: 15, color: "#fff", marginBottom: 4 }}>
+                  You defeated {boss.name}!
+                </div>
+                <div style={{ fontSize: 16, color: "#fbbf24", fontWeight: 700, marginBottom: 16 }}>
+                  +5 ⭐ Stars Earned!
+                </div>
+                <GameBtn color="#22c55e" big onClick={() => {
+                  addStars(3); // Level completion bonus
+                  transitionTo("victory");
+                }}>
+                  🎉 Celebrate! (+3 bonus stars)
+                </GameBtn>
+              </div>
+            )}
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // ─── VICTORY SCREEN ─────────────────────────────────────
+
+  if (screen === "victory") {
+    const world = WORLDS[currentWorld];
+    return (
+      <>
+        <style>{KEYFRAMES_CSS}</style>
+        <div style={containerStyle}>
+          <VictoryBG />
+
+          <div style={{ position: "relative", zIndex: 1, padding: 20, minHeight: 500,
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+            textAlign: "center" }}>
+            <div style={{ fontSize: 60, marginBottom: 8, animation: "ll-jump 1s ease-in-out infinite" }}>
+              🏆
+            </div>
+            <Avatar emoji={playerEmoji} emotion="victorious" anim="jump" size={64} />
+            <div style={{ fontSize: 28, fontWeight: 900, color: "#7c3aed",
+              textShadow: "0 2px 0 rgba(0,0,0,0.1)", margin: "12px 0 4px" }}>
+              WORLD COMPLETE!
+            </div>
+            <div style={{ fontSize: 18, color: "#4c1d95", fontWeight: 600, marginBottom: 6 }}>
+              {world.emoji} {world.name} conquered!
+            </div>
+            <div style={{ fontSize: 16, color: "#6d28d9", marginBottom: 16 }}>
+              {playerName} is a true LEGEND!
+            </div>
+
+            <div style={{ background: "rgba(255,255,255,0.7)", borderRadius: 16, padding: 16,
+              marginBottom: 20, width: "100%", maxWidth: 280 }}>
+              <div style={{ fontSize: 14, color: "#6b7280", marginBottom: 4 }}>Stars earned this run</div>
+              <div style={{ fontSize: 36, fontWeight: 900, color: "#f59e0b" }}>⭐ {starsEarned}</div>
+              <div style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
+                Total stars: {currentPoints}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", maxWidth: 280 }}>
+              {currentWorld + 1 < WORLDS.length && (
+                <GameBtn color="#8b5cf6" big onClick={() => startWorld(currentWorld + 1)}>
+                  ➡️ Next World!
+                </GameBtn>
+              )}
+              <GameBtn color="#3b82f6" onClick={backToMenu}>
+                🏠 Back to Menu
+              </GameBtn>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // ─── GAME OVER ──────────────────────────────────────────
+
+  if (screen === "game_over") {
+    return (
+      <>
+        <style>{KEYFRAMES_CSS}</style>
+        <div style={containerStyle}>
+          <div style={{ position: "absolute", inset: 0,
+            background: "linear-gradient(180deg, #1a0000, #000)" }} />
+
+          <div style={{ position: "relative", zIndex: 1, padding: 20, minHeight: 500,
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+            textAlign: "center" }}>
+            <Avatar emoji={playerEmoji} emotion="hurt" anim="shake" size={64} />
+            <div style={{ fontSize: 28, fontWeight: 900, color: "#ef4444",
+              textShadow: "0 0 20px rgba(239,68,68,0.5)", margin: "16px 0 8px" }}>
+              GAME OVER
+            </div>
+            <div style={{ fontSize: 16, color: "rgba(255,255,255,0.7)", marginBottom: 8 }}>
+              The adventure is not over yet!
+            </div>
+            <div style={{ fontSize: 14, color: "rgba(255,255,255,0.5)", marginBottom: 24 }}>
+              You earned {starsEarned} ⭐ stars before falling.
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", maxWidth: 280 }}>
+              <GameBtn color="#f59e0b" big onClick={retryWorld}>
+                🔄 Try Again!
+              </GameBtn>
+              <GameBtn color="#64748b" onClick={backToMenu}>
+                🏠 Back to Menu
+              </GameBtn>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // ─── STAR STORE ─────────────────────────────────────────
+
+  if (screen === "store") {
+    const rewards = kd.rewards || DEFAULT_REWARDS;
+    return (
+      <>
+        <style>{KEYFRAMES_CSS}</style>
+        <div style={containerStyle}>
+          <div style={{ position: "relative", minHeight: 500,
+            background: "linear-gradient(180deg, #1e1b4b, #312e81, #1e1b4b)", padding: 16 }}>
+            <div style={{ position: "relative", zIndex: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                <GameBtn color="#64748b" onClick={backToMenu}
+                  style={{ width: "auto", padding: "10px 16px" }}>
+                  ← Back
+                </GameBtn>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#fff" }}>🏪 Star Store</div>
+              </div>
+
+              {/* Star balance */}
+              <div style={{ background: "rgba(255,255,255,0.1)", borderRadius: 14, padding: 16,
+                textAlign: "center", marginBottom: 16 }}>
+                <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)" }}>Your Stars</div>
+                <div style={{ fontSize: 36, fontWeight: 900, color: "#fbbf24",
+                  animation: "ll-pulse 2s ease-in-out infinite" }}>
+                  ⭐ {currentPoints}
+                </div>
+              </div>
+
+              {/* Rewards list */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {rewards.map((reward, i) => {
+                  const canAfford = currentPoints >= reward.cost;
+                  const needed = reward.cost - currentPoints;
+                  return (
+                    <div key={i} style={{
+                      background: canAfford ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.08)",
+                      border: `2px solid ${canAfford ? "#22c55e" : "rgba(255,255,255,0.15)"}`,
+                      borderRadius: 14, padding: 14,
+                      display: "flex", alignItems: "center", gap: 12,
+                    }}>
+                      <div style={{ fontSize: 32 }}>{reward.emoji || "🎁"}</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>{reward.name}</div>
+                        <div style={{ fontSize: 13, color: "#fbbf24", fontWeight: 600, marginTop: 2 }}>
+                          ⭐ {reward.cost} stars
+                        </div>
+                        {!canAfford && (
+                          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 2 }}>
+                            You need {needed} more stars!
+                          </div>
+                        )}
+                      </div>
+                      <div style={{
+                        background: canAfford ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.05)",
+                        borderRadius: 10, padding: "8px 12px",
+                        fontSize: 11, color: "rgba(255,255,255,0.6)", fontWeight: 600,
+                        textAlign: "center", minWidth: 70,
+                      }}>
+                        {canAfford ? "Ask parent\nto approve" : "🔒 Locked"}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div style={{ marginTop: 16, textAlign: "center",
+                fontSize: 13, color: "rgba(255,255,255,0.4)" }}>
+                Earn stars by completing adventures and chores!
+              </div>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // ─── CHORES SCREEN ──────────────────────────────────────
+
+  if (screen === "chores") {
+    const tasks = kd.tasks || [];
+    const pendingTasks = tasks.filter(t => !t.done);
+    const completedTasks = tasks.filter(t => t.done && !t.verified);
+    const verifiedTasks = tasks.filter(t => t.done && t.verified);
+
+    return (
+      <>
+        <style>{KEYFRAMES_CSS}</style>
+        <div style={containerStyle}>
+          <div style={{ position: "relative", minHeight: 500,
+            background: "linear-gradient(180deg, #0c4a6e, #164e63, #0e3a4f)", padding: 16 }}>
+            <div style={{ position: "relative", zIndex: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                <GameBtn color="#64748b" onClick={backToMenu}
+                  style={{ width: "auto", padding: "10px 16px" }}>
+                  ← Back
+                </GameBtn>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#fff" }}>📋 My Chores</div>
+              </div>
+
+              <div style={{ background: "rgba(255,255,255,0.1)", borderRadius: 14, padding: 14,
+                marginBottom: 16, textAlign: "center" }}>
+                <div style={{ fontSize: 15, color: "#fbbf24", fontWeight: 700 }}>
+                  Complete chores to earn stars! ⭐
+                </div>
+              </div>
+
+              {/* Pending chores */}
+              {pendingTasks.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,0.6)",
+                    marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>
+                    To Do ({pendingTasks.length})
+                  </div>
+                  {pendingTasks.map((task, i) => (
+                    <div key={i} style={{ background: "rgba(255,255,255,0.08)", borderRadius: 10,
+                      padding: 12, marginBottom: 8, display: "flex", alignItems: "center", gap: 10,
+                      border: "1px solid rgba(255,255,255,0.1)" }}>
+                      <div style={{ fontSize: 24 }}>⬜</div>
+                      <div style={{ fontSize: 15, color: "#fff", fontWeight: 600 }}>
+                        {task.name || task.text || "Chore"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Waiting for verification */}
+              {completedTasks.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,0.6)",
+                    marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>
+                    Waiting for Parent ({completedTasks.length})
+                  </div>
+                  {completedTasks.map((task, i) => (
+                    <div key={i} style={{ background: "rgba(251,191,36,0.1)", borderRadius: 10,
+                      padding: 12, marginBottom: 8, display: "flex", alignItems: "center", gap: 10,
+                      border: "1px solid rgba(251,191,36,0.3)" }}>
+                      <div style={{ fontSize: 24 }}>⏳</div>
+                      <div>
+                        <div style={{ fontSize: 15, color: "#fff", fontWeight: 600 }}>
+                          {task.name || task.text || "Chore"}
+                        </div>
+                        <div style={{ fontSize: 12, color: "#fbbf24" }}>Waiting for parent to verify</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Verified */}
+              {verifiedTasks.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,0.6)",
+                    marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>
+                    Completed! ({verifiedTasks.length})
+                  </div>
+                  {verifiedTasks.map((task, i) => (
+                    <div key={i} style={{ background: "rgba(34,197,94,0.1)", borderRadius: 10,
+                      padding: 12, marginBottom: 8, display: "flex", alignItems: "center", gap: 10,
+                      border: "1px solid rgba(34,197,94,0.3)" }}>
+                      <div style={{ fontSize: 24 }}>✅</div>
+                      <div>
+                        <div style={{ fontSize: 15, color: "#fff", fontWeight: 600 }}>
+                          {task.name || task.text || "Chore"}
+                        </div>
+                        <div style={{ fontSize: 12, color: "#22c55e" }}>+1 ⭐ Earned!</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* No chores */}
+              {tasks.length === 0 && (
+                <div style={{ textAlign: "center", padding: 40 }}>
+                  <div style={{ fontSize: 48, marginBottom: 12 }}>🎉</div>
+                  <div style={{ fontSize: 18, color: "#fff", fontWeight: 700, marginBottom: 8 }}>
+                    No chores right now!
+                  </div>
+                  <div style={{ fontSize: 14, color: "rgba(255,255,255,0.6)" }}>
+                    Go play some adventures and earn stars!
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // ─── FALLBACK ───────────────────────────────────────────
+  return (
+    <>
+      <style>{KEYFRAMES_CSS}</style>
+      <div style={containerStyle}>
+        <div style={{ padding: 20, textAlign: "center" }}>
+          <div style={{ fontSize: 18, color: "#fff" }}>Loading...</div>
+          <GameBtn color="#3b82f6" onClick={backToMenu}>Back to Menu</GameBtn>
+        </div>
+      </div>
+    </>
+  );
 }

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { groqFetch, createSpeechRecognition, triggerConfetti } from "./utils";
 
 const SUBJECTS = [
@@ -9,6 +9,9 @@ const SUBJECTS = [
 ];
 
 const MAX_MESSAGES = 20;
+
+const MATH_VERIFICATION_PROMPT =
+  "CRITICAL: Always double-check your arithmetic before responding. Verify every calculation step by step. 5x10=50, NOT 40. 7x8=56. 12+15=27. Never give a wrong mathematical answer — accuracy is critical for children's education.";
 
 function getAge(kid) {
   if (kid && kid.age) return kid.age;
@@ -27,7 +30,8 @@ function buildSystemPrompt(name, age, subject) {
     `If they get it right, celebrate with enthusiasm. If wrong, say 'Almost! Let's try again \u{1F4AA}' — never say 'wrong' or 'incorrect'. ` +
     `For math, show step by step. Keep responses under 100 words. ${ageNote} ` +
     `SAFETY: If the child asks anything inappropriate, off-topic, or not school-related, kindly redirect them back to homework. ` +
-    `Never discuss violence, adult content, or anything not age-appropriate.`
+    `Never discuss violence, adult content, or anything not age-appropriate. ` +
+    MATH_VERIFICATION_PROMPT
   );
 }
 
@@ -39,6 +43,15 @@ function shouldCelebrate(text, age) {
   return /correct|well done|excellent|perfect/.test(lower);
 }
 
+function speakText(text) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 0.85;
+  utterance.pitch = 1.1;
+  window.speechSynthesis.speak(utterance);
+}
+
 export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY, showToast }) {
   const [selectedKid, setSelectedKid] = useState("");
   const [subject, setSubject] = useState("math");
@@ -46,7 +59,7 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [msgCount, setMsgCount] = useState(0);
-  const [sessionId] = useState(() => {
+  const [sessionId, setSessionId] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}_${d.getTime()}`;
   });
@@ -54,9 +67,11 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
   const [speechSupported, setSpeechSupported] = useState(false);
   const [showPastSessions, setShowPastSessions] = useState(false);
   const [pastSessions, setPastSessions] = useState(null);
+  const [muted, setMuted] = useState(false);
 
   const chatEndRef = useRef(null);
   const recognitionRef = useRef(null);
+  const voiceTimeoutRef = useRef(null);
   const rateLimited = msgCount >= MAX_MESSAGES;
 
   const kidProfiles = Object.entries(profiles || {}).filter(
@@ -66,16 +81,32 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
   const currentKid = selectedKid ? (profiles || {})[selectedKid] : null;
   const kidAge = currentKid ? getAge(currentKid) : 8;
   const kidName = currentKid ? currentKid.name || selectedKid : "";
+  const isLucaMode = kidAge <= 7;
+  const ttsAvailable = typeof window !== "undefined" && !!window.speechSynthesis;
+
+  // Feature 13: Auto-read for young kids
+  const autoRead = isLucaMode && ttsAvailable && !muted;
 
   useEffect(() => {
     const rec = createSpeechRecognition();
     if (rec) {
       setSpeechSupported(true);
       recognitionRef.current = rec;
+      // Feature 15: voice input fixes
+      rec.continuous = false;
       rec.onresult = (e) => {
         const transcript = e.results[0][0].transcript;
-        setInput((prev) => (prev ? prev + " " + transcript : transcript));
+        if (voiceTimeoutRef.current) clearTimeout(voiceTimeoutRef.current);
         setRecording(false);
+        if (isLucaMode) {
+          // Auto-submit after 2 second pause for young kids
+          setInput(transcript);
+          voiceTimeoutRef.current = setTimeout(() => {
+            sendMessageDirect(transcript);
+          }, 2000);
+        } else {
+          setInput((prev) => (prev ? prev + " " + transcript : transcript));
+        }
       };
       rec.onerror = () => setRecording(false);
       rec.onend = () => setRecording(false);
@@ -84,15 +115,18 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
       if (recognitionRef.current) {
         try { recognitionRef.current.abort(); } catch (_) { /* ignore */ }
       }
+      if (voiceTimeoutRef.current) clearTimeout(voiceTimeoutRef.current);
     };
-  }, []);
+  }, [isLucaMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Scroll to bottom on new messages
   useEffect(() => {
     if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages]);
+  }, [messages, loading]);
 
+  // Save session to Firebase
   useEffect(() => {
     if (messages.length > 0 && kidName && fbSet) {
       fbSet(`homeworkSessions/${kidName}/${sessionId}`, {
@@ -103,15 +137,30 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
     }
   }, [messages, kidName, sessionId, subject, fbSet]);
 
-  async function sendMessage(text) {
-    if (!text.trim() || !selectedKid || loading || rateLimited) return;
+  // Feature 13: Auto-read latest assistant message for young kids
+  useEffect(() => {
+    if (!autoRead || messages.length === 0) return;
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg.role === "assistant") {
+      speakText(lastMsg.content);
+    }
+  }, [messages, autoRead]);
+
+  // Direct send function that doesn't depend on input state (for voice auto-submit)
+  const sendMessageDirect = useCallback(async (text) => {
+    if (!text || !text.trim() || !selectedKid || loading || rateLimited) return;
     const userMsg = { role: "user", content: text.trim() };
-    const newMessages = [...messages, userMsg];
-    setMessages(newMessages);
+    setMessages((prev) => {
+      const newMessages = [...prev, userMsg];
+      doAICall(newMessages);
+      return newMessages;
+    });
     setInput("");
     setMsgCount((c) => c + 1);
-    setLoading(true);
+  }, [selectedKid, loading, rateLimited, kidName, kidAge, subject, GROQ_KEY]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  async function doAICall(newMessages) {
+    setLoading(true);
     const systemPrompt = buildSystemPrompt(kidName, kidAge, subject);
     const apiMessages = [
       { role: "system", content: systemPrompt },
@@ -133,6 +182,16 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
     }
   }
 
+  async function sendMessage(text) {
+    if (!text.trim() || !selectedKid || loading || rateLimited) return;
+    const userMsg = { role: "user", content: text.trim() };
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    setInput("");
+    setMsgCount((c) => c + 1);
+    await doAICall(newMessages);
+  }
+
   function handleStepByStep() {
     sendMessage("Can you show me step by step?");
   }
@@ -142,10 +201,44 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
     if (recording) {
       recognitionRef.current.abort();
       setRecording(false);
+      if (voiceTimeoutRef.current) clearTimeout(voiceTimeoutRef.current);
     } else {
       setRecording(true);
-      recognitionRef.current.start();
+      try {
+        recognitionRef.current.start();
+      } catch (_) { /* already started */ }
+      // Feature 15: 10-second timeout instead of cutting off too fast
+      if (voiceTimeoutRef.current) clearTimeout(voiceTimeoutRef.current);
+      voiceTimeoutRef.current = setTimeout(() => {
+        if (recognitionRef.current) {
+          try { recognitionRef.current.stop(); } catch (_) { /* ignore */ }
+        }
+        setRecording(false);
+      }, 10000);
     }
+  }
+
+  // Feature 12: switching subject clears chat
+  function switchSubject(newSubject) {
+    if (newSubject === subject) return;
+    // Stop any speech
+    if (ttsAvailable) window.speechSynthesis.cancel();
+    setSubject(newSubject);
+    setMessages([]);
+    setMsgCount(0);
+    // New session ID for the new subject
+    const d = new Date();
+    setSessionId(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}_${d.getTime()}`);
+  }
+
+  // Feature 5 (brain break): reset everything
+  function resetSession() {
+    if (ttsAvailable) window.speechSynthesis.cancel();
+    setMessages([]);
+    setMsgCount(0);
+    setInput("");
+    const d = new Date();
+    setSessionId(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}_${d.getTime()}`);
   }
 
   function loadPastSessions() {
@@ -165,17 +258,36 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
     color: V.textPrimary,
     fontFamily: "inherit",
   };
-  const header = {
+  const headerStyle = {
     padding: V.sp4,
     background: V.bgCard,
     borderBottom: `1px solid ${V.borderDefault}`,
     boxShadow: V.shadowCard,
   };
-  const title = {
+  const titleRow = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  };
+  const titleStyle = {
     fontSize: 20,
     fontWeight: 700,
     margin: 0,
     color: V.textPrimary,
+  };
+  const muteBtn = {
+    minWidth: 44,
+    minHeight: 44,
+    padding: "6px 12px",
+    borderRadius: V.r2,
+    border: `1px solid ${V.borderDefault}`,
+    background: muted ? V.danger : V.bgCardAlt,
+    color: muted ? "#fff" : V.textSecondary,
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
   };
   const selectStyle = {
     width: "100%",
@@ -198,7 +310,7 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
     background: V.bgCard,
     borderBottom: `1px solid ${V.borderSubtle}`,
   };
-  const subjectBtn = (active) => ({
+  const subjectBtnStyle = (active) => ({
     minWidth: 44,
     minHeight: 44,
     padding: "8px 16px",
@@ -220,7 +332,7 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
     flexDirection: "column",
     gap: 10,
   };
-  const bubble = (isUser) => ({
+  const bubbleStyle = (isUser) => ({
     maxWidth: "82%",
     alignSelf: isUser ? "flex-end" : "flex-start",
     background: isUser ? V.accent : V.bgElevated || V.bgCardAlt,
@@ -232,6 +344,21 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
     wordBreak: "break-word",
     boxShadow: V.shadowCard,
   });
+  const speakBtnStyle = {
+    minWidth: 44,
+    minHeight: 44,
+    padding: "4px 8px",
+    marginTop: 6,
+    borderRadius: V.r2,
+    border: `1px solid ${V.borderSubtle}`,
+    background: V.bgCardAlt,
+    color: V.textSecondary,
+    fontSize: 16,
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+  };
   const inputRow = {
     display: "flex",
     gap: 8,
@@ -251,7 +378,7 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
     fontSize: 16,
     outline: "none",
   };
-  const sendBtn = {
+  const sendBtnStyle = {
     minWidth: 44,
     minHeight: 44,
     borderRadius: V.r3,
@@ -265,19 +392,19 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
     justifyContent: "center",
     fontWeight: 700,
   };
-  const micBtn = (active) => ({
-    minWidth: 44,
-    minHeight: 44,
+  const micBtnBase = (active) => ({
+    minWidth: isLucaMode ? 80 : 44,
+    minHeight: isLucaMode ? 80 : 44,
     borderRadius: "50%",
     border: "none",
     background: active ? V.danger : V.bgCardAlt,
     color: active ? "#fff" : V.textSecondary,
-    fontSize: 20,
+    fontSize: isLucaMode ? 32 : 20,
     cursor: "pointer",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    animation: active ? "micPulse 1s infinite" : "none",
+    position: "relative",
   });
   const stepBtn = {
     minHeight: 44,
@@ -313,13 +440,52 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
     color: V.textMuted,
     textAlign: "center",
   };
+  const newSessionBtn = {
+    minWidth: 44,
+    minHeight: 44,
+    padding: "10px 20px",
+    marginTop: 10,
+    borderRadius: V.r3,
+    border: "none",
+    background: V.accent,
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: 700,
+    cursor: "pointer",
+  };
+  const typingIndicator = {
+    maxWidth: "82%",
+    alignSelf: "flex-start",
+    background: V.bgElevated || V.bgCardAlt,
+    color: V.textMuted,
+    padding: "10px 14px",
+    borderRadius: V.r3,
+    fontSize: 15,
+    lineHeight: 1.5,
+    fontStyle: "italic",
+    boxShadow: V.shadowCard,
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  };
+  const pulsingDot = {
+    width: 8,
+    height: 8,
+    borderRadius: "50%",
+    background: V.accent,
+    animation: "pulse 1s infinite",
+  };
 
-  // ---- MIC PULSE KEYFRAME (injected once) ----
+  // ---- KEYFRAME INJECTION (mic pulse + recording dot) ----
   useEffect(() => {
-    if (document.getElementById("hw-mic-pulse-style")) return;
+    if (document.getElementById("hw-helper-styles")) return;
     const style = document.createElement("style");
-    style.id = "hw-mic-pulse-style";
-    style.textContent = `@keyframes micPulse { 0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0.5)} 50%{box-shadow:0 0 0 10px rgba(239,68,68,0)} }`;
+    style.id = "hw-helper-styles";
+    style.textContent = `
+      @keyframes micPulse { 0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0.5)} 50%{box-shadow:0 0 0 10px rgba(239,68,68,0)} }
+      @keyframes pulse { 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.3);opacity:0.6} }
+      @keyframes recordPulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    `;
     document.head.appendChild(style);
     return () => { try { style.remove(); } catch (_) { /* ignore */ } };
   }, []);
@@ -328,8 +494,8 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
   if (kidProfiles.length === 0) {
     return (
       <div style={wrap}>
-        <div style={header}>
-          <h2 style={title}>{"\u{1F4DA}"} Homework Helper</h2>
+        <div style={headerStyle}>
+          <h2 style={titleStyle}>{"\u{1F4DA}"} Homework Helper</h2>
         </div>
         <div style={emptyState}>
           <span style={{ fontSize: 48 }}>{"\u{1F9D1}\u200D\u{1F393}"}</span>
@@ -342,15 +508,33 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
   return (
     <div style={wrap}>
       {/* HEADER + KID SELECTOR */}
-      <div style={header}>
-        <h2 style={title}>{"\u{1F4DA}"} Homework Helper</h2>
+      <div style={headerStyle}>
+        <div style={titleRow}>
+          <h2 style={titleStyle}>{"\u{1F4DA}"} Homework Helper</h2>
+          {/* Feature 13: Mute toggle */}
+          {ttsAvailable && selectedKid && (
+            <button
+              style={muteBtn}
+              onClick={() => {
+                if (!muted && ttsAvailable) window.speechSynthesis.cancel();
+                setMuted((m) => !m);
+              }}
+              aria-label={muted ? "Unmute auto-read" : "Mute auto-read"}
+            >
+              {muted ? "\u{1F507} Muted" : "\u{1F50A} Sound"}
+            </button>
+          )}
+        </div>
         <select
           style={selectStyle}
           value={selectedKid}
           onChange={(e) => {
+            if (ttsAvailable) window.speechSynthesis.cancel();
             setSelectedKid(e.target.value);
             setMessages([]);
             setMsgCount(0);
+            const d = new Date();
+            setSessionId(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}_${d.getTime()}`);
           }}
           aria-label="Select a kid"
         >
@@ -362,7 +546,7 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
           ))}
         </select>
 
-        {/* Past Sessions button (admin/parent review) */}
+        {/* Past Sessions button */}
         {selectedKid && (
           <button style={pastBtn} onClick={loadPastSessions}>
             {"\u{1F4CB}"} Past Sessions
@@ -413,15 +597,16 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
         </div>
       )}
 
-      {/* SUBJECT BUTTONS */}
+      {/* SUBJECT TABS — Feature 12: ALWAYS visible when a kid is selected */}
       {selectedKid && (
         <div style={subjectRow}>
           {SUBJECTS.map((s) => (
             <button
               key={s.key}
-              style={subjectBtn(subject === s.key)}
-              onClick={() => setSubject(s.key)}
+              style={subjectBtnStyle(subject === s.key)}
+              onClick={() => switchSubject(s.key)}
               aria-label={`Subject: ${s.label}`}
+              aria-pressed={subject === s.key}
             >
               {s.icon} {s.label}
             </button>
@@ -447,13 +632,23 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
               </div>
             )}
             {messages.map((m, i) => (
-              <div key={i} style={bubble(m.role === "user")}>
+              <div key={i} style={bubbleStyle(m.role === "user")}>
                 {m.role === "assistant" && (
-                  <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 4, color: m.role === "user" ? "#fff" : V.textMuted }}>
+                  <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 4, color: V.textMuted }}>
                     {"\u{1F9D1}\u200D\u{1F3EB}"} Tutor
                   </div>
                 )}
                 <div style={{ whiteSpace: "pre-wrap" }}>{m.content}</div>
+                {/* Feature 13: Speak button on every assistant message */}
+                {m.role === "assistant" && ttsAvailable && (
+                  <button
+                    style={speakBtnStyle}
+                    onClick={() => speakText(m.content)}
+                    aria-label="Read aloud"
+                  >
+                    {"\u{1F50A}"} Read Aloud
+                  </button>
+                )}
               </div>
             ))}
             {/* Step by step prompt for math */}
@@ -462,17 +657,14 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
                 {"\u{1F4DD}"} Show me step by step
               </button>
             )}
+            {/* Typing indicator */}
             {loading && (
-              <div
-                style={{
-                  ...bubble(false),
-                  fontStyle: "italic",
-                  color: V.textMuted,
-                }}
-              >
-                {"\u{1F914}"} Thinking...
+              <div style={typingIndicator}>
+                <div style={pulsingDot} />
+                {"\u{1F9D1}\u200D\u{1F3EB}"} Tutor is thinking...
               </div>
             )}
+            {/* Brain break with reset button */}
             {rateLimited && (
               <div
                 style={{
@@ -486,6 +678,10 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
                 }}
               >
                 Great work today! Take a brain break {"\u{1F9E0}"}
+                <br />
+                <button style={newSessionBtn} onClick={resetSession}>
+                  {"\u{1F504}"} Start New Session
+                </button>
               </div>
             )}
             <div ref={chatEndRef} />
@@ -509,17 +705,31 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
             />
             {speechSupported && (
               <button
-                style={micBtn(recording)}
+                style={micBtnBase(recording)}
                 onClick={toggleRecording}
                 disabled={rateLimited}
                 aria-label={recording ? "Stop recording" : "Start voice input"}
               >
+                {recording && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: isLucaMode ? 8 : 4,
+                      right: isLucaMode ? 8 : 4,
+                      width: 10,
+                      height: 10,
+                      borderRadius: "50%",
+                      background: "#ef4444",
+                      animation: "recordPulse 1s infinite",
+                    }}
+                  />
+                )}
                 {recording ? "\u{1F534}" : "\u{1F3A4}"}
               </button>
             )}
             <button
               style={{
-                ...sendBtn,
+                ...sendBtnStyle,
                 opacity: !input.trim() || loading || rateLimited ? 0.5 : 1,
               }}
               onClick={() => sendMessage(input)}

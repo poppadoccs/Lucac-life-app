@@ -122,9 +122,10 @@ function TimePicker({ value, onChange }) {
 // SWATCH_COLORS imported from utils.js
 
 function SwatchPicker({ value, onChange, label }) {
+  const isCustom = value && !SWATCH_COLORS.some(c => c.hex === value);
   return (
     <div style={{ marginBottom:10 }}>
-      {label && <div style={{ fontSize:12, color:V.textMuted, marginBottom:6 }}>{label}</div>}
+      {label && <div style={{ fontSize:12, color:"#6b7280", marginBottom:6 }}>{label}</div>}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:6 }}>
         {SWATCH_COLORS.map(c => {
           const sel = value === c.hex;
@@ -138,6 +139,17 @@ function SwatchPicker({ value, onChange, label }) {
             </button>
           );
         })}
+        {/* Custom color option */}
+        <label title="Custom color" style={{ width:44, height:44, borderRadius:10, cursor:"pointer",
+          background: isCustom ? value : "conic-gradient(red,yellow,lime,aqua,blue,magenta,red)",
+          border: isCustom ? "3px solid #fff" : "2px solid transparent",
+          boxShadow: isCustom ? `0 0 0 2px ${value}` : "0 1px 3px rgba(0,0,0,0.15)",
+          display:"flex", alignItems:"center", justifyContent:"center", position:"relative", overflow:"hidden" }}>
+          {isCustom && <span style={{ color:"#fff", fontSize:18, fontWeight:700, textShadow:"0 1px 2px rgba(0,0,0,0.4)" }}>✓</span>}
+          {!isCustom && <span style={{ fontSize:14, textShadow:"0 1px 2px rgba(0,0,0,0.4)", color:"#fff" }}>+</span>}
+          <input type="color" value={value || "#3b82f6"} onChange={e => onChange(e.target.value)}
+            style={{ position:"absolute", inset:0, opacity:0, cursor:"pointer", width:"100%", height:"100%" }} />
+        </label>
       </div>
     </div>
   );
@@ -203,6 +215,7 @@ export default function App() {
   const [calYear, setCalYear] = useState(today.getFullYear());
   const [calMonth, setCalMonth] = useState(today.getMonth());
   const [selectedDay, setSelectedDay] = useState(null);
+  const [calView, setCalView] = useState("M"); // "W" = week, "2W" = biweekly, "M" = month
   const [events, setEvents] = useState({});
   const [eventStyles, setEventStyles] = useState({});
   const [addingEvents, setAddingEvents] = useState([{ title:"", time:"12:00 PM", who:"", notes:"", repeat:"none", repeatEnd:"", repeatCount:0, duration:60 }]);
@@ -522,16 +535,38 @@ export default function App() {
     const members = familyNames.join(", ");
     const input = quickAddInput.trim();
 
-    // Detect update commands: "make X red", "change X color to Y", etc.
-    const updatePatterns = /^(make|change|set|update)\s+(.+?)\s+(red|orange|gold|yellow|green|teal|blue|purple|pink|coral|brown|gray|#[0-9a-f]{6})/i;
+    // Detect DELETE commands: "delete/remove [event name]"
+    const deleteMatch = input.match(/^(delete|remove|cancel)\s+(?:my\s+)?(.+?)(?:\s+events?)?$/i);
+    if (deleteMatch) {
+      const keyword = deleteMatch[2].toLowerCase().trim();
+      const updated = { ...(events || {}) };
+      let count = 0;
+      Object.entries(updated).forEach(([dk, dayEvs]) => {
+        const filtered = (dayEvs || []).filter(ev => {
+          if (ev.title.toLowerCase().includes(keyword)) { count++; return false; }
+          return true;
+        });
+        if (filtered.length) updated[dk] = filtered;
+        else delete updated[dk];
+      });
+      if (count > 0) {
+        fbSet("events", updated);
+        showToast(`Deleted ${count} "${deleteMatch[2]}" event${count>1?"s":""}`, "success");
+      } else {
+        showToast(`No events found matching "${deleteMatch[2]}"`, "error");
+      }
+      setQuickAddLoading(false); setQuickAddInput(""); return;
+    }
+
+    // Detect UPDATE/COLOR commands: "make X red", "change X color to Y"
+    const updatePatterns = /^(make|change|set|update)\s+(.+?)\s+(?:color\s+(?:to\s+)?)?(red|orange|gold|yellow|green|teal|blue|purple|pink|coral|brown|gray|#[0-9a-f]{6})/i;
     const updateMatch = input.match(updatePatterns);
     if (updateMatch) {
-      const keyword = updateMatch[2].toLowerCase().trim();
+      const keyword = updateMatch[2].toLowerCase().replace(/\s*(events?|color|to)\s*/g," ").trim();
       const colorName = updateMatch[3].toLowerCase();
       const colorMap = {};
       SWATCH_COLORS.forEach(c => { colorMap[c.label.toLowerCase()] = c.hex; });
       const targetColor = colorMap[colorName] || colorName;
-      // Search events by keyword and update their styles
       const updated = { ...(eventStyles || {}) };
       let count = 0;
       Object.entries(events || {}).forEach(([dk, dayEvs]) => {
@@ -548,9 +583,7 @@ export default function App() {
       } else {
         showToast(`No events found matching "${keyword}"`, "error");
       }
-      setQuickAddLoading(false);
-      setQuickAddInput("");
-      return;
+      setQuickAddLoading(false); setQuickAddInput(""); return;
     }
 
     // Normal event creation via Groq
@@ -586,20 +619,28 @@ export default function App() {
   function confirmQuickAdd() {
     if (!quickAddPreview?.events?.length) return;
     const updated = { ...(events || {}) };
+    const seenDates = new Set(); // Deduplicate: one event per unique date
+    let totalCreated = 0;
     quickAddPreview.events.forEach(ev => {
       const startDate = new Date(ev.date + "T00:00:00");
       const fakeEv = { ...ev, repeatEnd: "", repeatCount: ev.repeatCount || 0 };
-      // generateRepeats already includes the start date — no separate base save needed (BUG FIX)
       const dates = generateRepeats(fakeEv, startDate);
       const eventData = { title: ev.title, time: ev.time || "12:00 PM", who: ev.who || "", notes: ev.notes || "", duration: ev.duration || 60 };
       if (ev.repeat && ev.repeat !== "none") eventData.repeat = ev.repeat;
       dates.forEach(d => {
         const dk = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
-        updated[dk] = [...(updated[dk] || []), eventData];
+        const dedupKey = `${ev.title}_${dk}`;
+        if (seenDates.has(dedupKey)) return; // Skip duplicate
+        seenDates.add(dedupKey);
+        // Also skip if this exact event title already exists on this date
+        const existing = updated[dk] || [];
+        if (existing.some(e => e.title === ev.title && e.time === eventData.time)) return;
+        updated[dk] = [...existing, eventData];
+        totalCreated++;
       });
     });
     fbSet("events", updated);
-    showToast(`Created ${quickAddPreview.totalInstances} event${quickAddPreview.totalInstances>1?"s":""}!`, "success");
+    showToast(`Created ${totalCreated} event${totalCreated>1?"s":""}!`, "success");
     setQuickAddPreview(null);
     setQuickAddInput("");
   }
@@ -637,11 +678,27 @@ export default function App() {
     const sr = createSpeechRecognition();
     if (!sr) { showToast("Voice not supported in this browser", "error"); return; }
     speechRef.current = sr;
-    sr.onresult = (e) => { const text = e.results[0][0].transcript; onResult(text); setIsRecording(false); };
-    sr.onerror = () => { setIsRecording(false); showToast("Couldn't hear you — try again", "error"); };
-    sr.onend = () => setIsRecording(false);
+    let finalText = "";
+    sr.onresult = (e) => {
+      let transcript = "";
+      for (let i = 0; i < e.results.length; i++) {
+        transcript += e.results[i][0].transcript;
+      }
+      finalText = transcript;
+      // Show interim text in the input as user speaks
+      onResult(transcript);
+    };
+    sr.onerror = (e) => {
+      if (e.error !== "aborted") showToast("Couldn't hear you — try again", "error");
+      setIsRecording(false);
+    };
+    sr.onend = () => {
+      setIsRecording(false);
+      if (finalText) onResult(finalText);
+    };
     sr.start();
     setIsRecording(true);
+    // Auto-stop after 10 seconds
     setTimeout(() => { if (speechRef.current) { try { speechRef.current.stop(); } catch(e){} } }, 10000);
   }
   function stopVoiceInput() {
@@ -1009,9 +1066,26 @@ export default function App() {
   function renderHomeSkylight() {
     const daysInMonth = getDaysInMonth(calYear, calMonth);
     const firstDay = getFirstDay(calYear, calMonth);
-    const cells = [];
-    for (let i = 0; i < firstDay; i++) cells.push(null);
-    for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+    const allCells = [];
+    for (let i = 0; i < firstDay; i++) allCells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) allCells.push(d);
+    // Filter cells based on calendar view
+    let cells = allCells;
+    if (calView === "W" || calView === "2W") {
+      const todayDate = today.getDate();
+      const todayDow = today.getDay();
+      const weekStart = todayDate - todayDow;
+      const daysToShow = calView === "W" ? 7 : 14;
+      cells = [];
+      for (let i = 0; i < daysToShow; i++) {
+        const d = weekStart + i;
+        if (d >= 1 && d <= daysInMonth) cells.push(d);
+        else cells.push(null);
+      }
+      // Pad start to align with day of week
+      const padStart = cells[0] ? new Date(calYear, calMonth, cells.find(d=>d)).getDay() : 0;
+      for (let i = 0; i < padStart; i++) cells.unshift(null);
+    }
     const isToday = (d) => d === today.getDate() && calMonth === today.getMonth() && calYear === today.getFullYear();
     const dk = selectedDay ? dateKey(calYear, calMonth, selectedDay) : null;
 
@@ -1083,6 +1157,13 @@ export default function App() {
               <div style={{ fontSize: 13, color: V.textDim, fontWeight: 500, marginTop: 2 }}>{calYear}</div>
               <button onClick={() => { setCalMonth(today.getMonth()); setCalYear(today.getFullYear()); }}
                 style={{ background: V.accentGlow, border: `1px solid ${V.accent}33`, color: V.accent, fontSize: 11, fontWeight: 600, cursor: "pointer", borderRadius: 20, padding: "3px 14px", marginTop: 6 }}>Today</button>
+              <div style={{ display:"flex", gap:4, marginTop:6 }}>
+                {["W","2W","M"].map(v => (
+                  <button key={v} onClick={() => setCalView(v)}
+                    style={{ padding:"2px 10px", borderRadius:12, fontSize:10, fontWeight:600, cursor:"pointer", border:"none",
+                      background: calView === v ? V.accent : V.bgElevated, color: calView === v ? "#fff" : V.textDim }}>{v}</button>
+                ))}
+              </div>
             </div>
             <button onClick={() => { if(calMonth===11){setCalMonth(0);setCalYear(y=>y+1);}else setCalMonth(m=>m+1); }}
               style={{ width: 40, height: 40, borderRadius: V.r2, background: V.bgElevated,
@@ -2366,10 +2447,10 @@ export default function App() {
           </div>
         )}
         <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-          {["profiles","theme","contacts","alerts"].map(t=>(
+          {["profiles","theme","widgets","contacts","alerts"].map(t=>(
             <button key={t} onClick={()=>setSettingsSubTab(t)}
               style={{...settingsSubTab===t?btnPrimary:btnSecondary,padding:"6px 12px",fontSize:12}}>
-              {t==="profiles"?"👤 Profiles":t==="theme"?"🎨 Theme":t==="contacts"?"📞 Contacts":"🔔 Alerts"}
+              {t==="profiles"?"👤 Profiles":t==="theme"?"🎨 Theme":t==="widgets"?"📦 Widgets":t==="contacts"?"📞 Contacts":"🔔 Alerts"}
             </button>
           ))}
         </div>
@@ -2382,11 +2463,14 @@ export default function App() {
                 <div style={{marginBottom:8}}>
                   <div style={{fontSize:12,color:V.textMuted,marginBottom:3}}>Name</div>
                   <div style={{display:"flex",gap:6}}>
-                    <input value={profileNameEdit||currentProfile?.name} onChange={e=>setProfileNameEdit(e.target.value)}
+                    <input value={profileNameEdit} onChange={e=>setProfileNameEdit(e.target.value)}
+                      onFocus={e=>{if(!profileNameEdit)setProfileNameEdit(currentProfile?.name||"");e.target.select();}}
+                      placeholder={currentProfile?.name||"Your name"}
                       style={{...inputStyle,flex:1}} />
                     <button onClick={()=>{
-                      const updated=(profiles||[]).map(p=>p.id===currentProfile?.id?{...p,name:profileNameEdit||p.name}:p);
-                      fbSet("profiles",updated);setCurrentProfile(p=>({...p,name:profileNameEdit||p.name}));showSave("Name saved!");
+                      const name=profileNameEdit.trim()||currentProfile?.name;
+                      const updated=(profiles||[]).map(p=>p.id===currentProfile?.id?{...p,name}:p);
+                      fbSet("profiles",updated);setCurrentProfile(p=>({...p,name}));setProfileNameEdit("");showSave("Name saved!");
                     }} style={{...btnPrimary,padding:"8px 12px",fontSize:12}}>Save</button>
                   </div>
                 </div>
@@ -2440,6 +2524,17 @@ export default function App() {
                         <option value="">Day...</option>
                         {Array.from({length:31},(_,i)=>{const d=String(i+1).padStart(2,"0"); return <option key={d} value={d}>{i+1}</option>;})}
                       </select>
+                      {p.type !== "admin" && (
+                        <button onClick={()=>{
+                          if(confirm(`Remove ${p.name} from your family?`)){
+                            const updated=(profiles||[]).filter(pp=>pp.id!==p.id);
+                            fbSet("profiles",updated); showSave(`${p.name} removed`);
+                          }
+                        }} style={{width:36,height:36,borderRadius:8,background:`${V.danger}15`,border:`1px solid ${V.danger}33`,
+                          color:V.danger,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>
+                          🗑️
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2498,6 +2593,47 @@ export default function App() {
                 </button>
               );
             })}
+          </div>
+        )}
+
+        {/* ═══ WIDGETS RESTORE (Fix: hidden widgets recoverable) ═══ */}
+        {settingsSubTab === "widgets" && (
+          <div style={cardStyle}>
+            <div style={{fontWeight:700,color:V.accent,marginBottom:4,fontSize:15}}>Hidden Widgets</div>
+            <div style={{fontSize:12,color:V.textMuted,marginBottom:14}}>Restore widgets you've hidden from the home screen</div>
+            {(() => {
+              const profilePrefs = (widgetPrefs || {})[currentProfile?.name] || {};
+              const allWidgets = [
+                {key:"routines",label:"Routines",icon:"✅"},
+                {key:"goals",label:"Goals",icon:"🎯"},
+                {key:"stats",label:"Quick Stats",icon:"📊"},
+              ];
+              const hidden = allWidgets.filter(w => profilePrefs[w.key]?.hidden);
+              const visible = allWidgets.filter(w => !profilePrefs[w.key]?.hidden);
+              return (
+                <div>
+                  {hidden.length === 0 && <div style={{fontSize:13,color:V.textDim,fontStyle:"italic",marginBottom:10}}>No hidden widgets — all widgets are visible</div>}
+                  {hidden.map(w => (
+                    <div key={w.key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:`1px solid ${V.borderDefault}`}}>
+                      <span style={{fontSize:14,color:V.textSecondary}}>{w.icon} {profilePrefs[w.key]?.name || w.label} <span style={{fontSize:11,color:V.textDim}}>(hidden)</span></span>
+                      <button onClick={() => setWidgetPref(w.key, {...(profilePrefs[w.key]||{}), hidden:false})}
+                        style={{...btnPrimary,padding:"6px 14px",fontSize:12}}>Show</button>
+                    </div>
+                  ))}
+                  {visible.length > 0 && (
+                    <div style={{marginTop:12}}>
+                      <div style={{fontSize:12,color:V.textDim,marginBottom:6}}>Visible widgets:</div>
+                      {visible.map(w => (
+                        <div key={w.key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${V.borderDefault}`}}>
+                          <span style={{fontSize:14,color:V.textSecondary}}>{w.icon} {profilePrefs[w.key]?.name || w.label}</span>
+                          <span style={{fontSize:11,color:V.success}}>Visible</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
 
