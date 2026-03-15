@@ -6,6 +6,7 @@ import { groqFetch, parseGroqJSON, cacheGet, cacheSet, SWATCH_COLORS, triggerCon
 import FoodTab from "./FoodTab";
 import BudgetTab from "./BudgetTab";
 import HomeworkHelper from "./HomeworkHelper";
+import GroqAssistant from "./GroqAssistant";
 
 // ⚠️ PASTE YOUR FIREBASE CONFIG HERE (copy from your old App.jsx)
 const firebaseConfig = {
@@ -314,6 +315,18 @@ export default function App() {
   const [weightLog, setWeightLog] = useState({});
   const [homeworkSessions, setHomeworkSessions] = useState({});
 
+  // Call buttons (upgradable)
+  const [callButtons, setCallButtons] = useState([]);
+  // Quote customization
+  const [quoteMode, setQuoteMode] = useState("motivational"); // motivational, tip, dolphin, custom
+  const [customQuotePrompt, setCustomQuotePrompt] = useState("");
+  // Jr assistant history
+  const [jrHistory, setJrHistory] = useState({});
+  // PIN visibility
+  const [showPin, setShowPin] = useState(false);
+  // Theme customization overrides
+  const [themeOverrides, setThemeOverrides] = useState({});
+
   // Offline + Toast infrastructure
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [toast, setToast] = useState(null); // {message, type: "success"|"error"|"info"}
@@ -339,7 +352,7 @@ export default function App() {
   const FB_KEYS = ["events","eventStyles","routines","routineStyles","goals","goalStyles",
     "profiles","kidsData","custodySchedule","myRules","theirRules","sharedRules",
     "exchangeLog","foodLog","myFoods","nutritionGoals","trackedMacros","contacts","alertMinutes","themeName","widgetPrefs",
-    "budgetData","shoppingList","weightLog","homeworkSessions"];
+    "budgetData","shoppingList","weightLog","homeworkSessions","callButtons","quoteMode","customQuotePrompt","jrHistory","themeOverrides"];
 
   const fbSetters = {
     events: setEvents, eventStyles: setEventStyles, routines: setRoutines,
@@ -356,6 +369,11 @@ export default function App() {
     shoppingList: v => setShoppingList(v || []),
     weightLog: v => setWeightLog(v || {}),
     homeworkSessions: v => setHomeworkSessions(v || {}),
+    callButtons: v => setCallButtons(v || []),
+    quoteMode: v => setQuoteMode(v || "motivational"),
+    customQuotePrompt: v => setCustomQuotePrompt(v || ""),
+    jrHistory: v => setJrHistory(v || {}),
+    themeOverrides: v => setThemeOverrides(v || {}),
   };
 
   // Pre-populate from localStorage cache on mount
@@ -983,62 +1001,120 @@ export default function App() {
     );
   }
 
-  // If kid, only show stars + game
+  // Kid profile: full tabbed experience with filtered content
   if (isKid && screen === "app") {
     const kd = getKidData(currentProfile.name);
+    const kidTabs = [
+      { id:"home", label:"Home", icon:"🏠" },
+      { id:"kids", label:"My Stuff", icon:"⭐" },
+      { id:"food", label:"Food", icon:"🍽️" },
+    ];
     return (
       <div style={appStyle}>
-        <div style={{ background:V.bgCard, padding:"12px 16px", display:"flex", justifyContent:"space-between", alignItems:"center",
+        {/* Kid header with avatar + stars */}
+        <div style={{ background:V.bgCard, padding:"10px 16px", display:"flex", justifyContent:"space-between", alignItems:"center",
           borderBottom:`1px solid ${V.borderDefault}` }}>
           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-            <span style={{ fontSize:22 }}>{currentProfile.emoji}</span>
-            <span style={{ fontWeight:700, color:V.accent }}>{currentProfile.name}</span>
+            <span style={{ fontSize:24 }}>{currentProfile.emoji}</span>
+            <span style={{ fontWeight:800, color:V.accent, fontSize:16 }}>{currentProfile.name}</span>
+            <span style={{ fontSize:12, color:V.accent, background:`${V.accent}18`, padding:"2px 8px", borderRadius:10, fontWeight:700 }}>
+              ⭐ {kd.points||0}
+            </span>
           </div>
           <button onClick={() => { setCurrentProfile(null); setScreen("profiles"); }} style={{ ...btnSecondary, fontSize:12 }}>Switch</button>
         </div>
-        {showGame ? (
-          <div style={{ padding:16 }}>
-            <button onClick={() => setShowGame(false)} style={{ ...btnSecondary, marginBottom:12 }}>← Back</button>
-            <LucacLegends profile={currentProfile} kidsData={kidsData} fbSet={fbSet} />
-          </div>
-        ) : (
-          <div style={{ padding:16 }}>
-            <div style={{ ...cardStyle, textAlign:"center" }}>
-              <div style={{ fontSize:48 }}>⭐</div>
-              <div style={{ fontSize:36, fontWeight:800, color:V.accent }}>{kd.points || 0}</div>
-              <div style={{ color:V.textMuted }}>Total Points</div>
-            </div>
-            {contactDad && (
-              <button onClick={() => window.location.href = `tel:${contactDad}`}
-                style={{ ...btnPrimary, width:"100%", padding:14, marginBottom:8, fontSize:16 }}>
-                📞 Call Dada
-              </button>
-            )}
-            {contactMom && (
-              <button onClick={() => window.location.href = `tel:${contactMom}`}
-                style={{ background:V.purple, color:"#fff", border:"none", borderRadius:V.r2,
-                  padding:14, width:"100%", marginBottom:8, fontSize:16, cursor:"pointer", fontWeight:700 }}>
-                📞 Call Mom
-              </button>
-            )}
-            <button onClick={() => setShowGame(true)}
-              style={{ background:"#0f766e", color:"#fff", border:"none", borderRadius:V.r2,
-                padding:14, width:"100%", marginBottom:12, fontSize:16, cursor:"pointer", fontWeight:700 }}>
-              🎮 Play LUCAC Legends
-            </button>
-            <div style={cardStyle}>
-              <div style={{ fontWeight:700, marginBottom:10, color:V.accent }}>My Tasks</div>
-              {(kd.tasks||[]).map((task, i) => (
-                <div key={i} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
-                  <span style={{ flex:1, color: task.done ? V.textDim : V.textPrimary, textDecoration: task.done?"line-through":"none" }}>{task.text}</span>
-                  {!task.done && <button onClick={() => completeKidTask(currentProfile.name, i)} style={{ ...btnPrimary, padding:"4px 10px", fontSize:12 }}>✓ +10pts</button>}
-                  {task.done && <span style={{ color:V.success, fontSize:12 }}>✓ Done!</span>}
-                </div>
+
+        {/* Kid tab content */}
+        <div style={{ paddingBottom:80 }}>
+          {tab === "home" && (
+            <div style={{ padding:16 }}>
+              <div style={{ ...cardStyle, textAlign:"center", padding:20 }}>
+                <div style={{ fontSize:56 }}>{currentProfile.emoji}</div>
+                <div style={{ fontSize:28, fontWeight:800, color:V.accent, marginTop:4 }}>⭐ {kd.points||0} Stars</div>
+              </div>
+              {/* Call buttons */}
+              {(callButtons||[]).map(btn => (
+                <button key={btn.id} onClick={()=>window.location.href=`tel:${btn.number}`}
+                  style={{ background:btn.color||V.accent, color:"#fff", border:"none", borderRadius:V.r2,
+                    padding:14, width:"100%", marginBottom:8, fontSize:16, cursor:"pointer", fontWeight:700 }}>
+                  {btn.emoji} Call {btn.name}
+                </button>
               ))}
-              {!(kd.tasks||[]).length && <div style={{ color:V.textDim, fontSize:13 }}>No tasks yet!</div>}
+              {/* Legacy call buttons */}
+              {!callButtons?.length && contactDad && (
+                <button onClick={()=>window.location.href=`tel:${contactDad}`}
+                  style={{...btnPrimary,width:"100%",padding:14,marginBottom:8,fontSize:16}}>📞 Call Dada</button>
+              )}
+              <button onClick={()=>setShowGame(true)}
+                style={{ background:"#0f766e", color:"#fff", border:"none", borderRadius:V.r2,
+                  padding:14, width:"100%", marginBottom:12, fontSize:16, cursor:"pointer", fontWeight:700 }}>
+                🎮 Play LUCAC Legends
+              </button>
+              {/* Today's events for this kid */}
+              {(() => {
+                const dk = todayKey();
+                const myEvents = ((events||{})[dk]||[]).filter(ev => !ev.who || ev.who === currentProfile.name);
+                return myEvents.length > 0 && (
+                  <div style={cardStyle}>
+                    <div style={{fontWeight:700,color:V.accent,marginBottom:8}}>📅 Today</div>
+                    {myEvents.map((ev,i) => (
+                      <div key={i} style={{fontSize:14,color:V.textSecondary,marginBottom:4}}>{ev.time} — {ev.title}</div>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
-          </div>
-        )}
+          )}
+          {tab === "kids" && (
+            <div style={{ padding:16 }}>
+              {showGame ? (
+                <div>
+                  <button onClick={()=>setShowGame(false)} style={{...btnSecondary,marginBottom:12}}>← Back</button>
+                  <LucacLegends profile={currentProfile} kidsData={kidsData} fbSet={fbSet} />
+                </div>
+              ) : (
+                <div>
+                  <div style={cardStyle}>
+                    <div style={{fontWeight:700,marginBottom:10,color:V.accent}}>My Tasks</div>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:10}}>
+                      {(kd.tasks||[]).map((task,i) => (
+                        <div key={i} onClick={()=>!task.done&&completeKidTask(currentProfile.name,i)}
+                          style={{minHeight:120,borderRadius:14,background:task.done?V.bgCardAlt:V.bgCard,
+                            border:`2px solid ${task.done?V.borderDefault:V.accent}`,
+                            display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                            padding:14,cursor:task.done?"default":"pointer",opacity:task.done?0.5:1,position:"relative"}}>
+                          {task.done && <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:44,zIndex:1}}>✅</div>}
+                          <div style={{fontSize:44}}>{task.emoji||"📝"}</div>
+                          <div style={{fontSize:13,fontWeight:700,color:V.textPrimary,textAlign:"center"}}>{task.text}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {!(kd.tasks||[]).length && <div style={{color:V.textDim,fontSize:14}}>No tasks yet!</div>}
+                  </div>
+                  <HomeworkHelper V={V} profiles={profiles} kidsData={kidsData} fbSet={fbSet} GROQ_KEY={GROQ_KEY} showToast={showToast} />
+                </div>
+              )}
+            </div>
+          )}
+          {tab === "food" && (
+            <FoodTab V={V} currentProfile={currentProfile} foodLog={foodLog} myFoods={myFoods}
+              nutritionGoals={nutritionGoals} fbSet={fbSet} GROQ_KEY={GROQ_KEY} showToast={showToast} profiles={profiles}
+              shoppingList={shoppingList} weightLog={weightLog} isRecording={isRecording} startVoiceInput={startVoiceInput} stopVoiceInput={stopVoiceInput} />
+          )}
+        </div>
+
+        {/* Kid bottom nav */}
+        <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:900,
+          background:V.bgCard,borderTop:`1px solid ${V.borderDefault}`,display:"flex",justifyContent:"space-around",
+          padding:"8px 0",zIndex:100}}>
+          {kidTabs.map(t => (
+            <button key={t.id} onClick={()=>{setTab(t.id);setShowGame(false);}} style={{background:"none",border:"none",cursor:"pointer",
+              display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"4px 8px",opacity:tab===t.id?1:0.5}}>
+              <span style={{fontSize:22}}>{t.icon}</span>
+              <span style={{fontSize:10,color:tab===t.id?V.accent:V.textDim,fontWeight:tab===t.id?700:400}}>{t.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
     );
   }
@@ -1131,10 +1207,19 @@ export default function App() {
           </div>
         )}
 
-        {/* Quote */}
-        <div style={{ background: V.bgCardAlt, borderRadius:10, padding:"10px 14px", marginBottom:12,
-          border:`1px solid ${V.borderDefault}`, fontSize:13, color: V.textMuted, fontStyle:"italic" }}>
-          ✦ {quote}
+        {/* Quote — tap to refresh */}
+        <div onClick={() => {
+          const prompts = {
+            motivational: "Give me one short motivational quote (under 15 words) for a single dad building his own business. Just the quote, no attribution.",
+            tip: "Give me one short actionable business or productivity tip in under 15 words. No attribution.",
+            dolphin: "Give me one fun dolphin fact in under 15 words. Start with 🐬.",
+            custom: customQuotePrompt || "Give me a short motivational quote under 15 words."
+          };
+          groqFetch(GROQ_KEY, [{role:"user",content:prompts[quoteMode]||prompts.motivational}], {maxTokens:80})
+            .then(r => { if(r.ok && r.data) setQuote(r.data.replace(/"/g,"")); });
+        }} style={{ background: V.bgCardAlt, borderRadius:10, padding:"10px 14px", marginBottom:12,
+          border:`1px solid ${V.borderDefault}`, fontSize:13, color: V.textMuted, fontStyle:"italic", cursor:"pointer" }}>
+          ✦ {quote} <span style={{fontSize:10,opacity:0.5}}>tap to refresh</span>
         </div>
 
         {/* ═══ CALENDAR ═══ */}
@@ -2477,8 +2562,12 @@ export default function App() {
                 <div style={{marginBottom:8}}>
                   <div style={{fontSize:12,color:V.textMuted,marginBottom:3}}>PIN (4-6 digits)</div>
                   <div style={{display:"flex",gap:6}}>
-                    <input type="password" value={pinEdit} onChange={e=>setPinEdit(e.target.value)}
-                      placeholder="New PIN" maxLength={6} style={{...inputStyle,flex:1}} />
+                    <div style={{flex:1,position:"relative"}}>
+                      <input type={showPin?"text":"password"} value={pinEdit} onChange={e=>setPinEdit(e.target.value)}
+                        placeholder="New PIN" maxLength={6} style={{...inputStyle,paddingRight:40}} />
+                      <button onClick={()=>setShowPin(!showPin)} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",
+                        background:"none",border:"none",cursor:"pointer",fontSize:16,padding:4}}>{showPin?"🙈":"👁"}</button>
+                    </div>
                     <button onClick={()=>{
                       if(pinEdit.length>=4){
                         const updated=(profiles||[]).map(p=>p.id===currentProfile?.id?{...p,pin:pinEdit}:p);
@@ -2639,17 +2728,59 @@ export default function App() {
 
         {settingsSubTab === "contacts" && (
           <div style={cardStyle}>
-            <div style={{fontWeight:700,color:"#f59e0b",marginBottom:10}}>📞 Call Button Numbers</div>
-            <div style={{marginBottom:8}}>
-              <div style={{fontSize:12,color:V.textMuted,marginBottom:3}}>Dada's Number</div>
-              <input value={contactDad} onChange={e=>setContactDad(e.target.value)} placeholder="555-000-0000" style={{...inputStyle}} />
-            </div>
-            <div style={{marginBottom:12}}>
-              <div style={{fontSize:12,color:V.textMuted,marginBottom:3}}>Mom's Number</div>
-              <input value={contactMom} onChange={e=>setContactMom(e.target.value)} placeholder="555-000-0000" style={{...inputStyle}} />
-            </div>
-            <button onClick={()=>{fbSet("contacts",{dad:contactDad,mom:contactMom});showSave("Contacts saved!");}}
-              style={{...btnPrimary,width:"100%"}}>💾 Save Contacts</button>
+            <div style={{fontWeight:700,color:V.accent,marginBottom:10}}>📞 Call Buttons</div>
+            <div style={{fontSize:12,color:V.textMuted,marginBottom:12}}>Add call buttons for kids to use. Shows on Kids tab.</div>
+            {/* Legacy buttons */}
+            {(contactDad || contactMom) && !callButtons.length && (
+              <div style={{fontSize:11,color:V.textDim,marginBottom:8}}>
+                <button onClick={()=>{
+                  const btns = [];
+                  if(contactDad) btns.push({id:Date.now()+"d",name:"Dada",number:contactDad,emoji:"📞",color:"#f59e0b"});
+                  if(contactMom) btns.push({id:Date.now()+"m",name:"Mom",number:contactMom,emoji:"📞",color:"#7c3aed"});
+                  fbSet("callButtons",btns); setCallButtons(btns); showSave("Migrated!");
+                }} style={{...btnSecondary,fontSize:11,padding:"4px 10px"}}>Migrate old contacts →</button>
+              </div>
+            )}
+            {/* Existing buttons */}
+            {(callButtons||[]).map((btn,i) => (
+              <div key={btn.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:`1px solid ${V.borderDefault}`}}>
+                <span style={{fontSize:20}}>{btn.emoji||"📞"}</span>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:600,color:V.textPrimary,fontSize:14}}>{btn.name}</div>
+                  <div style={{fontSize:11,color:V.textDim}}>{btn.number}</div>
+                </div>
+                <div style={{width:20,height:20,borderRadius:"50%",background:btn.color||V.accent}} />
+                <button onClick={()=>{
+                  const updated=(callButtons||[]).filter((_,j)=>j!==i);
+                  fbSet("callButtons",updated); setCallButtons(updated);
+                }} style={{background:"none",border:"none",cursor:"pointer",fontSize:14,color:V.danger,padding:4}}>🗑️</button>
+              </div>
+            ))}
+            {/* Add new button */}
+            {isAdmin && (
+              <div style={{marginTop:10,padding:10,background:V.bgCardAlt,borderRadius:V.r2}}>
+                <div style={{fontSize:12,color:V.textMuted,marginBottom:6}}>Add Call Button</div>
+                <div style={{display:"flex",gap:6,marginBottom:6}}>
+                  <input id="cb-name" placeholder="Name" style={{...inputStyle,flex:1}} />
+                  <input id="cb-number" placeholder="555-000-0000" style={{...inputStyle,flex:1}} />
+                </div>
+                <div style={{display:"flex",gap:6}}>
+                  <input id="cb-emoji" placeholder="📞" style={{...inputStyle,width:50}} />
+                  <input id="cb-color" type="color" defaultValue="#f59e0b" style={{width:44,height:38,border:"none",borderRadius:V.r2,cursor:"pointer"}} />
+                  <button onClick={()=>{
+                    const n=document.getElementById("cb-name").value.trim();
+                    const num=document.getElementById("cb-number").value.trim();
+                    const em=document.getElementById("cb-emoji").value||"📞";
+                    const col=document.getElementById("cb-color").value;
+                    if(!n||!num) return;
+                    const updated=[...(callButtons||[]),{id:Date.now()+"",name:n,number:num,emoji:em,color:col}];
+                    fbSet("callButtons",updated); setCallButtons(updated);
+                    document.getElementById("cb-name").value=""; document.getElementById("cb-number").value="";
+                    showSave("Button added!");
+                  }} style={{...btnPrimary,padding:"8px 14px"}}>Add</button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -2721,6 +2852,15 @@ export default function App() {
           </button>
         ))}
       </div>
+
+      {/* bby sonnet Jr. — floating assistant */}
+      {!guestMode && (
+        <GroqAssistant V={V} currentProfile={currentProfile} profiles={profiles} events={events}
+          routines={routines} goals={goals} foodLog={foodLog} shoppingList={shoppingList}
+          budgetData={budgetData} custodySchedule={custodySchedule} fbSet={fbSet}
+          GROQ_KEY={GROQ_KEY} TAVILY_KEY={TAVILY_KEY} showToast={showToast}
+          familyNames={familyNames} dateKey={dateKey} todayStr={todayStr} />
+      )}
 
       {/* Guest Mode PIN exit */}
       {guestPinPrompt && (
