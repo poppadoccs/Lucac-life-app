@@ -98,7 +98,11 @@ export function triggerConfetti(container, intensity = "small") {
     style.textContent = `
       @keyframes confettiFall {
         0% { transform: translateY(0) rotate(0deg); opacity: 1; }
-        100% { transform: translateY(100vh) rotate(${360 + Math.random() * 360}deg); opacity: 0; }
+        100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+      }
+      @keyframes pulse {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.1); opacity: 0.8; }
       }
     `;
     document.head.appendChild(style);

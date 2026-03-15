@@ -281,6 +281,19 @@ export default function App() {
   const [widgetPrefs, setWidgetPrefs] = useState({});
   const [editingWidget, setEditingWidget] = useState(null); // widget key being edited
 
+  // Guest / Privacy Mode (memory only — resets on reload for safety)
+  const [guestMode, setGuestMode] = useState(false);
+  const [guestPinPrompt, setGuestPinPrompt] = useState(false);
+  const [guestPinInput, setGuestPinInput] = useState("");
+
+  // Voice input (shared across app)
+  const [isRecording, setIsRecording] = useState(false);
+  const speechRef = useRef(null);
+
+  // AI Goals Suggester
+  const [suggestedGoals, setSuggestedGoals] = useState([]);
+  const [goalsLoading, setGoalsLoading] = useState(false);
+
   // Offline + Toast infrastructure
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [toast, setToast] = useState(null); // {message, type: "success"|"error"|"info"}
@@ -591,6 +604,39 @@ export default function App() {
     setWidgetPrefs(updated);
   }
 
+  // ═══ AI GOALS SUGGESTER ═══
+  async function suggestGoals() {
+    setGoalsLoading(true);
+    const fallbacks = ["Read for 20 minutes","Walk 10,000 steps","Drink 8 glasses of water","Plan tomorrow's schedule","Send one business email"];
+    const result = await groqFetch(GROQ_KEY, [
+      { role: "system", content: "You are a life coach for a single dad named Alex who has a construction background, is building a tech business called Lucac LLC, and has two kids Yana (8) and Luca (6). Suggest 5 specific, actionable daily goals. Return ONLY a JSON array of 5 strings. No explanation." },
+      { role: "user", content: "Suggest 5 goals for today" }
+    ]);
+    if (result.ok) {
+      const parsed = parseGroqJSON(result.data);
+      if (Array.isArray(parsed)) { setSuggestedGoals(parsed); setGoalsLoading(false); return; }
+    }
+    setSuggestedGoals(fallbacks);
+    setGoalsLoading(false);
+  }
+
+  // ═══ VOICE INPUT HELPER ═══
+  function startVoiceInput(onResult) {
+    const sr = createSpeechRecognition();
+    if (!sr) { showToast("Voice not supported in this browser", "error"); return; }
+    speechRef.current = sr;
+    sr.onresult = (e) => { const text = e.results[0][0].transcript; onResult(text); setIsRecording(false); };
+    sr.onerror = () => { setIsRecording(false); showToast("Couldn't hear you — try again", "error"); };
+    sr.onend = () => setIsRecording(false);
+    sr.start();
+    setIsRecording(true);
+    setTimeout(() => { if (speechRef.current) { try { speechRef.current.stop(); } catch(e){} } }, 10000);
+  }
+  function stopVoiceInput() {
+    if (speechRef.current) { try { speechRef.current.stop(); } catch(e){} }
+    setIsRecording(false);
+  }
+
   // ═══ RESIZE EVENT DURATION ═══
   function updateEventDuration(dk, idx, newDuration) {
     const dayEvs = [...((events||{})[dk] || [])];
@@ -830,6 +876,10 @@ export default function App() {
             </button>
           ))}
         </div>
+        <button onClick={() => { setGuestMode(true); setCurrentProfile({ id:"guest", name:"Guest", emoji:"👁️", type:"guest" }); setTab("home"); setScreen("app"); }}
+          style={{ ...btnSecondary, marginTop:24, padding:"12px 24px", fontSize:14, borderRadius:20 }}>
+          👁️ Guest Mode
+        </button>
       </div>
     );
   }
@@ -925,13 +975,14 @@ export default function App() {
   }
 
   // Main app tabs
-  const tabs = [
-    { id:"home", label:"Home", icon:"🏠" },
-    { id:"food", label:"Food", icon:"🍽️" },
-    { id:"kids", label:"Kids", icon:"⭐" },
-    { id:"family", label:"Family", icon:"🤝" },
-    { id:"settings", label:"Settings", icon:"⚙️" },
+  const allTabs = [
+    { id:"home", label:"Home", icon:"🏠", guest:true },
+    { id:"food", label:"Food", icon:"🍽️", guest:true },
+    { id:"kids", label:"Kids", icon:"⭐", guest:true },
+    { id:"family", label:"Family", icon:"🤝", guest:false },
+    { id:"settings", label:"Settings", icon:"⚙️", guest:false },
   ];
+  const tabs = guestMode ? allTabs.filter(t => t.guest) : allTabs;
 
   // ---- HOME TAB — DISPATCHER ----
   function renderHome() {
@@ -958,8 +1009,14 @@ export default function App() {
 
     return (
       <div style={{ padding:12 }}>
-        {/* ═══ AI QUICK ADD ═══ */}
-        <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+        {/* ═══ AI QUICK ADD + VOICE ═══ */}
+        <div style={{ display:"flex", gap:6, marginBottom:12 }}>
+          <button onClick={() => isRecording ? stopVoiceInput() : startVoiceInput(text => setQuickAddInput(text))}
+            style={{ width:44, height:44, borderRadius:"50%", border:"none", cursor:"pointer", fontSize:18,
+              background: isRecording ? V.danger : V.bgElevated, color: isRecording ? "#fff" : V.textMuted,
+              animation: isRecording ? "pulse 1s infinite" : "none", flexShrink:0 }}>
+            🎤
+          </button>
           <input value={quickAddInput} onChange={e => setQuickAddInput(e.target.value)}
             onKeyDown={e => e.key === "Enter" && handleQuickAdd()}
             placeholder="Add anything... 'Soccer every Friday for 3 months at 4PM for Luca'"
@@ -1147,6 +1204,26 @@ export default function App() {
                     placeholder="Add goal..." style={{ ...inputStyle, flex:1, padding:"6px 10px", fontSize:12 }} />
                   <button onClick={addGoal} style={{ ...btnPrimary, padding:"6px 10px" }}>+</button>
                 </div>
+                <button onClick={suggestGoals} disabled={goalsLoading}
+                  style={{ ...btnSecondary, width:"100%", marginTop:6, fontSize:12, padding:"6px 10px", opacity: goalsLoading ? 0.6 : 1 }}>
+                  {goalsLoading ? "Thinking..." : "✨ Suggest goals"}
+                </button>
+                {suggestedGoals.length > 0 && (
+                  <div style={{ marginTop:6 }}>
+                    {suggestedGoals.map((sg, si) => (
+                      <div key={si} style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}>
+                        <span style={{ flex:1, fontSize:11, color:V.textMuted }}>{sg}</span>
+                        <button onClick={() => {
+                          const updated = [...(goals||[]), { id:Date.now()+si, text:sg, done:false }];
+                          fbSet("goals", updated); showToast("Goal added!", "success");
+                        }} style={{ background:"none", border:"none", cursor:"pointer", fontSize:14, color:V.success }}>+</button>
+                      </div>
+                    ))}
+                    <button onClick={() => suggestGoals()} style={{ background:"none", border:"none", cursor:"pointer", fontSize:11, color:V.accent, padding:0, marginTop:2 }}>
+                      🔄 More suggestions
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -2343,10 +2420,18 @@ export default function App() {
             ? <span style={{fontSize:11,color:V.danger,background:`${V.danger}18`,padding:"2px 6px",borderRadius:10}}>⚠ Offline</span>
             : <span style={{fontSize:11,color:V.success,background:`${V.success}18`,padding:"2px 6px",borderRadius:10}}>✦ Live</span>
           }
+          {guestMode && <span style={{fontSize:11,color:V.info,background:`${V.info}18`,padding:"2px 6px",borderRadius:10}}>👁️ Guest</span>}
         </div>
-        <div style={{textAlign:"right"}}>
-          <div style={{fontWeight:700,color:V.textPrimary,fontSize:14}}>{new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</div>
-          <div style={{fontSize:11,color:V.textDim}}>{new Date().toLocaleDateString([],{weekday:"short",month:"short",day:"numeric"})}</div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          {guestMode && (
+            <button onClick={() => setGuestPinPrompt(true)}
+              style={{fontSize:11,color:V.textDim,background:V.bgElevated,border:`1px solid ${V.borderSubtle}`,
+                borderRadius:8,padding:"4px 10px",cursor:"pointer",fontWeight:600}}>Exit Guest</button>
+          )}
+          <div style={{textAlign:"right"}}>
+            <div style={{fontWeight:700,color:V.textPrimary,fontSize:14}}>{new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</div>
+            <div style={{fontSize:11,color:V.textDim}}>{new Date().toLocaleDateString([],{weekday:"short",month:"short",day:"numeric"})}</div>
+          </div>
         </div>
       </div>
 
@@ -2372,6 +2457,28 @@ export default function App() {
           </button>
         ))}
       </div>
+
+      {/* Guest Mode PIN exit */}
+      {guestPinPrompt && (
+        <div style={{position:"fixed",inset:0,background:V.bgOverlay,zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+          onClick={e=>{if(e.target===e.currentTarget)setGuestPinPrompt(false);}}>
+          <div style={{background:V.bgCard,borderRadius:V.r4,padding:24,width:"100%",maxWidth:300,textAlign:"center",
+            border:`1px solid ${V.borderSubtle}`,boxShadow:V.shadowModal}}>
+            <div style={{fontSize:16,fontWeight:700,color:V.textPrimary,marginBottom:12}}>Enter Admin PIN to Exit</div>
+            <input type="password" value={guestPinInput} onChange={e=>setGuestPinInput(e.target.value)}
+              placeholder="PIN" maxLength={6} style={{...inputStyle,textAlign:"center",fontSize:24,letterSpacing:8,marginBottom:12}} />
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>{
+                const admin=(profiles||[]).find(p=>p.type==="admin");
+                if(admin&&guestPinInput===admin.pin){setGuestMode(false);setGuestPinPrompt(false);setGuestPinInput("");
+                  setCurrentProfile(null);setScreen("profiles");showToast("Guest mode exited","success");}
+                else{showToast("Wrong PIN","error");setGuestPinInput("");}
+              }} style={{...btnPrimary,flex:1}}>Unlock</button>
+              <button onClick={()=>{setGuestPinPrompt(false);setGuestPinInput("");}} style={{...btnSecondary,flex:1}}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast notification */}
       {toast && (
