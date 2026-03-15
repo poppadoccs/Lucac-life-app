@@ -3,6 +3,9 @@ import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, onValue } from "firebase/database";
 import LucacLegends from "./LucacLegends";
 import { groqFetch, parseGroqJSON, cacheGet, cacheSet, SWATCH_COLORS, triggerConfetti, createSpeechRecognition } from "./utils";
+import FoodTab from "./FoodTab";
+import BudgetTab from "./BudgetTab";
+import HomeworkHelper from "./HomeworkHelper";
 
 // ⚠️ PASTE YOUR FIREBASE CONFIG HERE (copy from your old App.jsx)
 const firebaseConfig = {
@@ -294,6 +297,12 @@ export default function App() {
   const [suggestedGoals, setSuggestedGoals] = useState([]);
   const [goalsLoading, setGoalsLoading] = useState(false);
 
+  // Budget + Shopping List + Homework
+  const [budgetData, setBudgetData] = useState({ transactions: [], categoryBudgets: {} });
+  const [shoppingList, setShoppingList] = useState([]);
+  const [weightLog, setWeightLog] = useState({});
+  const [homeworkSessions, setHomeworkSessions] = useState({});
+
   // Offline + Toast infrastructure
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [toast, setToast] = useState(null); // {message, type: "success"|"error"|"info"}
@@ -318,7 +327,8 @@ export default function App() {
   // Firebase sync with localStorage cache fallback
   const FB_KEYS = ["events","eventStyles","routines","routineStyles","goals","goalStyles",
     "profiles","kidsData","custodySchedule","myRules","theirRules","sharedRules",
-    "exchangeLog","foodLog","myFoods","nutritionGoals","trackedMacros","contacts","alertMinutes","themeName","widgetPrefs"];
+    "exchangeLog","foodLog","myFoods","nutritionGoals","trackedMacros","contacts","alertMinutes","themeName","widgetPrefs",
+    "budgetData","shoppingList","weightLog","homeworkSessions"];
 
   const fbSetters = {
     events: setEvents, eventStyles: setEventStyles, routines: setRoutines,
@@ -331,6 +341,10 @@ export default function App() {
     alertMinutes: setAlertMinutes,
     themeName: v => { if (THEMES[v]) setThemeName(v); },
     widgetPrefs: v => setWidgetPrefs(v || {}),
+    budgetData: v => setBudgetData(v || { transactions: [], categoryBudgets: {} }),
+    shoppingList: v => setShoppingList(v || []),
+    weightLog: v => setWeightLog(v || {}),
+    homeworkSessions: v => setHomeworkSessions(v || {}),
   };
 
   // Pre-populate from localStorage cache on mount
@@ -2096,6 +2110,10 @@ export default function App() {
           );
         })}
         {!kidProfiles.length && <div style={{...cardStyle,color:"#64748b",textAlign:"center"}}>Add kids in Settings → Profiles</div>}
+
+        {/* 📚 Homework Helper */}
+        <HomeworkHelper V={V} profiles={profiles} kidsData={kidsData} fbSet={fbSet}
+          GROQ_KEY={GROQ_KEY} showToast={showToast} />
       </div>
     );
   }
@@ -2105,10 +2123,10 @@ export default function App() {
     return (
       <div style={{padding:12}}>
         <div style={{display:"flex",gap:8,marginBottom:12,overflowX:"auto"}}>
-          {["schedule","myrules","theirrules","shared","log"].map(t=>(
+          {["schedule","myrules","theirrules","shared","log","budget"].map(t=>(
             <button key={t} onClick={()=>setFamilySubTab(t)}
               style={{...familySubTab===t?btnPrimary:btnSecondary,whiteSpace:"nowrap",padding:"6px 12px",fontSize:12}}>
-              {t==="schedule"?"📅 Schedule":t==="myrules"?"👑 My Rules":t==="theirrules"?"💜 Their Rules":t==="shared"?"🤝 Shared":"📋 Log"}
+              {t==="schedule"?"📅 Schedule":t==="myrules"?"👑 My Rules":t==="theirrules"?"💜 Their Rules":t==="shared"?"🤝 Shared":t==="log"?"📋 Log":"💰 Budget"}
             </button>
           ))}
         </div>
@@ -2225,6 +2243,11 @@ export default function App() {
         )}
         {familySubTab === "log" && !isAdmin && (
           <div style={{...cardStyle,color:"#64748b",textAlign:"center"}}>Exchange log is admin only.</div>
+        )}
+        {familySubTab === "budget" && (
+          <BudgetTab V={V} currentProfile={currentProfile} fbSet={fbSet} GROQ_KEY={GROQ_KEY}
+            showToast={showToast} profiles={profiles} custodySchedule={custodySchedule}
+            budgetData={budgetData} isAdmin={isAdmin} />
         )}
       </div>
     );
@@ -2438,7 +2461,9 @@ export default function App() {
       {/* Tab content */}
       <div>
         {tab === "home" && renderHome()}
-        {tab === "food" && renderFood()}
+        {tab === "food" && <FoodTab V={V} currentProfile={currentProfile} foodLog={foodLog} myFoods={myFoods}
+          nutritionGoals={nutritionGoals} fbSet={fbSet} GROQ_KEY={GROQ_KEY} showToast={showToast} profiles={profiles}
+          shoppingList={shoppingList} weightLog={weightLog} isRecording={isRecording} startVoiceInput={startVoiceInput} stopVoiceInput={stopVoiceInput} />}
         {tab === "kids" && renderKids()}
         {tab === "family" && renderFamily()}
         {tab === "settings" && renderSettings()}
