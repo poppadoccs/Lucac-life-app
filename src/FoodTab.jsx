@@ -99,7 +99,7 @@ function MicroBar({ name, value, floor, target, ceiling, V }) {
   const pct = target > 0 ? Math.min((value / ceiling) * 100, 100) : 0;
   let status = "In Range";
   let barColor = V.success;
-  if (value < floor) { status = "Below Target"; barColor = "#F1C40F"; }
+  if (value <= floor) { status = "Below Target"; barColor = "#F1C40F"; }
   else if (value > ceiling) { status = "Above Target"; barColor = "#E67E22"; }
 
   return (

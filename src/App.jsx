@@ -460,40 +460,89 @@ export default function App() {
     return dates;
   }
 
+  // ═══ DISPLAY EVENTS — virtual repeat expansion + deduplication ═══
+  // Computes all events for display: expands repeat events virtually,
+  // deduplicates by title+time per day. Each event carries _baseDk/_baseIdx
+  // to reference its source in Firebase for edits/deletes.
+  const displayEvents = (() => {
+    const result = {};
+    const allEvents = events || {};
+    Object.entries(allEvents).forEach(([dk, dayEvs]) => {
+      if (!Array.isArray(dayEvs)) return;
+      dayEvs.forEach((ev, idx) => {
+        if (ev.repeat && ev.repeat !== "none") {
+          // Expand repeat instances virtually
+          const baseDate = new Date(dk + "T00:00:00");
+          const dates = generateRepeats(ev, baseDate);
+          dates.forEach(d => {
+            const targetDk = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+            if (!result[targetDk]) result[targetDk] = [];
+            result[targetDk].push({ ...ev, _baseDk: dk, _baseIdx: idx });
+          });
+        } else {
+          if (!result[dk]) result[dk] = [];
+          result[dk].push({ ...ev, _baseDk: dk, _baseIdx: idx });
+        }
+      });
+    });
+    // Deduplicate each day by title+time
+    Object.keys(result).forEach(dk => {
+      const seen = new Set();
+      result[dk] = result[dk].filter(ev => {
+        const key = `${ev.title}|${ev.time}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    });
+    return result;
+  })();
+
   function saveEvents() {
     if (!selectedDay) return;
     const valid = addingEvents.filter(e => e.title.trim());
     if (!valid.length) { setSelectedDay(null); return; }
     const updated = { ...(events || {}) };
+    const baseDk = dateKey(calYear, calMonth, selectedDay);
     valid.forEach(ev => {
-      const startDate = new Date(calYear, calMonth, selectedDay);
-      const dates = generateRepeats(ev, startDate);
       const eventData = { title: ev.title, time: ev.time, who: ev.who, notes: ev.notes, duration: ev.duration || 60 };
-      if (ev.repeat !== "none") eventData.repeat = ev.repeat;
-      dates.forEach(d => {
-        const dk = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
-        updated[dk] = [...(updated[dk] || []), eventData];
-      });
+      if (ev.repeat && ev.repeat !== "none") {
+        eventData.repeat = ev.repeat;
+        if (ev.repeatEnd) eventData.repeatEnd = ev.repeatEnd;
+        if (ev.repeatCount) eventData.repeatCount = ev.repeatCount;
+      }
+      // Dedup: skip if same title+time already exists on this date
+      const existing = updated[baseDk] || [];
+      if (!existing.some(e => e.title === eventData.title && e.time === eventData.time)) {
+        updated[baseDk] = [...existing, eventData];
+      }
     });
     fbSet("events", updated);
     setAddingEvents([{ title:"", time:"12:00 PM", who:"", notes:"", repeat:"none", repeatEnd:"", repeatCount:0, duration:60 }]);
     setSelectedDay(null);
   }
 
-  function deleteEvent(dk, idx) {
-    const updated = { ...events, [dk]: events[dk].filter((_,i)=>i!==idx) };
-    if (!updated[dk].length) delete updated[dk];
+  function deleteEvent(dk, idx, ev) {
+    const actualDk = ev?._baseDk || dk;
+    const actualIdx = ev?._baseIdx != null ? ev._baseIdx : idx;
+    const dayEvs = (events || {})[actualDk] || [];
+    const updated = { ...events, [actualDk]: dayEvs.filter((_,i)=>i!==actualIdx) };
+    if (!updated[actualDk] || !updated[actualDk].length) delete updated[actualDk];
     fbSet("events", updated);
   }
 
-  function saveEventStyle(dk, idx, style) {
-    const key = `${dk}_${idx}`;
+  function saveEventStyle(dk, idx, style, ev) {
+    const actualDk = ev?._baseDk || dk;
+    const actualIdx = ev?._baseIdx != null ? ev._baseIdx : idx;
+    const key = `${actualDk}_${actualIdx}`;
     const updated = { ...(eventStyles || {}), [key]: style };
     fbSet("eventStyles", updated);
   }
 
-  function getEventStyle(dk, idx) {
-    return (eventStyles || {})[`${dk}_${idx}`] || null;
+  function getEventStyle(dk, idx, ev) {
+    const actualDk = ev?._baseDk || dk;
+    const actualIdx = ev?._baseIdx != null ? ev._baseIdx : idx;
+    return (eventStyles || {})[`${actualDk}_${actualIdx}`] || null;
   }
 
   function getPersonColor(who) {
@@ -656,8 +705,8 @@ export default function App() {
         totalInstances += generateRepeats(fakeEv, new Date(ev.date + "T00:00:00")).length;
       });
       const repeatDesc = parsed.some(e => e.repeat && e.repeat !== "none")
-        ? ` (${parsed[0].repeat} x${totalInstances})` : "";
-      setQuickAddPreview({ events: parsed, totalInstances, repeatDesc, input });
+        ? ` (${parsed[0].repeat}, ${totalInstances} occurrences)` : "";
+      setQuickAddPreview({ events: parsed, totalInstances: parsed.length, repeatDesc, input });
     } else {
       showToast(`I heard "${input}" but couldn't understand it — try rephrasing`, "error");
     }
@@ -667,28 +716,24 @@ export default function App() {
   function confirmQuickAdd() {
     if (!quickAddPreview?.events?.length) return;
     const updated = { ...(events || {}) };
-    const seenDates = new Set(); // Deduplicate: one event per unique date
     let totalCreated = 0;
     quickAddPreview.events.forEach(ev => {
-      const startDate = new Date(ev.date + "T00:00:00");
-      const fakeEv = { ...ev, repeatEnd: "", repeatCount: ev.repeatCount || 0 };
-      const dates = generateRepeats(fakeEv, startDate);
+      const baseDk = ev.date; // "YYYY-MM-DD"
       const eventData = { title: ev.title, time: ev.time || "12:00 PM", who: ev.who || "", notes: ev.notes || "", duration: ev.duration || 60 };
-      if (ev.repeat && ev.repeat !== "none") eventData.repeat = ev.repeat;
-      dates.forEach(d => {
-        const dk = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
-        const dedupKey = `${ev.title}_${dk}`;
-        if (seenDates.has(dedupKey)) return; // Skip duplicate
-        seenDates.add(dedupKey);
-        // Also skip if this exact event title already exists on this date
-        const existing = updated[dk] || [];
-        if (existing.some(e => e.title === ev.title && e.time === eventData.time)) return;
-        updated[dk] = [...existing, eventData];
+      if (ev.repeat && ev.repeat !== "none") {
+        eventData.repeat = ev.repeat;
+        if (ev.repeatCount) eventData.repeatCount = ev.repeatCount;
+      }
+      // Dedup: skip if same title+time already exists on base date
+      const existing = updated[baseDk] || [];
+      if (!existing.some(e => e.title === eventData.title && e.time === eventData.time)) {
+        updated[baseDk] = [...existing, eventData];
         totalCreated++;
-      });
+      }
     });
     fbSet("events", updated);
-    showToast(`Created ${totalCreated} event${totalCreated>1?"s":""}!`, "success");
+    const repeatInfo = quickAddPreview.events.some(e => e.repeat && e.repeat !== "none") ? " (repeating)" : "";
+    showToast(`Created ${totalCreated} event${totalCreated>1?"s":""}${repeatInfo}!`, "success");
     setQuickAddPreview(null);
     setQuickAddInput("");
   }
@@ -755,10 +800,12 @@ export default function App() {
   }
 
   // ═══ RESIZE EVENT DURATION ═══
-  function updateEventDuration(dk, idx, newDuration) {
-    const dayEvs = [...((events||{})[dk] || [])];
-    dayEvs[idx] = { ...dayEvs[idx], duration: Math.max(30, Math.round(newDuration / 15) * 15) };
-    fbSet("events", { ...(events||{}), [dk]: dayEvs });
+  function updateEventDuration(dk, idx, newDuration, ev) {
+    const actualDk = ev?._baseDk || dk;
+    const actualIdx = ev?._baseIdx != null ? ev._baseIdx : idx;
+    const dayEvs = [...((events||{})[actualDk] || [])];
+    dayEvs[actualIdx] = { ...dayEvs[actualIdx], duration: Math.max(30, Math.round(newDuration / 15) * 15) };
+    fbSet("events", { ...(events||{}), [actualDk]: dayEvs });
   }
 
   // AI chat with Tavily
@@ -1083,7 +1130,7 @@ export default function App() {
               {/* Today's events for this kid */}
               {(() => {
                 const dk = todayKey();
-                const myEvents = ((events||{})[dk]||[]).filter(ev => !ev.who || ev.who === currentProfile.name);
+                const myEvents = (displayEvents[dk]||[]).filter(ev => !ev.who || ev.who === currentProfile.name);
                 return myEvents.length > 0 && (
                   <div style={cardStyle}>
                     <div style={{fontWeight:700,color:V.accent,marginBottom:8}}>📅 Today</div>
@@ -1355,7 +1402,7 @@ export default function App() {
             {cells.map((d, i) => {
               if (!d) return <div key={i} style={{ background: V.bgApp, minHeight: 85 }} />;
               const dk2 = dateKey(calYear, calMonth, d);
-              const dayEvents = (events||{})[dk2] || [];
+              const dayEvents = displayEvents[dk2] || [];
               const isTodayCell = isToday(d);
               const selected = selectedDay === d;
               const isWeekend = (i % 7 === 0) || (i % 7 === 6);
@@ -1379,7 +1426,7 @@ export default function App() {
                   </div>
                   <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2, overflow: "hidden" }}>
                     {dayEvents.slice(0,3).map((ev, idx) => {
-                      const s = getEventStyle(dk2, idx);
+                      const s = getEventStyle(dk2, idx, ev);
                       const hasPastel = V.pillColors && V.pillTextColors;
                       const pillBg = hasPastel ? V.pillColors[idx % V.pillColors.length] : `${s?.bg || (ev.who ? getPersonColor(ev.who) : V.info)}22`;
                       const pillText = hasPastel ? V.pillTextColors[idx % V.pillTextColors.length] : (s?.color || V.textPrimary);
@@ -1389,7 +1436,8 @@ export default function App() {
                         <div key={idx} style={{
                           background: s?.bg ? `${s.bg}22` : pillBg, borderLeft: `3px solid ${s?.bg || pillBorder}`,
                           color: s?.color || pillText, fontSize: 10, fontWeight: 600, borderRadius: V.r1, padding: "2px 5px",
-                          overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", lineHeight: 1.4,
+                          overflow: "hidden", whiteSpace: "normal", wordBreak: "break-word", lineHeight: 1.3,
+                          maxHeight: 28,
                         }}>
                           {ev.repeat && <span style={{ marginRight:2 }}>🔁</span>}
                           {initials ? <span style={{ fontWeight:700, marginRight:3, opacity:0.7 }}>{initials}</span> : null}
@@ -1421,13 +1469,14 @@ export default function App() {
                   const s = routineStyles?.[i] || {};
                   return (
                     <div key={i} style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6,
-                      background: s.bg || "transparent", borderRadius:6, padding: s.bg ? "4px 6px" : "0" }}>
+                      background: s.bg || "transparent", borderRadius:6, padding: s.bg ? "4px 6px" : "0",
+                      minHeight: 28, maxHeight: 40, overflow: "hidden" }}>
                       <div onClick={() => toggleRoutine(i)} style={{ width:18, height:18, borderRadius:4,
                         background: r.done ? V.success : V.borderSubtle, cursor:"pointer", flexShrink:0,
                         display:"flex", alignItems:"center", justifyContent:"center" }}>
                         {r.done && <span style={{ color:"#fff", fontSize:11 }}>✓</span>}
                       </div>
-                      <span style={{ flex:1, fontSize: s.size||13, color: s.color||(r.done? V.textDim : V.textSecondary),
+                      <span style={{ flex:1, fontSize: Math.min(s.size||13, 16), color: s.color||(r.done? V.textDim : V.textSecondary),
                         textDecoration: r.done?"line-through":"none", fontWeight: s.bold?700:400 }}>
                         {r.text}
                         {r.streakCount > 0 && <span style={{ marginLeft:4, fontSize:11, textDecoration:"none" }}>🔥{r.streakCount}{r.hasCrown ? " 👑" : ""}</span>}
@@ -1645,14 +1694,14 @@ export default function App() {
           </div>
 
           <div style={{ padding: V.sp5 }}>
-            {((events||{})[dk]||[]).length > 0 && (
+            {(displayEvents[dk]||[]).length > 0 && (
               <div style={{ marginBottom: V.sp4 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: V.textDim, textTransform: "uppercase",
                   letterSpacing: 1, marginBottom: V.sp2 }}>
-                  Events ({((events||{})[dk]||[]).length})
+                  Events ({(displayEvents[dk]||[]).length})
                 </div>
-                {((events||{})[dk]||[]).map((ev, idx) => {
-                  const s = getEventStyle(dk, idx);
+                {(displayEvents[dk]||[]).map((ev, idx) => {
+                  const s = getEventStyle(dk, idx, ev);
                   const pColor = ev.who ? getPersonColor(ev.who) : V.info;
                   const dur = ev.duration || 60;
                   return (
@@ -1669,10 +1718,21 @@ export default function App() {
                           {ev.title}
                         </div>
                         <div style={{ display: "flex", gap: V.sp1, alignItems: "center" }}>
-                          <button onClick={() => setEditingStyle({ dk, idx })}
+                          <button onClick={() => setEditingStyle({ dk: ev._baseDk || dk, idx: ev._baseIdx != null ? ev._baseIdx : idx })}
                             style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, padding: 4 }}>🎨</button>
-                          {isAdmin && <button onClick={() => deleteEvent(dk, idx)}
-                            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: V.danger, padding: 4 }}>✕</button>}
+                          {isAdmin && <button onClick={() => {
+                            const u = [...addingEvents];
+                            u[0] = { title: ev.title, time: ev.time || "12:00 PM", who: ev.who || "", notes: ev.notes || "", repeat: ev.repeat || "none", repeatEnd: ev.repeatEnd || "", repeatCount: ev.repeatCount || 0, duration: ev.duration || 60 };
+                            setAddingEvents(u);
+                            deleteEvent(dk, idx, ev);
+                            showToast("Event loaded for editing below", "info");
+                          }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, padding: 4 }}>✏️</button>}
+                          {isAdmin && <button onClick={() => {
+                            if (window.confirm(`Delete "${ev.title}"?${ev.repeat ? " This will delete the entire repeating series." : ""}`)) {
+                              deleteEvent(dk, idx, ev);
+                              showToast(`Deleted "${ev.title}"`, "success");
+                            }
+                          }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: V.danger, padding: 4 }}>🗑️</button>}
                         </div>
                       </div>
                       <div style={{ display: "flex", gap: V.sp3, marginTop: V.sp1, flexWrap: "wrap", alignItems: "center" }}>
@@ -1693,7 +1753,7 @@ export default function App() {
                       <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:6, paddingTop:6, borderTop:`1px dashed ${V.borderDefault}` }}>
                         <span style={{ fontSize:11, color:V.textDim }}>Duration:</span>
                         <input type="range" min={30} max={480} step={15} value={dur}
-                          onChange={e => updateEventDuration(dk, idx, Number(e.target.value))}
+                          onChange={e => updateEventDuration(dk, idx, Number(e.target.value), ev)}
                           style={{ flex:1, accentColor: V.accent, height:4 }} />
                         <span style={{ fontSize:11, color:V.textMuted, fontWeight:600, minWidth:42 }}>{dur >= 60 ? `${Math.floor(dur/60)}h${dur%60 ? dur%60+"m":""}` : `${dur}m`}</span>
                       </div>
@@ -1703,7 +1763,7 @@ export default function App() {
               </div>
             )}
 
-            {((events||{})[dk]||[]).length === 0 && (
+            {(displayEvents[dk]||[]).length === 0 && (
               <div style={{ textAlign: "center", padding: `${V.sp5}px 0 ${V.sp4}px`, color: V.textDim, fontSize: 13 }}>
                 No events yet — add one below
               </div>
@@ -1747,7 +1807,7 @@ export default function App() {
                     <select value={ev.duration} onChange={e => {
                       const u = [...addingEvents]; u[i] = {...u[i], duration:Number(e.target.value)}; setAddingEvents(u);
                     }} style={{ ...inputStyle, width:"auto" }}>
-                      {[30,45,60,90,120,180,240].map(m => <option key={m} value={m}>{m >= 60 ? `${m/60}h${m%60 ? " "+m%60+"m":""}` : `${m}m`}</option>)}
+                      {[30,45,60,90,120,180,240].map(m => <option key={m} value={m}>{m >= 60 ? `${Math.floor(m/60)}h${m%60 ? " "+m%60+"m":""}` : `${m}m`}</option>)}
                     </select>
                   </div>
                   {ev.repeat !== "none" && (
@@ -1785,7 +1845,7 @@ export default function App() {
   // ═══════════════════════════════════════════════
   function renderHomeCozyla() {
     const dk = todayKey();
-    const todayEvents = (events||{})[dk] || [];
+    const todayEvents = displayEvents[dk] || [];
     const nowHour = today.getHours();
     const greeting = nowHour < 12 ? "Good morning" : nowHour < 17 ? "Good afternoon" : "Good evening";
     const timeSlots = [
@@ -2044,7 +2104,7 @@ export default function App() {
 
     // Stats for widget cards
     const dk = todayKey();
-    const todayEventCount = ((events||{})[dk] || []).length;
+    const todayEventCount = (displayEvents[dk] || []).length;
     // Count events this week
     const weekStart = new Date(today);
     weekStart.setDate(today.getDate() - today.getDay());
@@ -2053,7 +2113,7 @@ export default function App() {
       const d = new Date(weekStart);
       d.setDate(weekStart.getDate() + i);
       const wk = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
-      weekEventCount += ((events||{})[wk] || []).length;
+      weekEventCount += (displayEvents[wk] || []).length;
     }
     const routinesDone = (routines||[]).filter(r=>r.done).length;
     const routinesTotal = (routines||[]).length;
@@ -2091,7 +2151,7 @@ export default function App() {
                 {miniCells.map((d, i) => {
                   if (!d) return <div key={i} />;
                   const dk2 = dateKey(calYear, calMonth, d);
-                  const hasEv = ((events||{})[dk2]||[]).length > 0;
+                  const hasEv = (displayEvents[dk2]||[]).length > 0;
                   return (
                     <div key={i} onClick={e => { e.stopPropagation(); setSelectedDay(d); setAddingEvents([{title:"",time:"12:00 PM",who:"",notes:""}]); }}
                       style={{
