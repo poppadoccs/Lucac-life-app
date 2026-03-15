@@ -10,14 +10,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Push command**: `git add . && git commit -m "description" && git push`
 - **Alex is colorblind** — never give color-only UI instructions; always use labels, icons, or patterns alongside color
 - **Danyells (ex) will judge this app** — always build it looking polished and professional
-- **Current version**: v19 — live at lucac-life-app.vercel.app
-- **All 3 MCPs working**: GitHub, Playwright, Context7
+- **Current version**: v25 — live at lucac-life-app.vercel.app
+- **11 MCPs connected**: GitHub, Playwright, Context7, Filesystem, Memory (active) + Sentry, Vercel, Zapier, Puppeteer, Reddit, WhatsApp (need API keys)
 - **Commit co-author**: Sonnet kicked Dad (Opus) out of commit credits. Use `Co-Authored-By: Claude Sonnet <noreply@anthropic.com>`
 
 ## Claude Code Setup
 
 - **Model**: Claude Opus 4.6 (1M context) with Sonnet co-author line
-- **MCPs**: GitHub (gh CLI), Playwright (browser testing), Context7 (library docs)
+- **MCPs**: GitHub (gh CLI), Playwright (browser testing), Context7 (library docs), Filesystem, Memory + 6 more needing API keys
 - **Plugins**: Superpowers (brainstorming, plans, TDD, debugging, code review)
 - **Parallel agents**: Used extensively — up to 3 sub-agents building component files simultaneously while main thread edits App.jsx. Wave-based builds (Wave 1 → test → Wave 2 → test → Wave 3 → test)
 - **PowerShell**: All commands must be PowerShell-compatible (no `&&` operator, use `;` or separate commands)
@@ -32,6 +32,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | v17 | `c61e32c` | Repeating events, color swatches, widget customization, AI Quick Add, resizable blocks |
 | v18 | `ab43275` | MEGA BUILD: 10 features, 3 component files (FoodTab, BudgetTab, HomeworkHelper), utils.js |
 | v19 | `205c207` | Full audit: theme parity fixes, 35+ hardcoded colors replaced, Cozyla/FamilyWall feature parity |
+| v20 | `4a3cbc4` | 15 bug fixes + LucacLegends overhaul (avatar, 5 worlds, CSS scenes) + HomeworkHelper upgrades |
+| v21 | `9bc3ee7` | bby sonnet Jr. assistant, budget overhaul, kid profiles, 14 features |
+| v22 | `1666858` | Lucac Legends mini-games: Racing, Fish Eater, Potions, Reading, Co-op |
+| v23 | `eff1e54` | Versus mode, manual racing controls, PWA installable |
+| v24 | `a7fd07d` | Full audit round 2: 10 bugs fixed, GroqAssistant rewrite with confirmations |
+| v25 | `02a703a` | Playwright automated audit: 8 bugs fixed, displayEvents architectural refactor, favicon, edit/delete buttons |
 
 ## Build & Dev Commands
 
@@ -43,26 +49,27 @@ No test framework or linter is configured.
 
 ## Architecture
 
-Single-page React 18 app built with Vite. 6 source files in `src/`:
+Single-page React 18 app built with Vite. 8 source files in `src/`:
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `src/App.jsx` | ~2700 | Main shell: Firebase init, all state, routing, themes (`V`/`THEMES`), 3 home layouts, calendar, settings, kids, family tabs. Imports all component files. |
-| `src/FoodTab.jsx` | ~1140 | MacroFactor-style nutrition: SVG macro rings, 4 meal sections, AI voice logging, weight trend chart, micronutrient bars, shopping list, goal modes |
-| `src/BudgetTab.jsx` | ~660 | Budget tracker: Groq-powered expense parsing, SVG donut chart, 9 categories, Dad vs Mom weeks, copy summary |
-| `src/HomeworkHelper.jsx` | ~540 | AI tutor: kid selector, 4 subjects, age-appropriate responses, 20-msg rate limit, safety guardrails, session saving |
-| `src/LucacLegends.jsx` | ~2000 | Turn-based RPG mini-game (self-contained, do NOT modify) |
-| `src/utils.js` | ~120 | Shared helpers: `groqFetch` (10s timeout), `parseGroqJSON`, `cacheGet`/`cacheSet` (localStorage), `triggerConfetti` (CSS-only), `createSpeechRecognition`, `SWATCH_COLORS` |
+| `src/App.jsx` | ~3,093 | Main shell: Firebase init, all state, routing, themes (`V`/`THEMES`), 3 home layouts, calendar with `displayEvents` dedup layer, settings, kids, family tabs. Imports all component files. |
+| `src/FoodTab.jsx` | ~1,141 | MacroFactor-style nutrition: SVG macro rings, 4 meal sections, AI voice logging, weight trend chart, micronutrient bars, shopping list, goal modes |
+| `src/BudgetTab.jsx` | ~1,458 | Budget tracker: Groq-powered expense parsing, SVG donut chart, custom categories, period views, Dad vs Mom weeks, bulk delete, summaries |
+| `src/GroqAssistant.jsx` | ~1,282 | bby sonnet Jr.: floating AI assistant with full app powers, Tavily web search, 3 personalities, mood system, preview confirmations |
+| `src/HomeworkHelper.jsx` | ~746 | AI tutor: kid selector, 4 subjects, age-appropriate responses, read-aloud, math verification, 20-msg rate limit, session saving |
+| `src/LucacLegends.jsx` | ~2,249 | RPG game + mini-games: 5 worlds, avatar system, Racing, Fish Eater, Potions, Reading, Versus, Co-op (self-contained, do NOT modify) |
+| `src/utils.js` | ~122 | Shared helpers: `groqFetch` (10s timeout), `parseGroqJSON`, `cacheGet`/`cacheSet` (localStorage), `triggerConfetti` (CSS-only), `createSpeechRecognition`, `SWATCH_COLORS` |
 
 `src/main.jsx` renders `<App />` into the root.
 
-## All Features (v19)
+## All Features (v25)
 
 ### Home Tab (all 3 themes have feature parity)
 - AI Quick Add bar with 🎤 voice mic button (Web Speech API → Groq)
 - Update-existing events via natural language ("make muffin events red")
 - Big monthly calendar (Skylight), day timeline (Cozyla), widget grid (FamilyWall)
-- Repeating events: daily/weekly/monthly with end date or occurrence count, 🔁 icon
+- Repeating events: daily/weekly/monthly with end date or occurrence count, 🔁 icon. Events stored ONCE at base date, expanded virtually via `displayEvents` layer with title+time dedup
 - Routines with 🔥 streak tracking (3-day small confetti, 7-day big + STREAK MASTER toast, 30-day 👑 crown)
 - Goals with ✨ AI Suggest button (Groq suggests 5 goals, one-tap add)
 - Widget customization: rename/hide routines, goals, stats per profile
@@ -116,12 +123,15 @@ Single-page React 18 app built with Vite. 6 source files in `src/`:
 - **All styles are inline**: No CSS files. All styling via inline style objects referencing `V.*` theme variables.
 - **CSS Variables**: `THEMES` object at top of App.jsx defines 3 themes. Active theme = `V` object. All components receive `V` as prop. ~35 hardcoded colors were replaced with `V.*` references in the v19 audit.
 - **Firebase data paths**: events, eventStyles, routines, goals, profiles, kidsData, custodySchedule, myRules/theirRules/sharedRules, exchangeLog, foodLog, myFoods, nutritionGoals, weightLog, shoppingList, budgetData, homeworkSessions, widgetPrefs, themeName, alertMinutes, contacts
-- **Dead code**: Old `renderFood()` function still exists in App.jsx (replaced by FoodTab.jsx component) — safe to delete in next cleanup
+- **displayEvents layer** (v25): Computed object that expands repeat events virtually and deduplicates by title+time. All display code uses `displayEvents[dk]`, all write code uses raw `events`. Virtual events carry `_baseDk`/`_baseIdx` for source reference.
+- **Event edit/delete** (v25): Admin can edit (pre-fills form) and delete (with `window.confirm()` warning about series) existing events in the day detail popup
+- **Favicon**: `public/favicon.svg` — gold crown on amber background
 
 ## Next Session Roadmap
 
-- Delete dead `renderFood()` code from App.jsx
-- Add adaptive calorie suggestions (after 14 days of weight + food data, Groq suggests adjustments)
-- Add barcode scanner for food logging (if camera API available)
-- Progress photos with before/after overlay
+- Firebase cleanup: delete 3 duplicate "Eating wings" entries (old corrupt data with different times)
+- Cross-device multiplayer for Lucac Legends
+- Lucac LLC website (professional landing page)
+- Configure MCP API keys: Sentry, Vercel, Zapier, Reddit, WhatsApp
+- Add adaptive calorie suggestions (after 14 days of weight + food data)
 - Performance: code-split with dynamic `import()` to get under 500KB warning

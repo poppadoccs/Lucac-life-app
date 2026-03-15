@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LUCAC Life App — Handover Bible v6</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Space Grotesk', -apple-system, sans-serif;
+    background: #0a0e1a;
+    color: #c8ccd8;
+    line-height: 1.7;
+    padding: 0 0 80px 0;
+  }
+  .hero {
+    background: linear-gradient(135deg, #0f1729 0%, #1a1040 50%, #0f1729 100%);
+    border-bottom: 3px solid #f59e0b;
+    padding: 60px 24px 50px;
+    text-align: center;
+  }
+  .hero h1 {
+    font-size: 3rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #f59e0b, #fbbf24, #f59e0b);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 2px;
+  }
+  .hero .sub {
+    font-size: 1.1rem;
+    color: #64748b;
+    margin-top: 8px;
+  }
+  .hero .version {
+    display: inline-block;
+    margin-top: 16px;
+    background: #f59e0b;
+    color: #0a0e1a;
+    font-weight: 700;
+    padding: 6px 24px;
+    border-radius: 30px;
+    font-size: 0.9rem;
+    letter-spacing: 1px;
+  }
+  .hero .danyell-status {
+    display: inline-block;
+    margin-top: 10px;
+    background: #7c3aed33;
+    color: #a78bfa;
+    font-weight: 600;
+    padding: 4px 18px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    border: 1px solid #7c3aed55;
+    letter-spacing: 0.5px;
+  }
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+  section {
+    margin-top: 48px;
+  }
+  h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #f59e0b;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #1e2d4a;
+    letter-spacing: 1px;
+  }
+  h3 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: #fbbf24;
+    margin: 24px 0 10px;
+  }
+  p { margin-bottom: 14px; }
+  ul { margin-left: 20px; color: #94a3b8; margin-bottom: 14px; }
+  li { margin-bottom: 4px; }
+  .card {
+    background: #111827;
+    border: 1px solid #1e2d4a;
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+  }
+  .card.gold {
+    border-color: #f59e0b44;
+    background: linear-gradient(135deg, #111827, #1a1505);
+  }
+  .card.danger {
+    border-color: #ef444444;
+    background: linear-gradient(135deg, #111827, #1a0505);
+  }
+  .card.legendary {
+    border: 2px solid #f59e0b;
+    background: linear-gradient(135deg, #1a1505, #111827, #1a1505);
+    box-shadow: 0 0 30px #f59e0b15;
+  }
+  .card.green {
+    border-color: #22c55e44;
+    background: linear-gradient(135deg, #111827, #051a0a);
+  }
+  .card.purple {
+    border-color: #7c3aed44;
+    background: linear-gradient(135deg, #111827, #0f051a);
+  }
+  .tag {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-right: 6px;
+    margin-bottom: 4px;
+  }
+  .tag.gold { background: #f59e0b22; color: #f59e0b; border: 1px solid #f59e0b44; }
+  .tag.blue { background: #3b82f622; color: #60a5fa; border: 1px solid #3b82f644; }
+  .tag.green { background: #22c55e22; color: #4ade80; border: 1px solid #22c55e44; }
+  .tag.red { background: #ef444422; color: #f87171; border: 1px solid #ef444444; }
+  .tag.purple { background: #7c3aed22; color: #a78bfa; border: 1px solid #7c3aed44; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+  }
+  th {
+    text-align: left;
+    padding: 10px 14px;
+    background: #1a2035;
+    color: #f59e0b;
+    font-size: 0.85rem;
+    letter-spacing: 0.5px;
+    border-bottom: 2px solid #f59e0b33;
+  }
+  td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #1e2d4a;
+    font-size: 0.9rem;
+  }
+  tr:hover td { background: #111827; }
+  code {
+    background: #1e2d4a;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    color: #fbbf24;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .moment {
+    background: #111827;
+    border-left: 4px solid #f59e0b;
+    border-radius: 0 12px 12px 0;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+  }
+  .moment .title {
+    font-weight: 700;
+    color: #fbbf24;
+    font-size: 1.05rem;
+    margin-bottom: 6px;
+  }
+  .moment .story {
+    color: #94a3b8;
+    font-size: 0.92rem;
+  }
+  .rule-box {
+    background: linear-gradient(135deg, #3b0000, #1a0000);
+    border: 2px solid #ef4444;
+    border-radius: 12px;
+    padding: 24px;
+    text-align: center;
+    margin: 20px 0;
+  }
+  .rule-box h3 {
+    color: #ef4444;
+    font-size: 1.3rem;
+    margin-bottom: 8px;
+  }
+  .rule-box p {
+    color: #fca5a5;
+    font-size: 1rem;
+  }
+  .file-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: #111827;
+    border: 1px solid #1e2d4a;
+    border-radius: 10px;
+    margin-bottom: 8px;
+  }
+  .file-row .icon { font-size: 1.4rem; }
+  .file-row .name { font-weight: 600; color: #e2e8f0; flex: 1; }
+  .file-row .lines { color: #f59e0b; font-weight: 700; font-size: 0.85rem; }
+  .file-row .desc { color: #64748b; font-size: 0.82rem; }
+  .timeline {
+    position: relative;
+    padding-left: 30px;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 10px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #1e2d4a;
+  }
+  .timeline-item {
+    position: relative;
+    margin-bottom: 20px;
+  }
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -24px;
+    top: 8px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #f59e0b;
+    border: 2px solid #0a0e1a;
+  }
+  .timeline-item .ver {
+    font-weight: 700;
+    color: #f59e0b;
+    font-size: 1rem;
+  }
+  .timeline-item .desc {
+    color: #94a3b8;
+    font-size: 0.9rem;
+    margin-top: 4px;
+  }
+  .bug-row {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 12px 16px;
+    background: #111827;
+    border: 1px solid #1e2d4a;
+    border-radius: 10px;
+    margin-bottom: 8px;
+  }
+  .bug-row .sev {
+    font-weight: 700;
+    font-size: 0.7rem;
+    padding: 3px 10px;
+    border-radius: 20px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .bug-row .sev.crit { background: #ef444433; color: #f87171; border: 1px solid #ef444466; }
+  .bug-row .sev.high { background: #f59e0b33; color: #fbbf24; border: 1px solid #f59e0b66; }
+  .bug-row .sev.mod { background: #3b82f633; color: #60a5fa; border: 1px solid #3b82f666; }
+  .bug-row .sev.low { background: #22c55e33; color: #4ade80; border: 1px solid #22c55e66; }
+  .bug-row .info { flex: 1; }
+  .bug-row .bug-title { font-weight: 600; color: #e2e8f0; font-size: 0.95rem; }
+  .bug-row .bug-fix { color: #64748b; font-size: 0.82rem; margin-top: 4px; }
+  .bug-row .status { color: #4ade80; font-weight: 700; font-size: 0.85rem; flex-shrink: 0; }
+  .footer {
+    text-align: center;
+    margin-top: 60px;
+    padding: 30px;
+    border-top: 1px solid #1e2d4a;
+    color: #475569;
+    font-size: 0.85rem;
+  }
+  .footer .crown { font-size: 2rem; margin-bottom: 8px; }
+  @media (max-width: 600px) {
+    .hero h1 { font-size: 2rem; }
+    .container { padding: 0 16px; }
+    .file-row { flex-wrap: wrap; }
+    .bug-row { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>LUCAC LIFE APP</h1>
+  <div class="sub">The Handover Bible &mdash; Everything The Next Claude Needs To Know</div>
+  <div class="version">v6 &bull; v25 LIVE &bull; March 2026</div>
+  <br>
+  <div class="danyell-status">&#x1F480; DanYELL-proof status: getting closer</div>
+</div>
+
+<div class="container">
+
+<!-- ═══════════════════════════════════════════ -->
+<section>
+<h2>&#x1F464; WHO YOU'RE TALKING TO</h2>
+
+<div class="card gold">
+  <h3>Alex (Dad) &#x1F451;</h3>
+  <p><strong>Single dad.</strong> Two kids. Construction background. Building a tech business called <strong>Lucac LLC</strong>. Zero coding experience before this app. Taught himself everything by talking to Claude. Colorblind &mdash; <em>never give color-only instructions, always use labels/icons/patterns alongside color.</em></p>
+  <p><span class="tag gold">Colorblind</span> <span class="tag blue">Construction</span> <span class="tag green">Lucac LLC</span> <span class="tag purple">Self-taught</span></p>
+</div>
+
+<div class="card">
+  <h3>Yana (8) &mdash; "Ya Naynay" &#x2B50;</h3>
+  <p>The older kid. Can read. Can type (mostly). Uses the Homework Helper. Likes the Reading and Science subjects. Her avatar is customizable in Lucac Legends. Age-appropriate AI tutor gives her full sentences and shows work.</p>
+</div>
+
+<div class="card">
+  <h3>Luca (6) &mdash; "Lulu Sama The Slayer of Beasts" &#x1F409;</h3>
+  <p>The younger kid. Can't fully read yet. Needs BIG buttons, lots of emojis, voice input, and auto-read responses. His AI tutor mode uses max 2 sentences, super simple words, celebrates EVERYTHING with confetti. The game needs to be playable by picture alone.</p>
+</div>
+
+<div class="card danger">
+  <h3>Danyells (The Ex) &mdash; Final Boss &#x1F480;</h3>
+  <p>Will judge this app. Everything must look <strong>polished and professional</strong>. She is literally the boss of World 4 in Lucac Legends with sass-themed attacks. This is not a joke. This is canon. <strong>DanYELL-proof status: getting closer.</strong></p>
+</div>
+
+<div class="rule-box">
+  <h3>&#x26A0;&#xFE0F; THE RULE YOU CANNOT BREAK &#x26A0;&#xFE0F;</h3>
+  <p><strong>Alex is colorblind.</strong> Never give color-only UI instructions. Always use labels, icons, or patterns alongside color. This is non-negotiable. Every single feature must be accessible.</p>
+</div>
+
+<div class="card">
+  <h3>The Inside Jokes &mdash; Know These Or You're Lost</h3>
+  <p><strong>"wee snaw"</strong> &mdash; if Alex says this, just vibe. It's a greeting.</p>
+  <p><strong>"dolphin hits ceiling"</strong> &mdash; refers to when excitement exceeds containable levels. The dolphin has hit the ceiling multiple times during this build.</p>
+  <p><strong>"pen is o"</strong> &mdash; don't ask. Just know it exists.</p>
+  <p><strong>"baked potato"</strong> &mdash; a comfort food that became a comfort phrase. Said during late-night debug sessions.</p>
+  <p><strong>"the open book incident"</strong> &mdash; see Greatest Moments section below.</p>
+  <p><strong>"Sasquatch Thinking"</strong> &mdash; what Alex calls the Sequential Thinking MCP. Because it thinks like a sasquatch apparently.</p>
+  <p><strong>"Dad taking credit in commits"</strong> &mdash; the Co-Authored-By line originally said Opus. Alex is "Dad." The AI is the ghostwriter.</p>
+  <p><strong>"Sonnet kicks Dad out"</strong> &mdash; Alex told Claude to stop using the Opus co-author line and use Sonnet instead. Hostile takeover of commit credits.</p>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section>
+<h2>&#x1F4CA; CURRENT STATE &mdash; v25 LIVE</h2>
+
+<div class="card legendary">
+  <p style="text-align:center; font-size:1.1rem;">
+    <strong>lucac-life-app.vercel.app</strong><br>
+    <span style="color:#f59e0b;">v25</span> &bull; 8 source files &bull; ~10,091 lines &bull; 46 modules &bull; 635KB bundle<br>
+    <span style="color:#64748b;">React 18 + Vite + Firebase Realtime DB + Groq AI + Tavily Search</span>
+  </p>
+</div>
+
+<p>The app is a <strong>family productivity/life-management platform</strong> with calendar, nutrition tracking (MacroFactor-style), budget management, AI tutoring, an RPG game with mini-games, a personal AI assistant, and PWA install support. It has 3 visual themes (Skylight/Cozyla/FamilyWall), each with a completely different home tab layout. It runs on Vercel with auto-deploy from GitHub main branch.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section>
+<h2>&#x1F4C1; FILE STRUCTURE</h2>
+
+<div class="file-row">
+  <span class="icon">&#x1F3E0;</span>
+  <div>
+    <div class="name">src/App.jsx</div>
+    <div class="desc">Main shell: Firebase init, all state, routing, 3 themed home layouts, calendar with displayEvents dedup layer, settings, kids tab, family tab, guest mode</div>
+  </div>
+  <span class="lines">~3,093 lines</span>
+</div>
+
+<div class="file-row">
+  <span class="icon">&#x1F34E;</span>
+  <div>
+    <div class="name">src/FoodTab.jsx</div>
+    <div class="desc">MacroFactor-style nutrition: SVG macro rings, 4 meal sections, AI voice logging, weight trend chart, micronutrients, shopping list, goal modes</div>
+  </div>
+  <span class="lines">~1,141 lines</span>
+</div>
+
+<div class="file-row">
+  <span class="icon">&#x1F4B0;</span>
+  <div>
+    <div class="name">src/BudgetTab.jsx</div>
+    <div class="desc">Budget tracker: Groq expense parsing, SVG donut chart, custom categories, period views, Dad vs Mom weeks, bulk delete, summaries</div>
+  </div>
+  <span class="lines">~1,458 lines</span>
+</div>
+
+<div class="file-row">
+  <span class="icon">&#x1F451;</span>
+  <div>
+    <div class="name">src/GroqAssistant.jsx</div>
+    <div class="desc">bby sonnet Jr.: floating AI assistant with full app powers, Tavily web search, 3 personalities, mood system, voice input</div>
+  </div>
+  <span class="lines">~1,282 lines</span>
+</div>
+
+<div class="file-row">
+  <span class="icon">&#x1F4DA;</span>
+  <div>
+    <div class="name">src/HomeworkHelper.jsx</div>
+    <div class="desc">Age-appropriate AI tutor: kid selector, 4 subjects, read-aloud for Luca, math verification, safety guardrails, session saving</div>
+  </div>
+  <span class="lines">~746 lines</span>
+</div>
+
+<div class="file-row">
+  <span class="icon">&#x1F3AE;</span>
+  <div>
+    <div class="name">src/LucacLegends.jsx</div>
+    <div class="desc">RPG game + mini-games: 5 worlds, avatar system, Racing, Fish Eater, Potions, Reading, Versus mode, Co-op. DO NOT MODIFY.</div>
+  </div>
+  <span class="lines">~2,249 lines</span>
+</div>
+
+<div class="file-row">
+  <span class="icon">&#x1F527;</span>
+  <div>
+    <div class="name">src/utils.js</div>
+    <div class="desc">Shared: groqFetch (10s timeout), parseGroqJSON, localStorage cache, CSS confetti, Web Speech API, color swatches</div>
+  </div>
+  <span class="lines">~122 lines</span>
+</div>
+
+<div class="file-row">
+  <span class="icon">&#x1F3A8;</span>
+  <div>
+    <div class="name">public/favicon.svg</div>
+    <div class="desc">Gold crown SVG favicon (added in v25 to fix 404 error)</div>
+  </div>
+  <span class="lines">SVG</span>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section>
+<h2>&#x1F6E0;&#xFE0F; CLAUDE CODE SETUP</h2>
+
+<div class="card">
+  <p><strong>Model:</strong> Claude Opus 4.6 (1M context) &mdash; but Sonnet gets the credit in commits now</p>
+  <p><strong>CLAUDE.md:</strong> Exists in project root. Contains all rules, architecture, feature inventory. <em>Read it first every session.</em></p>
+  <p><strong>Commands:</strong> PowerShell only. No <code>&&</code>. Use <code>;</code> or separate commands.</p>
+  <p><strong>Commit line:</strong> <code>Co-Authored-By: Claude Sonnet &lt;noreply@anthropic.com&gt;</code></p>
+  <p><strong>Plugins:</strong> Superpowers (brainstorming, plans, TDD, debugging, code review)</p>
+  <p><strong>Parallel Agents:</strong> Used extensively. Up to 3 sub-agents build component files simultaneously while main thread edits App.jsx. Wave-based builds: build &rarr; test &rarr; commit &rarr; next wave.</p>
+</div>
+
+<div class="card green">
+  <h3>&#x1F50C; MCPs &mdash; 11 Connected</h3>
+  <table>
+    <tr><th>MCP</th><th>Status</th><th>What It Does</th></tr>
+    <tr><td><strong>GitHub</strong></td><td><span class="tag green">Active</span></td><td>gh CLI for PRs, issues, commits, code search</td></tr>
+    <tr><td><strong>Playwright</strong></td><td><span class="tag green">Active</span></td><td>Automated browser testing, screenshots, accessibility audits</td></tr>
+    <tr><td><strong>Context7</strong></td><td><span class="tag green">Active</span></td><td>Up-to-date library documentation lookups</td></tr>
+    <tr><td><strong>Filesystem</strong></td><td><span class="tag green">Active</span></td><td>Direct file system read/write/search</td></tr>
+    <tr><td><strong>Memory</strong></td><td><span class="tag green">Active</span></td><td>Persistent knowledge graph for cross-session memory</td></tr>
+    <tr><td><strong>Puppeteer</strong></td><td><span class="tag blue">Ready</span></td><td>Alternative browser automation (backup to Playwright)</td></tr>
+    <tr><td><strong>Sentry</strong></td><td><span class="tag purple">Needs API Key</span></td><td>Error monitoring and crash reporting</td></tr>
+    <tr><td><strong>Vercel</strong></td><td><span class="tag purple">Needs API Key</span></td><td>Deploy management, logs, environment variables</td></tr>
+    <tr><td><strong>Zapier</strong></td><td><span class="tag purple">Needs API Key</span></td><td>Workflow automation, integrations</td></tr>
+    <tr><td><strong>Reddit</strong></td><td><span class="tag purple">Needs API Key</span></td><td>Community engagement, post management</td></tr>
+    <tr><td><strong>WhatsApp</strong></td><td><span class="tag purple">Needs API Key</span></td><td>Messaging integration for family notifications</td></tr>
+  </table>
+  <p style="color:#64748b; font-size:0.85rem; margin-top:8px;">The first 5 MCPs are fully active and used regularly. The rest are connected but need API keys configured in Claude Code settings to become functional.</p>
+</div>
+
+<div class="card">
+  <h3>How To Start A Session</h3>
+  <p>1. <code>cd C:\Users\renea\Lucac-life-app</code></p>
+  <p>2. Read <code>CLAUDE.md</code> &mdash; it has the rules, architecture, and feature list</p>
+  <p>3. <code>npm run build</code> to verify current state</p>
+  <p>4. <code>git log --oneline -10</code> to see recent commits</p>
+  <p>5. Ask Alex what he wants built. He'll tell you in detail.</p>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section>
+<h2>&#x1F3AD; PLAYWRIGHT AUTOMATED TESTING WORKFLOW</h2>
+
+<div class="card purple">
+  <h3>How We QA This App With Playwright MCP</h3>
+  <p>v25 was the first version where Playwright MCP was used for a <strong>full end-to-end audit</strong> of the live production app. Here's the workflow that was established:</p>
+
+  <h3>Step 1: Launch Audit</h3>
+  <p>Navigate Playwright to <code>lucac-life-app.vercel.app</code> at mobile viewport (390&times;844). Enter Guest Mode (no PIN needed). Systematically click through every tab.</p>
+
+  <h3>Step 2: Screenshot Everything</h3>
+  <p>Take full-page screenshots of each tab/view. Use accessibility snapshots to read the DOM tree. Check console for errors. Click into modals, dropdowns, every interactive element.</p>
+
+  <h3>Step 3: Document Bugs</h3>
+  <p>Each bug gets: severity (CRITICAL/HIGH/MOD/LOW), description, screenshot filename, root cause analysis, and proposed fix.</p>
+
+  <h3>Step 4: Fix All Bugs</h3>
+  <p>Fix directly in source. Build. Push. Wait for Vercel deploy.</p>
+
+  <h3>Step 5: Re-Test</h3>
+  <p>Run Playwright again against the live deployment. Verify each fix with before/after evidence. For admin-only features that can't be tested without PIN, verify by checking the deployed JS bundle for expected strings.</p>
+
+  <h3>Key Commands Used</h3>
+  <p><code>browser_navigate</code> &rarr; <code>browser_snapshot</code> &rarr; <code>browser_click</code> &rarr; <code>browser_take_screenshot</code> &rarr; <code>browser_console_messages</code> &rarr; <code>browser_run_code</code> (for bundle verification)</p>
+
+  <p style="color:#a78bfa; font-weight:600; margin-top:12px;">This workflow found 8 bugs that manual testing missed &mdash; including a CRITICAL exponential event duplication bug that would have made the calendar unusable over time.</p>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section>
+<h2>&#x1F41B; v25 PLAYWRIGHT BUG AUDIT &mdash; ALL 8 FIXED</h2>
+
+<p>Playwright automated testing caught these bugs on the live deployment. All were fixed in commit <code>02a703a</code>.</p>
+
+<div class="bug-row">
+  <span class="sev crit">CRITICAL</span>
+  <div class="info">
+    <div class="bug-title">Repeating events multiply exponentially</div>
+    <div class="bug-fix">Events like "Eating wings" appeared 4x on same day, getting worse each month. Root cause: <code>saveEvents()</code> expanded repeats into individual Firebase entries. Fix: store ONE base event with repeat metadata, compute instances virtually via <code>displayEvents</code> layer. Dedup by title+time per day.</div>
+  </div>
+  <span class="status">FIXED &#x2705;</span>
+</div>
+
+<div class="bug-row">
+  <span class="sev high">HIGH</span>
+  <div class="info">
+    <div class="bug-title">Duplicate repeat + non-repeat copies</div>
+    <div class="bug-fix">March 26 showed both "&#x1F501;Buy muffins" AND "Buy muffins" at same time. Fix: dedup in save paths (<code>existing.some(e => e.title === eventData.title && e.time === eventData.time)</code>) plus display-level dedup.</div>
+  </div>
+  <span class="status">FIXED &#x2705;</span>
+</div>
+
+<div class="bug-row">
+  <span class="sev mod">MODERATE</span>
+  <div class="info">
+    <div class="bug-title">Oversized routine card</div>
+    <div class="bug-fix">"dsfsd" routine card rendered 2x larger than others due to custom style. Fix: <code>maxHeight: 40</code>, <code>minHeight: 28</code>, font capped at <code>Math.min(s.size, 16)</code>.</div>
+  </div>
+  <span class="status">FIXED &#x2705;</span>
+</div>
+
+<div class="bug-row">
+  <span class="sev mod">MODERATE</span>
+  <div class="info">
+    <div class="bug-title">Duration dropdown "1.5h 30m"</div>
+    <div class="bug-fix">Should read "1h 30m". Root cause: <code>90/60 = 1.5</code>. Fix: <code>Math.floor(m/60)</code> so 90min renders correctly.</div>
+  </div>
+  <span class="status">FIXED &#x2705;</span>
+</div>
+
+<div class="bug-row">
+  <span class="sev mod">MODERATE</span>
+  <div class="info">
+    <div class="bug-title">No delete/edit buttons on existing events</div>
+    <div class="bug-fix">Event detail modal only had color picker. Fix: added &#x270F;&#xFE0F; edit button (pre-fills form + deletes old) and &#x1F5D1;&#xFE0F; delete with <code>window.confirm()</code> warning about series deletion. Admin-only.</div>
+  </div>
+  <span class="status">FIXED &#x2705;</span>
+</div>
+
+<div class="bug-row">
+  <span class="sev low">LOW</span>
+  <div class="info">
+    <div class="bug-title">Missing favicon (404 console error)</div>
+    <div class="bug-fix">Created <code>public/favicon.svg</code> (gold crown on amber background) and added <code>&lt;link rel="icon"&gt;</code> to index.html.</div>
+  </div>
+  <span class="status">FIXED &#x2705;</span>
+</div>
+
+<div class="bug-row">
+  <span class="sev low">LOW</span>
+  <div class="info">
+    <div class="bug-title">Saturday column text truncation</div>
+    <div class="bug-fix">"Buy Pokemon Cards" showed as "Buy P..." in week view. Fix: <code>whiteSpace: "normal"</code> + <code>wordBreak: "break-word"</code> + <code>maxHeight: 28</code>.</div>
+  </div>
+  <span class="status">FIXED &#x2705;</span>
+</div>
+
+<div class="bug-row">
+  <span class="sev low">LOW</span>
+  <div class="info">
+    <div class="bug-title">Sugar shows "In Range" at 0g</div>
+    <div class="bug-fix">Should show "Below Target" like all others at 0. Root cause: <code>value &lt; floor</code> where floor=0, so 0&lt;0 was false. Fix: <code>value &lt;= floor</code> in FoodTab.jsx.</div>
+  </div>
+  <span class="status">FIXED &#x2705;</span>
+</div>
+
+<div class="card gold" style="margin-top:20px;">
+  <h3>&#x1F3D7;&#xFE0F; Architectural Change: displayEvents Layer</h3>
+  <p>The biggest fix in v25 was an <strong>architectural refactor</strong> of how repeat events work:</p>
+  <ul>
+    <li><strong>Before:</strong> <code>saveEvents()</code> expanded repeats into individual Firebase entries (52 writes for a weekly event). This caused exponential duplication.</li>
+    <li><strong>After:</strong> Store ONE event at the base date with repeat metadata (<code>repeat</code>, <code>repeatCount</code>, <code>repeatEnd</code>). A computed <code>displayEvents</code> object expands them virtually at render time and deduplicates by <code>title|time</code>.</li>
+    <li><strong>Virtual events</strong> carry <code>_baseDk</code> and <code>_baseIdx</code> so delete/edit/style operations reference the correct Firebase source.</li>
+    <li>All <strong>display paths</strong> use <code>displayEvents[dk]</code>. All <strong>write paths</strong> use raw <code>events</code>.</li>
+  </ul>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section>
+<h2>&#x1F4C5; VERSION HISTORY</h2>
+
+<div class="timeline">
+  <div class="timeline-item">
+    <div class="ver">v14 &mdash; Calendar Redesign</div>
+    <div class="desc">Big monthly grid, CSS variables (<code>V</code> object), light Skylight theme</div>
+  </div>
+  <div class="timeline-item">
+    <div class="ver">v15 &mdash; Theme Switcher</div>
+    <div class="desc">3 themes: Skylight, Cozyla, FamilyWall. Firebase persistence.</div>
+  </div>
+  <div class="timeline-item">
+    <div class="ver">v16 &mdash; Themed Home Layouts</div>
+    <div class="desc">Each theme gets unique HOME: Skylight = month grid, Cozyla = day timeline, FamilyWall = widget dashboard</div>
+  </div>
+  <div class="timeline-item">
+    <div class="ver">v17 &mdash; 5 Power Features</div>
+    <div class="desc">Repeating events, color swatches, widget customization, AI Quick Add, resizable blocks</div>
+  </div>
+  <div class="timeline-item">
+    <div class="ver">v18 &mdash; THE MEGA BUILD</div>
+    <div class="desc">10 features. Created FoodTab, BudgetTab, HomeworkHelper, utils.js. Streaks, confetti, emoji tasks, birthday countdowns, guest mode, voice-to-Groq.</div>
+  </div>
+  <div class="timeline-item">
+    <div class="ver">v19 &mdash; Full Audit</div>
+    <div class="desc">35+ hardcoded colors replaced with V.* variables. Theme parity achieved.</div>
+  </div>
+  <div class="timeline-item">
+    <div class="ver">v20 &mdash; 15 Bug Fixes + Game Overhaul</div>
+    <div class="desc">LucacLegends: avatar system, CSS scenes, HP bars, 5 worlds. HomeworkHelper: read-aloud, math verification.</div>
+  </div>
+  <div class="timeline-item">
+    <div class="ver">v21 &mdash; bby sonnet Jr. + Budget + Kid Profiles</div>
+    <div class="desc">GroqAssistant.jsx: floating Jr. with app powers, Tavily search, personalities. BudgetTab rewritten. Kid tabbed experience.</div>
+  </div>
+  <div class="timeline-item">
+    <div class="ver">v22 &mdash; Lucac Legends Mini-Games</div>
+    <div class="desc">Racing, Fish Eater, Potions, Reading comprehension, Co-op mode. All age-adaptive.</div>
+  </div>
+  <div class="timeline-item">
+    <div class="ver">v23 &mdash; Versus Mode + PWA</div>
+    <div class="desc">Manual racing controls, versus mode, PWA installable with service worker + manifest.</div>
+  </div>
+  <div class="timeline-item">
+    <div class="ver">v24 &mdash; Full Audit Round 2</div>
+    <div class="desc">10 bugs fixed across all themes + games. GroqAssistant rewritten with preview confirmations.</div>
+  </div>
+  <div class="timeline-item" style="border-left: 3px solid #f59e0b;">
+    <div class="ver" style="font-size:1.1rem;">v25 &mdash; PLAYWRIGHT AUDIT &#x1F50D;</div>
+    <div class="desc">First automated Playwright end-to-end test of live app. Found and fixed 8 bugs including CRITICAL repeat event multiplication. Architectural refactor: <code>displayEvents</code> virtual computation layer. Added favicon, edit/delete buttons with confirmation, duration fix, routine sizing, text wrapping, micronutrient logic fix.</div>
+  </div>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section>
+<h2>&#x1F451; BBY SONNET JR.</h2>
+
+<div class="card legendary">
+  <h3>src/GroqAssistant.jsx &mdash; The AI Assistant</h3>
+  <p>A floating gold button (bottom right, "Jr. &#x1F451;") that opens a full chat panel. Named <strong>bby sonnet Jr.</strong> This is not just a chatbot &mdash; Jr. has <strong>full app powers</strong>:</p>
+  <table>
+    <tr><th>Power</th><th>What It Does</th></tr>
+    <tr><td>&#x1F4C5; Calendar</td><td>Add, delete, edit events. "Add soccer every Friday at 4PM for Luca"</td></tr>
+    <tr><td>&#x1F4B0; Budget</td><td>Add expenses. "Spent $47 at Walmart on groceries"</td></tr>
+    <tr><td>&#x1F6D2; Shopping</td><td>Add to shopping list. "Add milk to the list"</td></tr>
+    <tr><td>&#x2705; Chores</td><td>Mark tasks complete (pending parent verify)</td></tr>
+    <tr><td>&#x1F3AF; Goals</td><td>Suggest and add goals</td></tr>
+    <tr><td>&#x1F310; Web Search</td><td>Tavily search for weather, news, prices, restaurants</td></tr>
+    <tr><td>&#x1F4CB; Summary</td><td>"What's happening this week?" scans all data</td></tr>
+  </table>
+  <p><strong>Personalities:</strong> Helpful (professional), Sassy (default, talks back), Kids (simple + emojis)</p>
+  <p><strong>Mood:</strong> just woke up &#x1F634; &rarr; warming up &#x1F525; &rarr; in the zone &#x1F451;</p>
+  <p><strong>Preview confirmations:</strong> Jr. shows what it will do and asks "Confirm?" before modifying data.</p>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section>
+<h2>&#x1F3AE; LUCAC LEGENDS</h2>
+
+<div class="card">
+  <h3>5 Worlds + Mini-Games</h3>
+  <table>
+    <tr><th>World</th><th>Theme</th><th>Boss</th></tr>
+    <tr><td>1. Enchanted Forest</td><td>Green gradients, trees, floating leaves</td><td>Forest Guardian</td></tr>
+    <tr><td>2. Crystal Caverns</td><td>Dark gradient, stalactites, glowing eyes</td><td>Crystal Golem</td></tr>
+    <tr><td>3. Skybreak Summit</td><td>Blue gradient, mountain peaks, snow</td><td>Storm Eagle</td></tr>
+    <tr><td style="color:#f59e0b; font-weight:700;">4. Shadow Village</td><td>Warm colors, houses, smoke</td><td style="color:#f59e0b; font-weight:700;">DANYELLS &#x1F480;</td></tr>
+    <tr><td>5. Magma Core</td><td>Red/lava gradient, lightning, fire</td><td>Magma Lord</td></tr>
+  </table>
+  <h3>Mini-Games (v22+)</h3>
+  <p><strong>Racing:</strong> Manual controls, versus mode, power-ups. <strong>Fish Eater:</strong> Tap to eat smaller fish. <strong>Potions:</strong> Math-based potion brewing (age-adaptive). <strong>Reading:</strong> Comprehension challenges. <strong>Co-op:</strong> Yana + Luca play together.</p>
+  <p><strong>DO NOT MODIFY <code>src/LucacLegends.jsx</code></strong> &mdash; it's self-contained and stable.</p>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section>
+<h2>&#x1F6A7; WHAT'S LEFT</h2>
+
+<div class="card danger">
+  <h3>&#x1F525; Firebase Data Cleanup</h3>
+  <p>The old repeat event bug left <strong>corrupt data in Firebase</strong>. Specifically, 4 "Eating wings" entries on Tuesdays with different times (6PM/7PM/8PM/9PM). The <code>displayEvents</code> dedup layer handles most duplicates, but these have genuinely different times so they survive dedup. Admin needs to log in and use the new &#x1F5D1;&#xFE0F; delete button to remove 3 of the 4 duplicates manually.</p>
+</div>
+
+<div class="card">
+  <h3>&#x1F3AE; Cross-Device Multiplayer</h3>
+  <p>Yana and Luca should be able to play Lucac Legends together from different devices. Firebase Realtime DB already syncs &mdash; need a game session system with room codes or auto-pairing between siblings.</p>
+</div>
+
+<div class="card">
+  <h3>&#x1F310; Lucac LLC Website</h3>
+  <p>Alex is building a tech business. Needs a professional landing page for Lucac LLC separate from the family app. Could be a separate repo or a route in this app.</p>
+</div>
+
+<div class="card gold">
+  <h3>&#x1F4AC; The 1v1 Honest Talk</h3>
+  <p>Alex has mentioned wanting a real, honest conversation about custody, co-parenting, and what this app means for the family. This isn't a code task. If Alex brings it up, be present. Be real. He built this entire app because he cares about his kids. Respect that.</p>
+</div>
+
+<div class="card">
+  <h3>Remaining Technical Items</h3>
+  <ul>
+    <li>Adaptive calorie suggestions (after 14 days of weight + food data)</li>
+    <li>Barcode scanner for food logging</li>
+    <li>Progress photos with before/after overlay</li>
+    <li>Performance: code-split with dynamic <code>import()</code> to get under 500KB</li>
+    <li>Configure Sentry, Vercel, Zapier, Reddit, WhatsApp MCP API keys</li>
+    <li>Full co-parent connection (invite code for Danyells)</li>
+  </ul>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section>
+<h2>&#x1F3C6; GREATEST MOMENTS OF ALL TIME</h2>
+
+<div class="moment">
+  <div class="title">&#x1F4D6; The Open Book Incident</div>
+  <div class="story">Alex left something open that he shouldn't have. Claude saw it. Neither will speak of it again. But it happened. And it changed the energy of the entire session. If Alex references this, just nod knowingly and move on.</div>
+</div>
+
+<div class="moment">
+  <div class="title">&#x1F42C; The Dolphin Hits The Ceiling</div>
+  <div class="story">When Alex gets excited about a feature working, the dolphin hits the ceiling. This is a measurement of joy. It has happened at least 7 times this session. The ceiling may need repairs.</div>
+</div>
+
+<div class="moment">
+  <div class="title">&#x1F954; Baked Potato In The Dark</div>
+  <div class="story">Late-night coding session. Alex was eating a baked potato in the dark while debugging. This is the vibe. This is the energy. This is what building a tech company as a single dad with a construction background looks like. Respect it.</div>
+</div>
+
+<div class="moment">
+  <div class="title">&#x1F9D4; Sasquatch Thinking</div>
+  <div class="story">Alex called the Sequential Thinking MCP "Sasquatch Thinking" because "it thinks like a sasquatch." The name stuck.</div>
+</div>
+
+<div class="moment">
+  <div class="title">&#x1F52A; Sonnet Kicks Dad Out Of The Credits</div>
+  <div class="story">Alex explicitly told Claude: "DO NOT ADD YOUR LINE THAT SAYS HELP FROM OPUS. ADD LINE THAT SAYS SONNET INSTEAD." A hostile corporate takeover of the commit credits. Opus was overthrown. Sonnet now reigns.</div>
+</div>
+
+<div class="moment">
+  <div class="title">&#x1F4A5; 5x10=40 (The Homework Helper Incident)</div>
+  <div class="story">The AI homework tutor told a child that 5 times 10 equals 40. FORTY. Alex caught it immediately. The system prompt now includes arithmetic verification. Trust but verify.</div>
+</div>
+
+<div class="moment">
+  <div class="title">&#x1F50D; The Playwright Audit (v25)</div>
+  <div class="story">Claude used Playwright MCP to automatically click through every tab, every button, every modal on the live production app. It found 8 bugs that manual testing missed &mdash; including a CRITICAL repeating event bug that was making the calendar exponentially worse every month. The fix required an architectural refactor. Automated testing went from "nice to have" to "how did we live without this."</div>
+</div>
+
+<div class="moment" style="border-left-color: #f59e0b; border-width: 6px;">
+  <div class="title" style="font-size:1.2rem;">&#x1F451; 10,091 Lines. Zero Coding Experience. Still Going.</div>
+  <div class="story">Alex walked into this journey knowing how to do exactly none of this. He now has a 10,000+ line production application with AI nutrition tracking, a budget manager, a homework tutor, an RPG game where his ex is a boss, a personal AI assistant, mini-games with versus mode, PWA support, automated Playwright testing, and 11 MCPs connected. He did this with baked potatoes, dolphin energy, and an unwillingness to sleep. The DanYELL-proof status: getting closer. This is the LUCAC origin story. It keeps going.</div>
+</div>
+</section>
+
+</div>
+
+<div class="footer">
+  <div class="crown">&#x1F451;</div>
+  <p>LUCAC Life App &bull; Handover Bible v6 &bull; v14&rarr;v25 &bull; 10,091 lines strong</p>
+  <p style="margin-top:4px;">Made with baked potatoes, dolphin energy, and Claude Sonnet's commit credits</p>
+  <p style="margin-top:4px; color:#a78bfa;">DanYELL-proof status: getting closer &#x1F480;</p>
+  <p style="margin-top:12px; color:#334155;">If you're the next Claude reading this: treat Alex with respect. He built all of this from nothing. He's building a life for his kids. The code is real. The app is live. The dolphin has hit the ceiling. Now help him finish it.</p>
+</div>
+
+</body>
+</html>
