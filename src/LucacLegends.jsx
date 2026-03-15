@@ -718,6 +718,11 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
   const [coopProblemRight, setCoopProblemRight] = useState(null);
   const [coopAnswerLeft, setCoopAnswerLeft] = useState("");
   const [coopAnswerRight, setCoopAnswerRight] = useState("");
+  const [coopVersus, setCoopVersus] = useState(false);
+  const [coopRoundWinner, setCoopRoundWinner] = useState(null); // "left"|"right"|null
+
+  // Racing manual speed
+  const [raceSpeedManual, setRaceSpeedManual] = useState(0); // 0-5, player-controlled
   const [currentWorld, setCurrentWorld] = useState(0);
   const [currentScene, setCurrentScene] = useState(0);
   const [hp, setHp] = useState(MAX_HP);
@@ -1786,9 +1791,12 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
                 <div style={{ fontSize:11, color:"rgba(255,255,255,0.7)" }}>Complete stories!</div>
               </div>
             </div>
-            <div style={{ marginTop:16, maxWidth:340, margin:"16px auto 0" }}>
-              <GameBtn color="#f59e0b" onClick={() => { setCoopActive(false); setCoopScoreLeft(0); setCoopScoreRight(0); setCoopRound(0); transitionTo("coop"); }}>
+            <div style={{ marginTop:16, maxWidth:340, margin:"16px auto 0", display:"flex", flexDirection:"column", gap:8 }}>
+              <GameBtn color="#f59e0b" onClick={() => { setCoopActive(false); setCoopScoreLeft(0); setCoopScoreRight(0); setCoopRound(0); setCoopVersus(false); transitionTo("coop"); }}>
                 👫 Play Together (Co-op)
+              </GameBtn>
+              <GameBtn color="#ef4444" onClick={() => { setCoopActive(false); setCoopScoreLeft(0); setCoopScoreRight(0); setCoopRound(0); setCoopVersus(true); transitionTo("coop"); }}>
+                🏆 Play Against Each Other
               </GameBtn>
             </div>
             <div style={{ marginTop:12, textAlign:"center" }}>
@@ -1829,10 +1837,21 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
                 </div>
               )}
             </div>
-            {/* Controls */}
+            {/* Speed indicator */}
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8, padding:"0 8px" }}>
+              <span style={{ color:"#94a3b8", fontSize:12, minWidth:50 }}>Speed:</span>
+              <div style={{ flex:1, height:8, background:"#1e293b", borderRadius:4, overflow:"hidden" }}>
+                <div style={{ width:`${raceSpeedManual*20}%`, height:"100%", borderRadius:4, transition:"width 0.15s",
+                  background: raceSpeedManual > 3 ? "linear-gradient(90deg, #f59e0b, #ef4444)" : "linear-gradient(90deg, #22c55e, #f59e0b)" }} />
+              </div>
+              <span style={{ color: raceSpeedManual > 3 ? "#ef4444" : "#22c55e", fontSize:12, fontWeight:700, minWidth:20 }}>{raceSpeedManual}</span>
+            </div>
+            {/* Controls: lane + speed */}
             <div style={{ display:"flex", gap:8, justifyContent:"center", marginBottom:12 }}>
-              <GameBtn color="#3b82f6" onClick={() => setRaceLane(Math.max(0, raceLane-1))}>⬆️ Up</GameBtn>
-              <GameBtn color="#3b82f6" onClick={() => setRaceLane(Math.min(2, raceLane+1))}>⬇️ Down</GameBtn>
+              <GameBtn color="#3b82f6" onClick={() => setRaceLane(Math.max(0, raceLane-1))}>⬆️ Lane Up</GameBtn>
+              <GameBtn color="#22c55e" onClick={() => setRaceSpeedManual(s => Math.min(5, s+1))}>🚀 Gas</GameBtn>
+              <GameBtn color="#ef4444" onClick={() => setRaceSpeedManual(s => Math.max(0, s-1))}>🛑 Brake</GameBtn>
+              <GameBtn color="#3b82f6" onClick={() => setRaceLane(Math.min(2, raceLane+1))}>⬇️ Lane Down</GameBtn>
             </div>
             {/* Answer input */}
             {raceActive && raceCurrentBarrier && (
@@ -1841,9 +1860,10 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
                   onKeyDown={e => {
                     if (e.key === "Enter" && raceAnswer) {
                       if (parseInt(raceAnswer) === raceCurrentBarrier.answer) {
-                        setRaceScore(s => s+10); setRaceStars(s => s+1);
+                        const speedBonus = Math.max(1, raceSpeedManual);
+                        setRaceScore(s => s + 10 * speedBonus); setRaceStars(s => s + speedBonus);
                         setRaceCurrentBarrier(genMathProblem(kidDifficulty.math));
-                      }
+                      } else { setRaceSpeedManual(s => Math.max(0, s-2)); } // wrong = slow down
                       setRaceAnswer("");
                     }
                   }}
@@ -1851,9 +1871,10 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
                     padding:"12px 16px", fontSize:20, width:120, textAlign:"center" }} />
                 <GameBtn color="#22c55e" onClick={() => {
                   if (raceAnswer && parseInt(raceAnswer) === raceCurrentBarrier.answer) {
-                    setRaceScore(s => s+10); setRaceStars(s => s+1);
+                    const speedBonus = Math.max(1, raceSpeedManual);
+                    setRaceScore(s => s + 10 * speedBonus); setRaceStars(s => s + speedBonus);
                     setRaceCurrentBarrier(genMathProblem(kidDifficulty.math));
-                  }
+                  } else if (raceAnswer) { setRaceSpeedManual(s => Math.max(0, s-2)); }
                   setRaceAnswer("");
                 }}>💥 Blast!</GameBtn>
               </div>
@@ -2082,64 +2103,89 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
     );
   }
 
-  // ─── CO-OP MODE ───────────────────────────────────────────
+  // ─── CO-OP / VERSUS MODE ─────────────────────────────────
   if (screen === "coop") {
     const maxRounds = 10;
     const coopDone = coopRound >= maxRounds;
-    // Generate problems if needed
     if (!coopProblemLeft && !coopDone) {
       const hard = { addition: true, subtraction: true, multiplication: true, division: false };
       const easy = { addition: true, subtraction: false, multiplication: false, division: false };
       setCoopProblemLeft(genMathProblem(hard));
       setCoopProblemRight(genMathProblem(easy));
+      setCoopRoundWinner(null);
     }
+    const handleCoopAnswer = (side) => {
+      if (coopVersus) {
+        // Versus: first to answer wins the round
+        if (side === "left") {
+          setCoopScoreLeft(s => s + 2);
+          setCoopScoreRight(s => s + 1); // consolation
+          setCoopRoundWinner("left");
+        } else {
+          setCoopScoreRight(s => s + 2);
+          setCoopScoreLeft(s => s + 1);
+          setCoopRoundWinner("right");
+        }
+      } else {
+        // Co-op: both get points
+        if (side === "left") setCoopScoreLeft(s => s + 2);
+        else setCoopScoreRight(s => s + 2);
+      }
+      setCoopAnswerLeft(""); setCoopAnswerRight("");
+      setTimeout(() => {
+        setCoopRound(r => r + 1); setCoopProblemLeft(null); setCoopProblemRight(null); setCoopRoundWinner(null);
+      }, coopVersus ? 800 : 200);
+    };
+    const vsWinner = coopScoreLeft > coopScoreRight ? "Yana" : coopScoreRight > coopScoreLeft ? "Luca" : "TIE";
     return (
       <>
         <style>{KEYFRAMES_CSS}</style>
         <div style={containerStyle}>
-          <div style={{ minHeight:500, background:"linear-gradient(135deg, #1e1040, #0f2027)", padding:16 }}>
+          <div style={{ minHeight:500, background: coopVersus ? "linear-gradient(135deg, #2d0a0a, #1a0a2e)" : "linear-gradient(135deg, #1e1040, #0f2027)", padding:16 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
               <GameBtn color="#475569" onClick={() => transitionTo("mini_games")}>← Back</GameBtn>
-              <div style={{ color:"#fbbf24", fontWeight:700 }}>Round {Math.min(coopRound+1, maxRounds)}/{maxRounds}</div>
+              <div style={{ color:"#fbbf24", fontWeight:700 }}>
+                {coopVersus ? "🏆 VERSUS" : "👫 CO-OP"} | Round {Math.min(coopRound+1, maxRounds)}/{maxRounds}
+              </div>
             </div>
             <div style={{ textAlign:"center", marginBottom:12 }}>
-              <div style={{ fontSize:20, fontWeight:800, color:"#fbbf24" }}>👫 TEAM SCORE: {coopScoreLeft + coopScoreRight}</div>
+              {coopVersus ? (
+                <div style={{ fontSize:18, fontWeight:800, color:"#fff" }}>
+                  <span style={{ color:"#c084fc" }}>Yana: {coopScoreLeft}</span>
+                  <span style={{ color:"#fbbf24", margin:"0 10px" }}>VS</span>
+                  <span style={{ color:"#22d3ee" }}>Luca: {coopScoreRight}</span>
+                </div>
+              ) : (
+                <div style={{ fontSize:20, fontWeight:800, color:"#fbbf24" }}>👫 TEAM: {coopScoreLeft + coopScoreRight}</div>
+              )}
+              {coopRoundWinner && coopVersus && (
+                <div style={{ fontSize:16, color: coopRoundWinner === "left" ? "#c084fc" : "#22d3ee", fontWeight:700, marginTop:4, animation:"ll-pulse 0.5s ease" }}>
+                  {coopRoundWinner === "left" ? "Yana wins this round! ⭐" : "Luca wins this round! ⭐"} {coopRoundWinner === "left" ? "" : " 😂"}
+                </div>
+              )}
             </div>
             {!coopDone && (
               <div style={{ display:"grid", gridTemplateColumns:"1fr 4px 1fr", gap:0 }}>
-                {/* Left side (Yana/older) */}
                 <div style={{ padding:12, textAlign:"center" }}>
                   <div style={{ fontSize:14, fontWeight:700, color:"#c084fc", marginBottom:8 }}>Yana ⭐{coopScoreLeft}</div>
-                  {coopProblemLeft && (
+                  {coopProblemLeft && !coopRoundWinner && (
                     <div>
                       <div style={{ fontSize:22, fontWeight:800, color:"#fff", marginBottom:8 }}>{coopProblemLeft.text} = ?</div>
                       <input value={coopAnswerLeft} onChange={e => setCoopAnswerLeft(e.target.value.replace(/[^0-9-]/g,""))}
-                        onKeyDown={e => {
-                          if (e.key === "Enter" && coopAnswerLeft && parseInt(coopAnswerLeft) === coopProblemLeft.answer) {
-                            setCoopScoreLeft(s => s+2); setCoopAnswerLeft(""); setCoopAnswerRight("");
-                            setCoopRound(r => r+1); setCoopProblemLeft(null); setCoopProblemRight(null);
-                          }
-                        }}
-                        style={{ background:"#1e293b", color:"#fff", border:"2px solid #c084fc", borderRadius:12, padding:"10px", fontSize:20, width:80, textAlign:"center" }} />
+                        onKeyDown={e => { if (e.key === "Enter" && coopAnswerLeft && parseInt(coopAnswerLeft) === coopProblemLeft.answer) handleCoopAnswer("left"); }}
+                        style={{ background:"#1e293b", color:"#fff", border:"2px solid #c084fc", borderRadius:12, padding:"12px", fontSize:22, width:90, textAlign:"center" }} />
                     </div>
                   )}
                 </div>
-                {/* Divider */}
-                <div style={{ background:"#fbbf24", borderRadius:2 }} />
-                {/* Right side (Luca/younger) */}
+                <div style={{ background: coopVersus ? "#ef4444" : "#fbbf24", borderRadius:2 }} />
                 <div style={{ padding:12, textAlign:"center" }}>
                   <div style={{ fontSize:14, fontWeight:700, color:"#22d3ee", marginBottom:8 }}>Luca ⭐{coopScoreRight}</div>
-                  {coopProblemRight && (
+                  {coopProblemRight && !coopRoundWinner && (
                     <div>
                       <div style={{ fontSize:22, fontWeight:800, color:"#fff", marginBottom:8 }}>{coopProblemRight.text} = ?</div>
                       <input value={coopAnswerRight} onChange={e => setCoopAnswerRight(e.target.value.replace(/[^0-9-]/g,""))}
-                        onKeyDown={e => {
-                          if (e.key === "Enter" && coopAnswerRight && parseInt(coopAnswerRight) === coopProblemRight.answer) {
-                            setCoopScoreRight(s => s+2); setCoopAnswerLeft(""); setCoopAnswerRight("");
-                            setCoopRound(r => r+1); setCoopProblemLeft(null); setCoopProblemRight(null);
-                          }
-                        }}
-                        style={{ background:"#1e293b", color:"#fff", border:"2px solid #22d3ee", borderRadius:12, padding:"10px", fontSize:20, width:80, textAlign:"center" }} />
+                        onKeyDown={e => { if (e.key === "Enter" && coopAnswerRight && parseInt(coopAnswerRight) === coopProblemRight.answer) handleCoopAnswer("right"); }}
+                        style={{ background:"#1e293b", color:"#fff", border:"2px solid #22d3ee", borderRadius:12, padding:"12px", fontSize:22, width:90, textAlign:"center" }} />
                     </div>
                   )}
                 </div>
@@ -2147,14 +2193,27 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
             )}
             {coopDone && (
               <div style={{ textAlign:"center", marginTop:20 }}>
-                <div style={{ fontSize:28, fontWeight:800, color:"#fbbf24" }}>👫 TEAMWORK!</div>
-                <div style={{ fontSize:20, color:"#fff", marginTop:8 }}>Team Score: {coopScoreLeft + coopScoreRight}</div>
-                <div style={{ fontSize:14, color:"#c084fc", marginTop:4 }}>⭐ {Math.round((coopScoreLeft + coopScoreRight) / 5)} stars EACH!</div>
-                <GameBtn color="#22c55e" onClick={() => {
-                  const stars = Math.round((coopScoreLeft + coopScoreRight) / 5);
-                  awardStars(stars);
-                  transitionTo("mini_games");
-                }}>Collect Stars!</GameBtn>
+                {coopVersus ? (
+                  <>
+                    <div style={{ fontSize:32, fontWeight:900, color:"#fbbf24" }}>🏆 {vsWinner === "TIE" ? "IT'S A TIE!" : `${vsWinner.toUpperCase()} WINS!`}</div>
+                    <div style={{ fontSize:16, color:"#fff", marginTop:8 }}>Yana: {coopScoreLeft} | Luca: {coopScoreRight}</div>
+                    <div style={{ display:"flex", gap:8, justifyContent:"center", marginTop:16 }}>
+                      <GameBtn color="#ef4444" onClick={() => { setCoopScoreLeft(0); setCoopScoreRight(0); setCoopRound(0); setCoopProblemLeft(null); setCoopProblemRight(null); }}>
+                        🔥 REMATCH!
+                      </GameBtn>
+                      <GameBtn color="#475569" onClick={() => transitionTo("mini_games")}>Done</GameBtn>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize:28, fontWeight:800, color:"#fbbf24" }}>👫 TEAMWORK!</div>
+                    <div style={{ fontSize:20, color:"#fff", marginTop:8 }}>Team Score: {coopScoreLeft + coopScoreRight}</div>
+                    <div style={{ fontSize:14, color:"#c084fc", marginTop:4 }}>⭐ {Math.round((coopScoreLeft + coopScoreRight) / 5)} stars EACH!</div>
+                    <GameBtn color="#22c55e" onClick={() => { awardStars(Math.round((coopScoreLeft + coopScoreRight) / 5)); transitionTo("mini_games"); }}>
+                      Collect Stars!
+                    </GameBtn>
+                  </>
+                )}
               </div>
             )}
           </div>
