@@ -23,61 +23,57 @@ const TAVILY_KEY = import.meta.env.VITE_TAVILY_KEY;
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
-// ═══ CSS VARIABLES ═══
-// Single source of truth for all colors & spacing — swap this object for theming
-const V = {
-  // Backgrounds — light Skylight-inspired
-  bgApp: "#f8f9fb",
-  bgCard: "#ffffff",
-  bgCardAlt: "#f3f4f6",
-  bgInput: "#f3f4f6",
-  bgElevated: "#e8eaef",
-  bgOverlay: "rgba(0,0,0,0.35)",
-  // Calendar specific
-  calBgCell: "#ffffff",
-  calBgCellHover: "#f9fafb",
-  calBgToday: "#fffbeb",
-  calBgSelected: "#eef4ff",
-  calBgHeader: "#ffffff",
-  calBgWeekday: "#f8f9fb",
-  // Borders
-  borderDefault: "#e5e7eb",
-  borderSubtle: "#d1d5db",
-  borderAccent: "#f59e0b",
-  borderFocus: "#3b82f6",
-  // Text
-  textPrimary: "#1f2937",
-  textSecondary: "#374151",
-  textMuted: "#6b7280",
-  textDim: "#9ca3af",
-  // Accent colors — gold stays for today
-  accent: "#f59e0b",
-  accentGlow: "rgba(245,158,11,0.12)",
-  accentGlowStrong: "rgba(245,158,11,0.22)",
-  success: "#16a34a",
-  danger: "#dc2626",
-  info: "#2563eb",
-  purple: "#7c3aed",
-  pink: "#db2777",
-  // Spacing
-  sp1: 4,
-  sp2: 8,
-  sp3: 12,
-  sp4: 16,
-  sp5: 20,
-  sp6: 24,
-  sp8: 32,
-  // Radius
-  r1: 6,
-  r2: 8,
-  r3: 12,
-  r4: 16,
-  // Shadows
-  shadowCard: "0 1px 4px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.04)",
-  shadowModal: "0 8px 30px rgba(0,0,0,0.15)",
-  shadowGlow: "0 0 12px rgba(245,158,11,0.12)",
-  // Font
+// ═══ CSS VARIABLES — THEME DEFINITIONS ═══
+// Shared layout values (spacing, radius) reused across all themes
+const SHARED = {
+  sp1: 4, sp2: 8, sp3: 12, sp4: 16, sp5: 20, sp6: 24, sp8: 32,
+  r1: 6, r2: 8, r3: 12, r4: 16,
   fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+};
+
+const THEMES = {
+  skylight: {
+    label: "Skylight", icon: "☀️", desc: "Clean white, gold accents, minimal",
+    ...SHARED,
+    bgApp: "#f8f9fb", bgCard: "#ffffff", bgCardAlt: "#f3f4f6", bgInput: "#f3f4f6",
+    bgElevated: "#e8eaef", bgOverlay: "rgba(0,0,0,0.35)",
+    calBgCell: "#ffffff", calBgCellHover: "#f9fafb", calBgToday: "#fffbeb",
+    calBgSelected: "#eef4ff", calBgHeader: "#ffffff", calBgWeekday: "#f8f9fb",
+    borderDefault: "#e5e7eb", borderSubtle: "#d1d5db", borderAccent: "#f59e0b", borderFocus: "#3b82f6",
+    textPrimary: "#1f2937", textSecondary: "#374151", textMuted: "#6b7280", textDim: "#9ca3af",
+    accent: "#f59e0b", accentGlow: "rgba(245,158,11,0.12)", accentGlowStrong: "rgba(245,158,11,0.22)",
+    success: "#16a34a", danger: "#dc2626", info: "#2563eb", purple: "#7c3aed", pink: "#db2777",
+    shadowCard: "0 1px 4px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.04)",
+    shadowModal: "0 8px 30px rgba(0,0,0,0.15)", shadowGlow: "0 0 12px rgba(245,158,11,0.12)",
+  },
+  cozyla: {
+    label: "Cozyla", icon: "🕯️", desc: "Warm creams, coral accents, cozy feel",
+    ...SHARED, r1: 8, r2: 10, r3: 14, r4: 20,
+    bgApp: "#fdf6ee", bgCard: "#fffaf3", bgCardAlt: "#f7efe4", bgInput: "#f7efe4",
+    bgElevated: "#eeddc8", bgOverlay: "rgba(60,40,20,0.4)",
+    calBgCell: "#fffaf3", calBgCellHover: "#fff5e8", calBgToday: "#fff0d4",
+    calBgSelected: "#fde8d0", calBgHeader: "#fffaf3", calBgWeekday: "#fdf6ee",
+    borderDefault: "#e8d5be", borderSubtle: "#d4bfa6", borderAccent: "#e87f5f", borderFocus: "#d97046",
+    textPrimary: "#3d2b1f", textSecondary: "#5c4033", textMuted: "#8b7260", textDim: "#b09a88",
+    accent: "#e87f5f", accentGlow: "rgba(232,127,95,0.14)", accentGlowStrong: "rgba(232,127,95,0.25)",
+    success: "#5a9e6f", danger: "#c4453a", info: "#c47a3a", purple: "#9b6b9e", pink: "#c4637a",
+    shadowCard: "0 1px 6px rgba(80,50,20,0.06), 0 2px 10px rgba(80,50,20,0.04)",
+    shadowModal: "0 8px 30px rgba(80,50,20,0.18)", shadowGlow: "0 0 14px rgba(232,127,95,0.14)",
+  },
+  familywall: {
+    label: "FamilyWall", icon: "🏠", desc: "Bright white, deep navy accents, bold",
+    ...SHARED,
+    bgApp: "#f0f4f8", bgCard: "#ffffff", bgCardAlt: "#edf1f7", bgInput: "#edf1f7",
+    bgElevated: "#dce3ed", bgOverlay: "rgba(10,20,50,0.45)",
+    calBgCell: "#ffffff", calBgCellHover: "#f5f7fa", calBgToday: "#e8edf8",
+    calBgSelected: "#dbe4f4", calBgHeader: "#ffffff", calBgWeekday: "#f0f4f8",
+    borderDefault: "#c8d2de", borderSubtle: "#afbccc", borderAccent: "#1e3a6e", borderFocus: "#2d5aa0",
+    textPrimary: "#0f1d36", textSecondary: "#1e3050", textMuted: "#4a6080", textDim: "#8898ae",
+    accent: "#1e3a6e", accentGlow: "rgba(30,58,110,0.10)", accentGlowStrong: "rgba(30,58,110,0.20)",
+    success: "#1a7a42", danger: "#c0392b", info: "#2d5aa0", purple: "#5b3a8c", pink: "#b73070",
+    shadowCard: "0 1px 3px rgba(10,20,50,0.07), 0 3px 10px rgba(10,20,50,0.05)",
+    shadowModal: "0 10px 35px rgba(10,20,50,0.20)", shadowGlow: "0 0 12px rgba(30,58,110,0.10)",
+  },
 };
 
 function formatTime(h, m, ampm) {
@@ -180,6 +176,10 @@ export default function App() {
   const [pinTarget, setPinTarget] = useState(null);
   const [pinError, setPinError] = useState("");
 
+  // Theme
+  const [themeName, setThemeName] = useState("skylight");
+  const V = THEMES[themeName] || THEMES.skylight;
+
   // Calendar
   const today = new Date();
   const [calYear, setCalYear] = useState(today.getFullYear());
@@ -260,7 +260,7 @@ export default function App() {
   useEffect(() => {
     const keys = ["events","eventStyles","routines","routineStyles","goals","goalStyles",
       "profiles","kidsData","custodySchedule","myRules","theirRules","sharedRules",
-      "exchangeLog","foodLog","myFoods","nutritionGoals","trackedMacros","contacts","alertMinutes"];
+      "exchangeLog","foodLog","myFoods","nutritionGoals","trackedMacros","contacts","alertMinutes","themeName"];
     keys.forEach(key => {
       onValue(ref(db, key), snap => {
         if (snap.exists()) {
@@ -284,6 +284,7 @@ export default function App() {
           else if (key === "trackedMacros") setTrackedMacros(val);
           else if (key === "contacts") { setContactDad(val.dad||""); setContactMom(val.mom||""); }
           else if (key === "alertMinutes") setAlertMinutes(val);
+          else if (key === "themeName") { if (THEMES[val]) setThemeName(val); }
         }
       });
     });
@@ -1424,10 +1425,10 @@ export default function App() {
           </div>
         )}
         <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-          {["profiles","contacts","alerts"].map(t=>(
+          {["profiles","theme","contacts","alerts"].map(t=>(
             <button key={t} onClick={()=>setSettingsSubTab(t)}
               style={{...settingsSubTab===t?btnPrimary:btnSecondary,padding:"6px 12px",fontSize:12}}>
-              {t==="profiles"?"👤 Profiles":t==="contacts"?"📞 Contacts":"🔔 Alerts"}
+              {t==="profiles"?"👤 Profiles":t==="theme"?"🎨 Theme":t==="contacts"?"📞 Contacts":"🔔 Alerts"}
             </button>
           ))}
         </div>
@@ -1498,6 +1499,40 @@ export default function App() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {settingsSubTab === "theme" && (
+          <div style={cardStyle}>
+            <div style={{fontWeight:700,color:V.accent,marginBottom:4,fontSize:15}}>App Theme</div>
+            <div style={{fontSize:12,color:V.textMuted,marginBottom:14}}>Choose a look for the whole app</div>
+            {Object.entries(THEMES).map(([key, t]) => {
+              const active = themeName === key;
+              return (
+                <button key={key} onClick={() => { setThemeName(key); fbSet("themeName", key); showSave(`${t.label} theme applied!`); }}
+                  style={{
+                    display:"flex", alignItems:"center", gap:12, width:"100%",
+                    background: active ? `${t.accent}15` : V.bgCardAlt,
+                    border: active ? `2px solid ${t.accent}` : `2px solid transparent`,
+                    borderRadius: V.r3, padding:"14px 16px", marginBottom:V.sp2,
+                    cursor:"pointer", transition:"border 0.15s, background 0.15s", textAlign:"left"
+                  }}>
+                  <span style={{fontSize:28}}>{t.icon}</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:700,fontSize:14,color:V.textPrimary}}>
+                      {t.label} {active && <span style={{fontSize:11,fontWeight:600,color:t.accent,marginLeft:6}}>Active</span>}
+                    </div>
+                    <div style={{fontSize:12,color:V.textMuted,marginTop:2}}>{t.desc}</div>
+                  </div>
+                  <div style={{display:"flex",gap:4}}>
+                    {[t.bgApp, t.accent, t.calBgToday, t.textPrimary].map((c,i) => (
+                      <div key={i} style={{width:16,height:16,borderRadius:"50%",background:c,
+                        border:`1px solid ${t.borderSubtle}`}} />
+                    ))}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         )}
 
