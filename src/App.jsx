@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, onValue } from "firebase/database";
 import LucacLegends from "./LucacLegends";
+import { groqFetch, parseGroqJSON, cacheGet, cacheSet, SWATCH_COLORS, triggerConfetti, createSpeechRecognition } from "./utils";
 
 // ⚠️ PASTE YOUR FIREBASE CONFIG HERE (copy from your old App.jsx)
 const firebaseConfig = {
@@ -117,13 +118,7 @@ function TimePicker({ value, onChange }) {
   );
 }
 
-// ═══ COLOR SWATCHES ═══
-const SWATCH_COLORS = [
-  { hex:"#ef4444", label:"Red" }, { hex:"#f97316", label:"Orange" }, { hex:"#f59e0b", label:"Gold" },
-  { hex:"#eab308", label:"Yellow" }, { hex:"#22c55e", label:"Green" }, { hex:"#14b8a6", label:"Teal" },
-  { hex:"#3b82f6", label:"Blue" }, { hex:"#7c3aed", label:"Purple" }, { hex:"#ec4899", label:"Pink" },
-  { hex:"#f87171", label:"Coral" }, { hex:"#92400e", label:"Brown" }, { hex:"#6b7280", label:"Gray" },
-];
+// SWATCH_COLORS imported from utils.js
 
 function SwatchPicker({ value, onChange, label }) {
   return (
@@ -284,62 +279,86 @@ export default function App() {
   const [widgetPrefs, setWidgetPrefs] = useState({});
   const [editingWidget, setEditingWidget] = useState(null); // widget key being edited
 
+  // Offline + Toast infrastructure
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [toast, setToast] = useState(null); // {message, type: "success"|"error"|"info"}
+
+  function showToast(message, type = "info", duration = 3000) {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), duration);
+  }
+
+  // Offline detection
+  useEffect(() => {
+    const goOffline = () => setIsOffline(true);
+    const goOnline = () => { setIsOffline(false); showToast("Back online!", "success"); };
+    window.addEventListener("offline", goOffline);
+    window.addEventListener("online", goOnline);
+    return () => { window.removeEventListener("offline", goOffline); window.removeEventListener("online", goOnline); };
+  }, []);
+
   const isAdmin = currentProfile?.type === "admin";
   const isKid = currentProfile?.type === "kid";
 
-  // Firebase sync
+  // Firebase sync with localStorage cache fallback
+  const FB_KEYS = ["events","eventStyles","routines","routineStyles","goals","goalStyles",
+    "profiles","kidsData","custodySchedule","myRules","theirRules","sharedRules",
+    "exchangeLog","foodLog","myFoods","nutritionGoals","trackedMacros","contacts","alertMinutes","themeName","widgetPrefs"];
+
+  const fbSetters = {
+    events: setEvents, eventStyles: setEventStyles, routines: setRoutines,
+    routineStyles: setRoutineStyles, goals: setGoals, goalStyles: setGoalStyles,
+    profiles: setProfiles, kidsData: setKidsData, custodySchedule: setCustodySchedule,
+    myRules: setMyRules, theirRules: setTheirRules, sharedRules: setSharedRules,
+    exchangeLog: setExchangeLog, foodLog: setFoodLog, myFoods: setMyFoods,
+    nutritionGoals: v => setNutritionGoals(v || {}), trackedMacros: setTrackedMacros,
+    contacts: v => { setContactDad(v?.dad||""); setContactMom(v?.mom||""); },
+    alertMinutes: setAlertMinutes,
+    themeName: v => { if (THEMES[v]) setThemeName(v); },
+    widgetPrefs: v => setWidgetPrefs(v || {}),
+  };
+
+  // Pre-populate from localStorage cache on mount
   useEffect(() => {
-    const keys = ["events","eventStyles","routines","routineStyles","goals","goalStyles",
-      "profiles","kidsData","custodySchedule","myRules","theirRules","sharedRules",
-      "exchangeLog","foodLog","myFoods","nutritionGoals","trackedMacros","contacts","alertMinutes","themeName","widgetPrefs"];
-    keys.forEach(key => {
+    FB_KEYS.forEach(key => {
+      const cached = cacheGet(key);
+      if (cached != null && fbSetters[key]) fbSetters[key](cached);
+    });
+  }, []);
+
+  // Live Firebase listeners + cache writes
+  useEffect(() => {
+    FB_KEYS.forEach(key => {
       onValue(ref(db, key), snap => {
         if (snap.exists()) {
           const val = snap.val();
-          if (key === "events") setEvents(val);
-          else if (key === "eventStyles") setEventStyles(val);
-          else if (key === "routines") setRoutines(val);
-          else if (key === "routineStyles") setRoutineStyles(val);
-          else if (key === "goals") setGoals(val);
-          else if (key === "goalStyles") setGoalStyles(val);
-          else if (key === "profiles") setProfiles(val);
-          else if (key === "kidsData") setKidsData(val);
-          else if (key === "custodySchedule") setCustodySchedule(val);
-          else if (key === "myRules") setMyRules(val);
-          else if (key === "theirRules") setTheirRules(val);
-          else if (key === "sharedRules") setSharedRules(val);
-          else if (key === "exchangeLog") setExchangeLog(val);
-          else if (key === "foodLog") setFoodLog(val);
-          else if (key === "myFoods") setMyFoods(val);
-          else if (key === "nutritionGoals") setNutritionGoals(val || {});
-          else if (key === "trackedMacros") setTrackedMacros(val);
-          else if (key === "contacts") { setContactDad(val.dad||""); setContactMom(val.mom||""); }
-          else if (key === "alertMinutes") setAlertMinutes(val);
-          else if (key === "themeName") { if (THEMES[val]) setThemeName(val); }
-          else if (key === "widgetPrefs") setWidgetPrefs(val || {});
+          cacheSet(key, val);
+          if (fbSetters[key]) fbSetters[key](val);
         }
       });
     });
   }, []);
 
-  function fbSet(key, val) { set(ref(db, key), val); }
+  function fbSet(key, val) {
+    set(ref(db, key), val).catch(() => {
+      // If Firebase write fails (offline), cache locally — Firebase RTDB will sync when back online
+      cacheSet(key, val);
+    });
+  }
 
   function showSave(msg) {
     setSaveFeedback(msg);
     setTimeout(() => setSaveFeedback(""), 2000);
   }
 
-  // Fetch daily quote on mount
+  // Fetch daily quote on mount (using groqFetch wrapper)
   useEffect(() => {
     if (!GROQ_KEY) return;
-    fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method:"POST", headers:{ "Content-Type":"application/json", Authorization:`Bearer ${GROQ_KEY}` },
-      body: JSON.stringify({ model:"llama-3.3-70b-versatile", max_tokens:80,
-        messages:[{ role:"user", content:"Give me one short motivational quote (under 15 words) for a single dad building his own business. Just the quote, no attribution." }]
-      })
-    }).then(r=>r.json()).then(d => {
-      if (d.choices?.[0]?.message?.content) setQuote(d.choices[0].message.content.replace(/"/g,""));
-    }).catch(()=>{});
+    groqFetch(GROQ_KEY, [
+      { role: "user", content: "Give me one short motivational quote (under 15 words) for a single dad building his own business. Just the quote, no attribution." }
+    ], { maxTokens: 80 }).then(r => {
+      if (r.ok && r.data) setQuote(r.data.replace(/"/g, ""));
+    });
   }, []);
 
   // Calendar helpers
@@ -439,30 +458,71 @@ export default function App() {
   }
 
   // ═══ AI QUICK ADD ═══
+  // ═══ AI QUICK ADD (with update-existing support) ═══
   async function handleQuickAdd() {
     if (!quickAddInput.trim() || !GROQ_KEY) return;
     setQuickAddLoading(true);
-    try {
-      const members = familyNames.join(", ");
-      const todayISO = todayStr;
-      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method:"POST", headers:{ "Content-Type":"application/json", Authorization:`Bearer ${GROQ_KEY}` },
-        body: JSON.stringify({
-          model:"llama-3.3-70b-versatile", max_tokens:800,
-          messages:[
-            { role:"system", content:`You extract calendar events from natural language. Family members: ${members}. Today is ${todayISO}. Return ONLY valid JSON array of events. Each event: {"title":"string","date":"YYYY-MM-DD","time":"HH:MM AM/PM","who":"name or empty","notes":"","repeat":"none|daily|weekly|monthly","repeatCount":number_or_0,"duration":minutes}. For repeating events, set repeatCount to total occurrences. If no repeat mentioned, use "none". If duration not mentioned, default 60. Return raw JSON array, no markdown.` },
-            { role:"user", content: quickAddInput }
-          ]
-        })
+    const members = familyNames.join(", ");
+    const input = quickAddInput.trim();
+
+    // Detect update commands: "make X red", "change X color to Y", etc.
+    const updatePatterns = /^(make|change|set|update)\s+(.+?)\s+(red|orange|gold|yellow|green|teal|blue|purple|pink|coral|brown|gray|#[0-9a-f]{6})/i;
+    const updateMatch = input.match(updatePatterns);
+    if (updateMatch) {
+      const keyword = updateMatch[2].toLowerCase().trim();
+      const colorName = updateMatch[3].toLowerCase();
+      const colorMap = {};
+      SWATCH_COLORS.forEach(c => { colorMap[c.label.toLowerCase()] = c.hex; });
+      const targetColor = colorMap[colorName] || colorName;
+      // Search events by keyword and update their styles
+      const updated = { ...(eventStyles || {}) };
+      let count = 0;
+      Object.entries(events || {}).forEach(([dk, dayEvs]) => {
+        (dayEvs || []).forEach((ev, idx) => {
+          if (ev.title.toLowerCase().includes(keyword)) {
+            updated[`${dk}_${idx}`] = { ...(updated[`${dk}_${idx}`] || {}), bg: targetColor };
+            count++;
+          }
+        });
       });
-      const data = await resp.json();
-      const raw = data.choices?.[0]?.message?.content || "[]";
-      const cleaned = raw.replace(/```json?\n?/g,"").replace(/```/g,"").trim();
-      const parsed = JSON.parse(cleaned);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        setQuickAddPreview({ events: parsed, input: quickAddInput });
+      if (count > 0) {
+        fbSet("eventStyles", updated);
+        showToast(`Updated ${count} event${count>1?"s":""} to ${updateMatch[3]}`, "success");
+      } else {
+        showToast(`No events found matching "${keyword}"`, "error");
       }
-    } catch(e) { console.error("Quick add parse error", e); }
+      setQuickAddLoading(false);
+      setQuickAddInput("");
+      return;
+    }
+
+    // Normal event creation via Groq
+    const result = await groqFetch(GROQ_KEY, [
+      { role: "system", content: `You extract calendar events from natural language. Family members: ${members}. Today is ${todayStr}. Return ONLY valid JSON array of events. Each event: {"title":"string","date":"YYYY-MM-DD","time":"HH:MM AM/PM","who":"name or empty","notes":"","repeat":"none|daily|weekly|monthly","repeatCount":number_or_0,"duration":minutes}. For repeating events, set repeatCount to total occurrences (e.g. "every Friday for 3 months" = 12). If no repeat mentioned, use "none". If duration not mentioned, default 60. Return raw JSON array, no markdown.` },
+      { role: "user", content: input }
+    ]);
+
+    if (!result.ok) {
+      showToast(result.error, "error");
+      setQuickAddLoading(false);
+      return;
+    }
+
+    const parsed = parseGroqJSON(result.data);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      // Calculate total instances for preview
+      let totalInstances = 0;
+      parsed.forEach(ev => {
+        const fakeEv = { ...ev, repeatEnd: "", repeatCount: ev.repeatCount || 0 };
+        const startDate = new Date(ev.date + "T00:00:00");
+        totalInstances += generateRepeats(fakeEv, startDate).length;
+      });
+      const repeatDesc = parsed.some(e => e.repeat && e.repeat !== "none")
+        ? ` (${parsed[0].repeat} x${totalInstances})` : "";
+      setQuickAddPreview({ events: parsed, totalInstances, repeatDesc, input });
+    } else {
+      showToast("Couldn't parse that — try rephrasing", "error");
+    }
     setQuickAddLoading(false);
   }
 
@@ -471,7 +531,8 @@ export default function App() {
     const updated = { ...(events || {}) };
     quickAddPreview.events.forEach(ev => {
       const startDate = new Date(ev.date + "T00:00:00");
-      const fakeEv = { ...ev, repeatEnd:"", repeatCount: ev.repeatCount || 0 };
+      const fakeEv = { ...ev, repeatEnd: "", repeatCount: ev.repeatCount || 0 };
+      // generateRepeats already includes the start date — no separate base save needed (BUG FIX)
       const dates = generateRepeats(fakeEv, startDate);
       const eventData = { title: ev.title, time: ev.time || "12:00 PM", who: ev.who || "", notes: ev.notes || "", duration: ev.duration || 60 };
       if (ev.repeat && ev.repeat !== "none") eventData.repeat = ev.repeat;
@@ -481,6 +542,7 @@ export default function App() {
       });
     });
     fbSet("events", updated);
+    showToast(`Created ${quickAddPreview.totalInstances} event${quickAddPreview.totalInstances>1?"s":""}!`, "success");
     setQuickAddPreview(null);
     setQuickAddInput("");
   }
@@ -876,7 +938,7 @@ export default function App() {
         {/* AI Quick Add Preview */}
         {quickAddPreview && (
           <div style={{ ...cardStyle, border:`2px solid ${V.accent}`, marginBottom:12 }}>
-            <div style={{ fontWeight:700, color:V.accent, marginBottom:8 }}>Creating {quickAddPreview.events.length} event{quickAddPreview.events.length>1?"s":""}</div>
+            <div style={{ fontWeight:700, color:V.accent, marginBottom:8 }}>Creating {quickAddPreview.totalInstances} event{quickAddPreview.totalInstances>1?"s":""}{quickAddPreview.repeatDesc}</div>
             {quickAddPreview.events.slice(0,5).map((ev,i) => (
               <div key={i} style={{ fontSize:13, color:V.textSecondary, marginBottom:4 }}>
                 {ev.repeat && ev.repeat !== "none" && "🔁 "}{ev.title} — {ev.date} {ev.time || ""} {ev.who ? `(${ev.who})` : ""}
@@ -2159,7 +2221,10 @@ export default function App() {
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <span style={{fontSize:18}}>👑</span>
           <span style={{fontWeight:800,color:V.accent,fontSize:16,letterSpacing:1}}>LUCAC</span>
-          <span style={{fontSize:11,color:V.success,background:`${V.success}18`,padding:"2px 6px",borderRadius:10}}>✦ Live</span>
+          {isOffline
+            ? <span style={{fontSize:11,color:V.danger,background:`${V.danger}18`,padding:"2px 6px",borderRadius:10}}>⚠ Offline</span>
+            : <span style={{fontSize:11,color:V.success,background:`${V.success}18`,padding:"2px 6px",borderRadius:10}}>✦ Live</span>
+          }
         </div>
         <div style={{textAlign:"right"}}>
           <div style={{fontWeight:700,color:V.textPrimary,fontSize:14}}>{new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</div>
@@ -2190,33 +2255,13 @@ export default function App() {
         ))}
       </div>
 
-      {/* Floating AI */}
-      <button onClick={()=>setAiOpen(!aiOpen)} style={{position:"fixed",bottom:70,right:16,width:50,height:50,borderRadius:"50%",
-        background:V.accent,border:"none",cursor:"pointer",fontSize:22,boxShadow:`0 4px 12px ${V.accentGlowStrong}`,zIndex:200}}>
-        🤖
-      </button>
-      {aiOpen && (
-        <div style={{position:"fixed",bottom:130,right:16,width:320,height:400,background:V.bgCard,borderRadius:16,
-          border:`1px solid ${V.borderSubtle}`,display:"flex",flexDirection:"column",boxShadow:V.shadowModal,zIndex:200}}>
-          <div style={{padding:"12px 16px",borderBottom:`1px solid ${V.borderDefault}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <span style={{fontWeight:700,color:V.accent,fontSize:14}}>🤖 Ask the App</span>
-            <button onClick={()=>setAiOpen(false)} style={{background:"none",border:"none",color:V.textDim,cursor:"pointer",fontSize:18}}>✕</button>
-          </div>
-          <div style={{flex:1,overflowY:"auto",padding:12,display:"flex",flexDirection:"column",gap:8}}>
-            {aiMessages.map((m,i) => (
-              <div key={i} style={{background:m.role==="user"?`${V.accent}18`:V.bgCardAlt,borderRadius:10,padding:"8px 12px",
-                alignSelf:m.role==="user"?"flex-end":"flex-start",maxWidth:"85%",fontSize:13,color:V.textPrimary,lineHeight:1.5}}>
-                {m.content}
-              </div>
-            ))}
-            {aiLoading && <div style={{background:V.bgCardAlt,borderRadius:10,padding:"8px 12px",fontSize:13,color:V.textDim}}>thinking...</div>}
-            {!aiMessages.length && <div style={{color:V.textDim,fontSize:12,textAlign:"center",marginTop:20}}>Ask me anything! Weather, recipes, advice...</div>}
-          </div>
-          <div style={{padding:8,borderTop:`1px solid ${V.borderDefault}`,display:"flex",gap:6}}>
-            <input value={aiInput} onChange={e=>setAiInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendAI()}
-              placeholder="Ask anything..." style={{...inputStyle,flex:1,padding:"6px 10px",fontSize:13}} />
-            <button onClick={sendAI} style={{...btnPrimary,padding:"6px 10px"}} disabled={aiLoading}>→</button>
-          </div>
+      {/* Toast notification */}
+      {toast && (
+        <div style={{position:"fixed",top:60,left:"50%",transform:"translateX(-50%)",zIndex:9999,
+          background: toast.type === "error" ? V.danger : toast.type === "success" ? V.success : V.accent,
+          color:"#fff",padding:"10px 20px",borderRadius:12,fontWeight:600,fontSize:13,
+          boxShadow:"0 4px 20px rgba(0,0,0,0.2)",maxWidth:340,textAlign:"center"}}>
+          {toast.message}
         </div>
       )}
     </div>
