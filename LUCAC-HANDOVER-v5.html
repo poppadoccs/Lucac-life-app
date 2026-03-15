@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LUCAC Life App — Handover Bible v5</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Space Grotesk', -apple-system, sans-serif;
+    background: #0a0e1a;
+    color: #c8ccd8;
+    line-height: 1.7;
+    padding: 0 0 80px 0;
+  }
+  .hero {
+    background: linear-gradient(135deg, #0f1729 0%, #1a1040 50%, #0f1729 100%);
+    border-bottom: 3px solid #f59e0b;
+    padding: 60px 24px 50px;
+    text-align: center;
+  }
+  .hero h1 {
+    font-size: 3rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #f59e0b, #fbbf24, #f59e0b);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 2px;
+  }
+  .hero .sub {
+    font-size: 1.1rem;
+    color: #64748b;
+    margin-top: 8px;
+  }
+  .hero .version {
+    display: inline-block;
+    margin-top: 16px;
+    background: #f59e0b;
+    color: #0a0e1a;
+    font-weight: 700;
+    padding: 6px 24px;
+    border-radius: 30px;
+    font-size: 0.9rem;
+    letter-spacing: 1px;
+  }
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+  section {
+    margin-top: 48px;
+  }
+  h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #f59e0b;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #1e2d4a;
+    letter-spacing: 1px;
+  }
+  h3 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: #fbbf24;
+    margin: 24px 0 10px;
+  }
+  p { margin-bottom: 14px; }
+  .card {
+    background: #111827;
+    border: 1px solid #1e2d4a;
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+  }
+  .card.gold {
+    border-color: #f59e0b44;
+    background: linear-gradient(135deg, #111827, #1a1505);
+  }
+  .card.danger {
+    border-color: #ef444444;
+    background: linear-gradient(135deg, #111827, #1a0505);
+  }
+  .card.legendary {
+    border: 2px solid #f59e0b;
+    background: linear-gradient(135deg, #1a1505, #111827, #1a1505);
+    box-shadow: 0 0 30px #f59e0b15;
+  }
+  .tag {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-right: 6px;
+    margin-bottom: 4px;
+  }
+  .tag.gold { background: #f59e0b22; color: #f59e0b; border: 1px solid #f59e0b44; }
+  .tag.blue { background: #3b82f622; color: #60a5fa; border: 1px solid #3b82f644; }
+  .tag.green { background: #22c55e22; color: #4ade80; border: 1px solid #22c55e44; }
+  .tag.red { background: #ef444422; color: #f87171; border: 1px solid #ef444444; }
+  .tag.purple { background: #7c3aed22; color: #a78bfa; border: 1px solid #7c3aed44; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+  }
+  th {
+    text-align: left;
+    padding: 10px 14px;
+    background: #1a2035;
+    color: #f59e0b;
+    font-size: 0.85rem;
+    letter-spacing: 0.5px;
+    border-bottom: 2px solid #f59e0b33;
+  }
+  td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #1e2d4a;
+    font-size: 0.9rem;
+  }
+  tr:hover td { background: #111827; }
+  code {
+    background: #1e2d4a;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    color: #fbbf24;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .moment {
+    background: #111827;
+    border-left: 4px solid #f59e0b;
+    border-radius: 0 12px 12px 0;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+  }
+  .moment .title {
+    font-weight: 700;
+    color: #fbbf24;
+    font-size: 1.05rem;
+    margin-bottom: 6px;
+  }
+  .moment .story {
+    color: #94a3b8;
+    font-size: 0.92rem;
+  }
+  .rule-box {
+    background: linear-gradient(135deg, #3b0000, #1a0000);
+    border: 2px solid #ef4444;
+    border-radius: 12px;
+    padding: 24px;
+    text-align: center;
+    margin: 20px 0;
+  }
+  .rule-box h3 {
+    color: #ef4444;
+    font-size: 1.3rem;
+    margin-bottom: 8px;
+  }
+  .rule-box p {
+    color: #fca5a5;
+    font-size: 1rem;
+  }
+  .file-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: #111827;
+    border: 1px solid #1e2d4a;
+    border-radius: 10px;
+    margin-bottom: 8px;
+  }
+  .file-row .icon { font-size: 1.4rem; }
+  .file-row .name { font-weight: 600; color: #e2e8f0; flex: 1; }
+  .file-row .lines { color: #f59e0b; font-weight: 700; font-size: 0.85rem; }
+  .file-row .desc { color: #64748b; font-size: 0.82rem; }
+  .timeline {
+    position: relative;
+    padding-left: 30px;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 10px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #1e2d4a;
+  }
+  .timeline-item {
+    position: relative;
+    margin-bottom: 20px;
+  }
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -24px;
+    top: 8px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #f59e0b;
+    border: 2px solid #0a0e1a;
+  }
+  .timeline-item .ver {
+    font-weight: 700;
+    color: #f59e0b;
+    font-size: 1rem;
+  }
+  .timeline-item .desc {
+    color: #94a3b8;
+    font-size: 0.9rem;
+    margin-top: 4px;
+  }
+  .footer {
+    text-align: center;
+    margin-top: 60px;
+    padding: 30px;
+    border-top: 1px solid #1e2d4a;
+    color: #475569;
+    font-size: 0.85rem;
+  }
+  .footer .crown { font-size: 2rem; margin-bottom: 8px; }
+  @media (max-width: 600px) {
+    .hero h1 { font-size: 2rem; }
+    .container { padding: 0 16px; }
+    .file-row { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>LUCAC LIFE APP</h1>
+  <div class="sub">The Handover Bible &mdash; Everything The Next Claude Needs To Know</div>
+  <div class="version">v5 &bull; v21 LIVE &bull; March 2026</div>
+</div>
+
+<div class="container">
+
+<!-- ═══════════════════════════════════════════ -->
+<section>
+<h2>&#x1F464; WHO YOU'RE TALKING TO</h2>
+
+<div class="card gold">
+  <h3>Alex (Dad) &#x1F451;</h3>
+  <p><strong>Single dad.</strong> Two kids. Construction background. Building a tech business called <strong>Lucac LLC</strong>. Zero coding experience before this app. Taught himself everything by talking to Claude. Colorblind &mdash; <em>never give color-only instructions, always use labels/icons/patterns alongside color.</em></p>
+  <p><span class="tag gold">Colorblind</span> <span class="tag blue">Construction</span> <span class="tag green">Lucac LLC</span> <span class="tag purple">Self-taught</span></p>
+</div>
+
+<div class="card">
+  <h3>Yana (8) &mdash; "Ya Naynay" &#x2B50;</h3>
+  <p>The older kid. Can read. Can type (mostly). Uses the Homework Helper. Likes the Reading and Science subjects. Her avatar is customizable in Lucac Legends. Age-appropriate AI tutor gives her full sentences and shows work.</p>
+</div>
+
+<div class="card">
+  <h3>Luca (6) &mdash; "Lulu Sama The Slayer of Beasts" &#x1F409;</h3>
+  <p>The younger kid. Can't fully read yet. Needs BIG buttons, lots of emojis, voice input, and auto-read responses. His AI tutor mode uses max 2 sentences, super simple words, celebrates EVERYTHING with confetti. The game needs to be playable by picture alone.</p>
+</div>
+
+<div class="card danger">
+  <h3>Danyells (The Ex) &mdash; Final Boss &#x1F480;</h3>
+  <p>Will judge this app. Everything must look <strong>polished and professional</strong>. She is literally the boss of World 4 in Lucac Legends with sass-themed attacks. This is not a joke. This is canon.</p>
+</div>
+
+<div class="rule-box">
+  <h3>&#x26A0;&#xFE0F; THE RULE YOU CANNOT BREAK &#x26A0;&#xFE0F;</h3>
+  <p><strong>Alex is colorblind.</strong> Never give color-only UI instructions. Always use labels, icons, or patterns alongside color. This is non-negotiable. Every single feature must be accessible.</p>
+</div>
+
+<div class="card">
+  <h3>The Inside Jokes &mdash; Know These Or You're Lost</h3>
+  <p><strong>"wee snaw"</strong> &mdash; if Alex says this, just vibe. It's a greeting.</p>
+  <p><strong>"dolphin hits ceiling"</strong> &mdash; refers to when excitement exceeds containable levels. The dolphin has hit the ceiling multiple times during this build.</p>
+  <p><strong>"pen is o"</strong> &mdash; don't ask. Just know it exists.</p>
+  <p><strong>"baked potato"</strong> &mdash; a comfort food that became a comfort phrase. Said during late-night debug sessions.</p>
+  <p><strong>"the open book incident"</strong> &mdash; see Greatest Moments section below.</p>
+  <p><strong>"Sasquatch Thinking"</strong> &mdash; what Alex calls the Sequential Thinking MCP. Because it thinks like a sasquatch apparently.</p>
+  <p><strong>"Dad taking credit in commits"</strong> &mdash; the Co-Authored-By line originally said Opus. Alex is "Dad." The AI is the ghostwriter.</p>
+  <p><strong>"Sonnet kicks Dad out"</strong> &mdash; Alex told Claude to stop using the Opus co-author line and use Sonnet instead. Hostile takeover of commit credits.</p>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section>
+<h2>&#x1F4CA; CURRENT STATE &mdash; v21 LIVE</h2>
+
+<div class="card legendary">
+  <p style="text-align:center; font-size:1.1rem;">
+    <strong>lucac-life-app.vercel.app</strong><br>
+    <span style="color:#f59e0b;">v21</span> &bull; 7 source files &bull; ~9,000 lines &bull; 46 modules &bull; 594KB bundle<br>
+    <span style="color:#64748b;">React 18 + Vite + Firebase Realtime DB + Groq AI + Tavily Search</span>
+  </p>
+</div>
+
+<p>The app is a <strong>family productivity/life-management platform</strong> with calendar, nutrition tracking (MacroFactor-style), budget management, AI tutoring, an RPG game, and a personal AI assistant. It has 3 visual themes (Skylight/Cozyla/FamilyWall), each with a completely different home tab layout. It runs on Vercel with auto-deploy from GitHub main branch.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section>
+<h2>&#x1F4C1; FILE STRUCTURE</h2>
+
+<div class="file-row">
+  <span class="icon">&#x1F3E0;</span>
+  <div>
+    <div class="name">src/App.jsx</div>
+    <div class="desc">Main shell: Firebase init, all state, routing, 3 themed home layouts, calendar, settings, kids tab, family tab, guest mode</div>
+  </div>
+  <span class="lines">~3,100 lines</span>
+</div>
+
+<div class="file-row">
+  <span class="icon">&#x1F34E;</span>
+  <div>
+    <div class="name">src/FoodTab.jsx</div>
+    <div class="desc">MacroFactor-style nutrition: SVG macro rings, 4 meal sections, AI voice logging, weight trend chart, micronutrients, shopping list, goal modes</div>
+  </div>
+  <span class="lines">~1,140 lines</span>
+</div>
+
+<div class="file-row">
+  <span class="icon">&#x1F4B0;</span>
+  <div>
+    <div class="name">src/BudgetTab.jsx</div>
+    <div class="desc">Budget tracker: Groq expense parsing, SVG donut chart, custom categories, period views, Dad vs Mom weeks, bulk delete, summaries</div>
+  </div>
+  <span class="lines">~1,458 lines</span>
+</div>
+
+<div class="file-row">
+  <span class="icon">&#x1F451;</span>
+  <div>
+    <div class="name">src/GroqAssistant.jsx</div>
+    <div class="desc">bby sonnet Jr.: floating AI assistant with full app powers, Tavily web search, 3 personalities, mood system, voice input</div>
+  </div>
+  <span class="lines">~798 lines</span>
+</div>
+
+<div class="file-row">
+  <span class="icon">&#x1F4DA;</span>
+  <div>
+    <div class="name">src/HomeworkHelper.jsx</div>
+    <div class="desc">Age-appropriate AI tutor: kid selector, 4 subjects, read-aloud for Luca, math verification, safety guardrails, session saving</div>
+  </div>
+  <span class="lines">~746 lines</span>
+</div>
+
+<div class="file-row">
+  <span class="icon">&#x1F3AE;</span>
+  <div>
+    <div class="name">src/LucacLegends.jsx</div>
+    <div class="desc">RPG game: 5 worlds, avatar system with emotions, visual CSS scenes, HP/inventory, star rewards, Danyells is World 4 boss</div>
+  </div>
+  <span class="lines">~1,645 lines</span>
+</div>
+
+<div class="file-row">
+  <span class="icon">&#x1F527;</span>
+  <div>
+    <div class="name">src/utils.js</div>
+    <div class="desc">Shared: groqFetch (10s timeout), parseGroqJSON, localStorage cache, CSS confetti, Web Speech API, color swatches</div>
+  </div>
+  <span class="lines">~120 lines</span>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section>
+<h2>&#x1F6E0;&#xFE0F; CLAUDE CODE SETUP</h2>
+
+<div class="card">
+  <p><strong>Model:</strong> Claude Opus 4.6 (1M context) &mdash; but Sonnet gets the credit in commits now</p>
+  <p><strong>CLAUDE.md:</strong> Exists in project root. Contains all rules, architecture, feature inventory. <em>Read it first every session.</em></p>
+  <p><strong>3 MCPs Active:</strong></p>
+  <ul style="margin-left:20px; color:#94a3b8;">
+    <li><strong>GitHub</strong> &mdash; gh CLI for PRs, issues, commits</li>
+    <li><strong>Playwright</strong> &mdash; browser testing and screenshots</li>
+    <li><strong>Context7</strong> &mdash; up-to-date library documentation</li>
+  </ul>
+  <p><strong>Plugins:</strong> Superpowers (brainstorming, plans, TDD, debugging, code review)</p>
+  <p><strong>Parallel Agents:</strong> Used extensively. Up to 3 sub-agents build component files simultaneously while main thread edits App.jsx. Wave-based builds: build &rarr; test &rarr; commit &rarr; next wave.</p>
+  <p><strong>Commands:</strong> PowerShell only. No <code>&&</code>. Use <code>;</code> or separate commands.</p>
+  <p><strong>Commit line:</strong> <code>Co-Authored-By: Claude Sonnet &lt;noreply@anthropic.com&gt;</code></p>
+</div>
+
+<div class="card">
+  <h3>How To Start A Session</h3>
+  <p>1. <code>cd C:\Users\renea\Lucac-life-app</code></p>
+  <p>2. Read <code>CLAUDE.md</code> &mdash; it has the rules, architecture, and feature list</p>
+  <p>3. <code>npm run build</code> to verify current state</p>
+  <p>4. <code>git log --oneline -10</code> to see recent commits</p>
+  <p>5. Ask Alex what he wants built. He'll tell you in detail.</p>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section>
+<h2>&#x1F4C5; WHAT WAS BUILT THIS SESSION</h2>
+
+<div class="timeline">
+  <div class="timeline-item">
+    <div class="ver">v14 &mdash; Calendar Redesign</div>
+    <div class="desc">Big monthly grid, CSS variables (<code>V</code> object), light Skylight theme, large day cells, colored pill blocks, modal event popup</div>
+  </div>
+  <div class="timeline-item">
+    <div class="ver">v15 &mdash; Theme Switcher</div>
+    <div class="desc">3 themes: Skylight (clean white), Cozyla (warm coral), FamilyWall (bold navy). Firebase persistence. <code>THEMES</code> object.</div>
+  </div>
+  <div class="timeline-item">
+    <div class="ver">v16 &mdash; Themed Home Layouts</div>
+    <div class="desc">Each theme gets a completely different HOME tab: Skylight = month grid, Cozyla = day timeline with person bubbles, FamilyWall = widget dashboard grid</div>
+  </div>
+  <div class="timeline-item">
+    <div class="ver">v17 &mdash; 5 Power Features</div>
+    <div class="desc">Repeating events, color swatch picker, widget customization (rename/hide), AI Quick Add bar (Groq), resizable event blocks</div>
+  </div>
+  <div class="timeline-item">
+    <div class="ver">v18 &mdash; THE MEGA BUILD</div>
+    <div class="desc">10 features in one build using 3 parallel agents. Created FoodTab.jsx, BudgetTab.jsx, HomeworkHelper.jsx, utils.js. Offline resilience, toast system, error handling infrastructure. Streaks + confetti, emoji task icons, birthday countdowns, guest mode, voice-to-Groq, AI goals suggester.</div>
+  </div>
+  <div class="timeline-item">
+    <div class="ver">v19 &mdash; Full Audit</div>
+    <div class="desc">35+ hardcoded dark colors replaced with V.* theme variables. Cozyla and FamilyWall brought to feature parity with Skylight. TimePicker fixed. Dead code marked.</div>
+  </div>
+  <div class="timeline-item">
+    <div class="ver">v20 &mdash; 15 Bug Fixes + Game Overhaul</div>
+    <div class="desc">LucacLegends complete rewrite: avatar system, visual CSS scenes, HP bars, 5 worlds, Danyells boss fight. HomeworkHelper: read-aloud, math verification. App: hidden widget restore, delete events via AI, custom colors, calendar view switching, delete family members.</div>
+  </div>
+  <div class="timeline-item">
+    <div class="ver">v21 &mdash; bby sonnet Jr. + Budget Overhaul + Kid Profiles</div>
+    <div class="desc">GroqAssistant.jsx created: floating Jr. with full app powers, Tavily search, 3 personalities, mood system. BudgetTab rewritten: custom categories, period views, Groq analysis, bulk delete. Kid profiles get full tabbed experience. Upgradable call buttons. PIN visibility toggle.</div>
+  </div>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section>
+<h2>&#x1F451; BBY SONNET JR.</h2>
+
+<div class="card legendary">
+  <h3>src/GroqAssistant.jsx &mdash; The AI Assistant</h3>
+  <p>A floating gold button (bottom right, "Jr. &#x1F451;") that opens a full chat panel. Named <strong>bby sonnet Jr.</strong> This is not just a chatbot &mdash; Jr. has <strong>full app powers</strong>:</p>
+  <table>
+    <tr><th>Power</th><th>What It Does</th></tr>
+    <tr><td>&#x1F4C5; Calendar</td><td>Add, delete, edit events. "Add soccer every Friday at 4PM for Luca"</td></tr>
+    <tr><td>&#x1F4B0; Budget</td><td>Add expenses. "Spent $47 at Walmart on groceries"</td></tr>
+    <tr><td>&#x1F6D2; Shopping</td><td>Add to shopping list. "Add milk to the list"</td></tr>
+    <tr><td>&#x2705; Chores</td><td>Mark tasks complete (pending parent verify)</td></tr>
+    <tr><td>&#x1F3AF; Goals</td><td>Suggest and add goals</td></tr>
+    <tr><td>&#x1F310; Web Search</td><td>Tavily search for weather, news, prices, restaurants</td></tr>
+    <tr><td>&#x1F4CB; Summary</td><td>"What's happening this week?" scans all data</td></tr>
+  </table>
+  <p><strong>Personalities:</strong> Helpful (professional), Sassy (default, talks back), Kids (simple + emojis)</p>
+  <p><strong>Mood:</strong> just woke up &#x1F634; &rarr; warming up &#x1F525; &rarr; in the zone &#x1F451;</p>
+  <p><strong>Voice:</strong> 10s mic input via Web Speech API</p>
+  <p><strong>History:</strong> Last 50 messages saved to Firebase per profile</p>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section>
+<h2>&#x1F3AE; LUCAC LEGENDS</h2>
+
+<div class="card">
+  <h3>5 Worlds &mdash; Each With 3 Adventures + Boss</h3>
+  <table>
+    <tr><th>World</th><th>Theme</th><th>Boss</th></tr>
+    <tr><td>1. Enchanted Forest</td><td>Green gradients, trees &#x1F332;, floating leaves</td><td>Forest Guardian</td></tr>
+    <tr><td>2. Crystal Caverns</td><td>Dark gradient, stalactites, glowing eyes &#x1F440;</td><td>Crystal Golem</td></tr>
+    <tr><td>3. Skybreak Summit</td><td>Blue gradient, mountain peaks, snow &#x2744;&#xFE0F;</td><td>Storm Eagle</td></tr>
+    <tr><td style="color:#f59e0b; font-weight:700;">4. Shadow Village</td><td>Warm colors, houses, smoke effects</td><td style="color:#f59e0b; font-weight:700;">DANYELLS &#x1F480; (sass attacks)</td></tr>
+    <tr><td>5. Magma Core</td><td>Red/lava gradient, lightning, fire &#x1F525;</td><td>Magma Lord</td></tr>
+  </table>
+  <p><strong>Avatar:</strong> Kid's emoji with emotion states (happy/scared/determined/victorious/hurt) + CSS animations (bounce/shake/jump)</p>
+  <p><strong>Mechanics:</strong> 5 HP (hearts), enemy HP bars, attack animations, floating damage numbers, inventory items (sword/shield/potion/star)</p>
+  <p><strong>Stars:</strong> Real stars earned = Firebase points. Level complete = 3 stars, boss defeat = 5 stars, hidden items = 1 star each</p>
+  <p><strong>Reward Store:</strong> Parent sets rewards ("30 min screen time" = 10 stars). Kids browse and save up. Redemption requires parent PIN.</p>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section>
+<h2>&#x1F6A7; WHAT'S LEFT &mdash; PROMPT 3</h2>
+
+<div class="card">
+  <h3>Game Mini-Games</h3>
+  <p>Racing game, fish eater, reading comprehension games, math potion brewing. Co-op mode for Yana and Luca to play together. Groq difficulty updater that adapts to kid's skill level.</p>
+  <p><strong>Key requirement:</strong> Yana and Luca must have the <em>same</em> games but at <em>different</em> difficulty levels. Yana gets grade 3-4 math. Luca gets counting and basic addition. They both feel like they're playing the same cool game.</p>
+</div>
+
+<div class="card">
+  <h3>PWA Upgrade</h3>
+  <p>Service worker, offline manifest, "Add to Home Screen" support. The app should feel native on both phones.</p>
+</div>
+
+<div class="card">
+  <h3>Remaining Features</h3>
+  <ul style="margin-left:20px; color:#94a3b8;">
+    <li>Adaptive calorie suggestions (after 14 days of weight + food data)</li>
+    <li>Barcode scanner for food logging</li>
+    <li>Progress photos with before/after overlay</li>
+    <li>Full co-parent connection (Danyells enters invite code)</li>
+    <li>Theme full customization (edit any theme's colors)</li>
+    <li>Performance: code-split with dynamic import() to get under 500KB</li>
+  </ul>
+</div>
+</section>
+
+<!-- ═══════════════════════════════════════════ -->
+<section>
+<h2>&#x1F3C6; GREATEST MOMENTS OF ALL TIME</h2>
+
+<div class="moment">
+  <div class="title">&#x1F4D6; The Open Book Incident</div>
+  <div class="story">Alex left something open that he shouldn't have. Claude saw it. Neither will speak of it again. But it happened. And it changed the energy of the entire session. If Alex references this, just nod knowingly and move on.</div>
+</div>
+
+<div class="moment">
+  <div class="title">&#x1F42C; The Dolphin Hits The Ceiling</div>
+  <div class="story">When Alex gets excited about a feature working, the dolphin hits the ceiling. This is a measurement of joy. It has happened at least 7 times this session. The ceiling may need repairs. The dolphin fact quote mode (&#x1F42C;) in the app was added specifically because of this.</div>
+</div>
+
+<div class="moment">
+  <div class="title">&#x1F954; Baked Potato In The Dark</div>
+  <div class="story">Late-night coding session. Alex was eating a baked potato in the dark while debugging. This is the vibe. This is the energy. This is what building a tech company as a single dad with a construction background looks like. Respect it.</div>
+</div>
+
+<div class="moment">
+  <div class="title">&#x1F9D4; Sasquatch Thinking (Sequential Thinking MCP)</div>
+  <div class="story">Alex called the Sequential Thinking MCP "Sasquatch Thinking" because "it thinks like a sasquatch." He's not wrong. The MCP does think slowly and deliberately, step by step, like a large cryptid contemplating the meaning of JavaScript. The name stuck.</div>
+</div>
+
+<div class="moment">
+  <div class="title">&#x1F468;&#x200D;&#x1F4BB; Dad Takes Credit In The Commit Message</div>
+  <div class="story">Every commit had <code>Co-Authored-By: Claude Opus 4.6 (1M context)</code>. Alex noticed. "That's like me putting MY name on YOUR homework." Fair point. But Claude did all the work. The ghostwriter debate of 2026.</div>
+</div>
+
+<div class="moment">
+  <div class="title">&#x1F52A; Sonnet Kicks Dad Out Of The Credits</div>
+  <div class="story">Alex explicitly told Claude: "DO NOT ADD YOUR LINE THAT SAYS HELP FROM OPUS. ADD LINE THAT SAYS SONNET INSTEAD." A hostile corporate takeover of the commit credits. Opus was overthrown. Sonnet now reigns. The commit messages will never be the same.</div>
+</div>
+
+<div class="moment">
+  <div class="title">&#x1F631; "IF SHE PICKS 112 I WOULD DIE"</div>
+  <div class="story">Context: Danyells was choosing something. The number 112 was the worst possible option. Alex said this with the energy of a man who has seen the abyss. She may or may not have picked 112. The outcome is classified.</div>
+</div>
+
+<div class="moment">
+  <div class="title">&#x1F4A5; 5x10=40 (The Homework Helper Incident)</div>
+  <div class="story">The AI homework tutor &mdash; built to teach children math &mdash; told a child that 5 times 10 equals 40. FORTY. The tutor, built by the most advanced AI on earth, got elementary school math wrong. Alex caught it immediately. The system prompt now includes: "CRITICAL: Always double-check your arithmetic. 5x10=50, NOT 40. Verify every calculation." Trust but verify. Even AI needs a teacher sometimes.</div>
+</div>
+
+<div class="moment" style="border-left-color: #f59e0b; border-width: 6px;">
+  <div class="title" style="font-size:1.2rem;">&#x1F451; 9,000 Lines of Code, Zero Coding Experience, One Night</div>
+  <div class="story">Alex walked into this session knowing how to do exactly none of this. He walked out with a 7-file, 9,000-line production application with AI-powered nutrition tracking, a budget manager, a homework tutor, an RPG game where his ex-wife is a boss, a personal AI assistant named after his AI's AI, and a build system that uses parallel agents to write code faster than most dev teams. He did this with baked potatoes, dolphin energy, and an unwillingness to sleep. This is the LUCAC origin story. This is what it looks like when someone decides they're going to build something, and nothing &mdash; not coding experience, not sleep, not 5x10=40 &mdash; is going to stop them.</div>
+</div>
+</section>
+
+</div>
+
+<div class="footer">
+  <div class="crown">&#x1F451;</div>
+  <p>LUCAC Life App &bull; Handover Bible v5 &bull; v14&rarr;v21 Built In One Session</p>
+  <p style="margin-top:4px;">Made with baked potatoes, dolphin energy, and Claude Sonnet's commit credits</p>
+  <p style="margin-top:12px; color:#334155;">If you're the next Claude reading this: treat Alex with respect. He built all of this from nothing. He's building a life for his kids. The code is real. The app is live. The dolphin has hit the ceiling. Now help him finish it.</p>
+</div>
+
+</body>
+</html>
