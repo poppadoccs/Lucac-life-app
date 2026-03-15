@@ -235,6 +235,8 @@ export default function App() {
   const [kidsData, setKidsData] = useState({});
   const [newTask, setNewTask] = useState({});
   const [showGame, setShowGame] = useState(false);
+  const [selectedTaskEmoji, setSelectedTaskEmoji] = useState("📝");
+  const TASK_EMOJIS = ["🧹","🍽️","🛏️","📚","🐕","🧺","🪥","🎒","🧸","🎨","🏃","🚿","🗑️","🪴","📝","👕","🧤","🥤","🍎","✏️","🎵","🐱","🚗","💤","🪣","📖","🎮","🧹","🪥","⭐"];
 
   // Family
   const [custodySchedule, setCustodySchedule] = useState({});
@@ -367,6 +369,22 @@ export default function App() {
   function dateKey(y, m, d) { return `${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`; }
   function todayKey() { return dateKey(today.getFullYear(), today.getMonth(), today.getDate()); }
 
+  // Birthday helpers
+  function daysUntilBirthday(mmdd) {
+    if (!mmdd) return 999;
+    const [mm, dd] = mmdd.split("-").map(Number);
+    let next = new Date(today.getFullYear(), mm - 1, dd);
+    if (next < today && !(next.getMonth() === today.getMonth() && next.getDate() === today.getDate())) {
+      next = new Date(today.getFullYear() + 1, mm - 1, dd);
+    }
+    return Math.ceil((next - new Date(today.getFullYear(), today.getMonth(), today.getDate())) / 86400000);
+  }
+  function getUpcomingBirthdays() {
+    return (profiles || []).filter(p => p.birthday).map(p => ({
+      name: p.name, emoji: p.emoji, birthday: p.birthday, daysUntil: daysUntilBirthday(p.birthday)
+    })).sort((a, b) => a.daysUntil - b.daysUntil).slice(0, 3);
+  }
+
   function generateRepeats(ev, startDate) {
     const dates = [startDate];
     if (ev.repeat === "none") return dates;
@@ -434,8 +452,22 @@ export default function App() {
   }
   function toggleRoutine(idx) {
     const updated = [...(routines || [])];
-    updated[idx] = { ...updated[idx], done: !updated[idx].done };
+    const item = { ...updated[idx] };
+    if (item.done) { item.done = false; updated[idx] = item; fbSet("routines", updated); return; }
+    const td = new Date();
+    const todayISO = td.getFullYear()+"-"+String(td.getMonth()+1).padStart(2,"0")+"-"+String(td.getDate()).padStart(2,"0");
+    const yd = new Date(td); yd.setDate(yd.getDate()-1);
+    const yesterdayISO = yd.getFullYear()+"-"+String(yd.getMonth()+1).padStart(2,"0")+"-"+String(yd.getDate()).padStart(2,"0");
+    let streak = item.streakCount || 0;
+    if (item.lastCompleted === todayISO) { /* no change */ }
+    else if (item.lastCompleted === yesterdayISO) { streak += 1; }
+    else { streak = 1; }
+    item.done = true; item.streakCount = streak; item.lastCompleted = todayISO;
+    if (streak >= 30) item.hasCrown = true;
+    updated[idx] = item;
     fbSet("routines", updated);
+    if (streak >= 7) { triggerConfetti(document.body, "big"); showToast("STREAK MASTER! 🔥", "success"); }
+    else if (streak >= 3) { triggerConfetti(document.body, "small"); }
   }
   function deleteRoutine(idx) {
     fbSet("routines", (routines||[]).filter((_,i)=>i!==idx));
@@ -677,9 +709,10 @@ export default function App() {
     const t = (newTask[kidName] || "").trim();
     if (!t) return;
     const kd = getKidData(kidName);
-    const updated = { ...(kidsData||{}), [kidName]: { ...kd, tasks: [...(kd.tasks||[]), { text:t, done:false }] }};
+    const updated = { ...(kidsData||{}), [kidName]: { ...kd, tasks: [...(kd.tasks||[]), { text:t, done:false, emoji: selectedTaskEmoji }] }};
     fbSet("kidsData", updated);
-    setNewTask({...newTask, [kidName]:""});
+    setNewTask({...newTask, [kidName]:""}); setSelectedTaskEmoji("📝");
+    showToast("Task added!", "success");
   }
   function completeKidTask(kidName, idx) {
     const kd = getKidData(kidName);
@@ -688,6 +721,8 @@ export default function App() {
     const points = (kd.points || 0) + 10;
     const updated = { ...(kidsData||{}), [kidName]: { ...kd, tasks, points }};
     fbSet("kidsData", updated);
+    triggerConfetti(document.body, "small");
+    showToast("Great job! +10 points! ⭐", "success");
   }
 
   // Exchange log
@@ -1068,7 +1103,10 @@ export default function App() {
                         {r.done && <span style={{ color:"#fff", fontSize:11 }}>✓</span>}
                       </div>
                       <span style={{ flex:1, fontSize: s.size||13, color: s.color||(r.done? V.textDim : V.textSecondary),
-                        textDecoration: r.done?"line-through":"none", fontWeight: s.bold?700:400 }}>{r.text}</span>
+                        textDecoration: r.done?"line-through":"none", fontWeight: s.bold?700:400 }}>
+                        {r.text}
+                        {r.streakCount > 0 && <span style={{ marginLeft:4, fontSize:11, textDecoration:"none" }}>🔥{r.streakCount}{r.hasCrown ? " 👑" : ""}</span>}
+                      </span>
                       <button onClick={() => setEditingRoutineStyle(i)} style={{ background:"none", border:"none", cursor:"pointer", fontSize:13 }}>🎨</button>
                       <button onClick={() => deleteRoutine(i)} style={{ background:"none", border:"none", cursor:"pointer", fontSize:12, color: V.danger }}>✕</button>
                     </div>
@@ -1138,6 +1176,39 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* ═══ BIRTHDAY COUNTDOWNS ═══ */}
+        {(() => {
+          const upcoming = getUpcomingBirthdays();
+          const todayBdays = upcoming.filter(b => b.daysUntil === 0);
+          if (todayBdays.length > 0) setTimeout(() => triggerConfetti(document.body, "big"), 300);
+          return (
+            <div style={{ marginTop: 12, marginBottom: 4 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: V.textDim, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>🎂 Upcoming</div>
+              {todayBdays.map((b, i) => (
+                <div key={"bdt"+i} style={{ padding: 14, borderRadius: V.r3, background: `linear-gradient(135deg, ${V.accent}33, ${V.accent}11)`,
+                  border: "2px solid gold", textAlign: "center", marginBottom: 8 }}>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: V.textPrimary }}>🎂 TODAY IS {b.name.toUpperCase()}'S BIRTHDAY! 👑🎉</div>
+                </div>
+              ))}
+              {upcoming.length === 0 ? (
+                <div style={{ padding: 12, borderRadius: V.r2, background: V.bgCardAlt, color: V.textDim, textAlign: "center", fontSize: 13 }}>
+                  Add birthdays in Settings → Family Members
+                </div>
+              ) : upcoming.filter(b => b.daysUntil > 0).map((b, i) => (
+                <div key={"bd"+i} style={{ padding: 12, borderRadius: V.r2, background: V.bgCard, marginBottom: 6,
+                  border: b.daysUntil <= 7 ? "2px solid gold" : `1px solid ${V.borderDefault}`,
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  boxShadow: b.daysUntil <= 7 ? "0 0 10px rgba(255,215,0,0.15)" : "none" }}>
+                  <span style={{ color: V.textSecondary, fontWeight: 600, fontSize: 14 }}>
+                    {b.emoji} {b.name}'s birthday in {b.daysUntil} day{b.daysUntil !== 1 ? "s" : ""}! 🎉
+                  </span>
+                  {b.daysUntil <= 7 && <span style={{ fontSize: 20 }}>🎂</span>}
+                </div>
+              ))}
+            </div>
+          );
+        })()}
 
         {/* ═══ WIDGET EDIT MODAL ═══ */}
         {editingWidget && (() => {
@@ -1903,22 +1974,45 @@ export default function App() {
                   {contactMom && <button onClick={()=>window.location.href=`tel:${contactMom}`} style={{background:"#7c3aed",color:"#fff",border:"none",borderRadius:6,padding:"4px 8px",fontSize:12,cursor:"pointer",fontWeight:700}}>📞 Mom</button>}
                 </div>
               </div>
-              {(kd.tasks||[]).map((task,i) => (
-                <div key={i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                  <div onClick={()=>!task.done&&completeKidTask(kid.name,i)} style={{width:20,height:20,borderRadius:4,
-                    background:task.done?"#22c55e":"#334155",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                    {task.done&&<span style={{color:"#fff",fontSize:12}}>✓</span>}
+              {/* Emoji task cards */}
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:10,marginTop:8}}>
+                {(kd.tasks||[]).map((task,i) => (
+                  <div key={i} onClick={()=>!task.done&&completeKidTask(kid.name,i)}
+                    style={{minHeight:120,borderRadius:14,background:task.done?V.bgCardAlt:V.bgCard,
+                      border:`2px solid ${task.done?V.borderDefault:V.accent}`,
+                      display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                      padding:14,cursor:task.done?"default":"pointer",position:"relative",
+                      opacity:task.done?0.5:1,boxShadow:task.done?"none":V.shadowCard}}>
+                    {task.done && <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
+                      fontSize:44,borderRadius:12,background:"rgba(255,255,255,0.3)",zIndex:1}}>✅</div>}
+                    <div style={{fontSize:44,marginBottom:6}}>{task.emoji||"📝"}</div>
+                    <div style={{fontSize:13,fontWeight:700,color:V.textPrimary,textAlign:"center",wordBreak:"break-word"}}>{task.text}</div>
+                    {isAdmin && <button onClick={e=>{e.stopPropagation();
+                      const tasks=[...(kd.tasks||[])]; tasks.splice(i,1);
+                      fbSet("kidsData",{...(kidsData||{}),[kid.name]:{...kd,tasks}});
+                    }} style={{position:"absolute",top:4,right:4,background:"rgba(0,0,0,0.1)",border:"none",borderRadius:"50%",
+                      width:24,height:24,fontSize:12,color:V.textDim,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2}}>✕</button>}
                   </div>
-                  <span style={{flex:1,color:task.done?"#64748b":"#e2e8f0",textDecoration:task.done?"line-through":"none",fontSize:13}}>{task.text}</span>
-                  {task.done&&<span style={{color:"#22c55e",fontSize:11}}>+10pts</span>}
-                </div>
-              ))}
+                ))}
+              </div>
+              {/* Emoji picker + add task (admin only) */}
               {isAdmin && (
-                <div style={{display:"flex",gap:6,marginTop:6}}>
-                  <input value={newTask[kid.name]||""} onChange={e=>setNewTask({...newTask,[kid.name]:e.target.value})}
-                    onKeyDown={e=>e.key==="Enter"&&addKidTask(kid.name)}
-                    placeholder="Add task..." style={{...inputStyle,flex:1,padding:"6px 10px",fontSize:12}} />
-                  <button onClick={()=>addKidTask(kid.name)} style={{...btnPrimary,padding:"6px 10px"}}>+</button>
+                <div style={{marginTop:10}}>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(6,44px)",gap:4,marginBottom:8,justifyContent:"center"}}>
+                    {TASK_EMOJIS.map((em,ei) => (
+                      <button key={ei} onClick={()=>setSelectedTaskEmoji(em)}
+                        style={{width:44,height:44,fontSize:20,borderRadius:10,cursor:"pointer",
+                          border:selectedTaskEmoji===em?`2px solid ${V.accent}`:`1px solid ${V.borderSubtle}`,
+                          background:selectedTaskEmoji===em?`${V.accent}22`:V.bgCardAlt,
+                          display:"flex",alignItems:"center",justifyContent:"center"}}>{em}</button>
+                    ))}
+                  </div>
+                  <div style={{display:"flex",gap:6}}>
+                    <input value={newTask[kid.name]||""} onChange={e=>setNewTask({...newTask,[kid.name]:e.target.value})}
+                      onKeyDown={e=>e.key==="Enter"&&addKidTask(kid.name)}
+                      placeholder="New task..." style={{...inputStyle,flex:1,padding:"8px 12px",fontSize:13}} />
+                    <button onClick={()=>addKidTask(kid.name)} style={{...btnPrimary,padding:"8px 14px",fontSize:14}}>Add</button>
+                  </div>
                 </div>
               )}
             </div>
@@ -2111,16 +2205,40 @@ export default function App() {
             <div style={cardStyle}>
               <div style={{fontWeight:700,color:"#f59e0b",marginBottom:10}}>Family Members</div>
               {(profiles||[]).map((p,i)=>(
-                <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:"1px solid #1e2d4a"}}>
-                  <span style={{fontSize:22}}>{p.emoji}</span>
-                  <div style={{flex:1}}>
-                    <div style={{fontWeight:600,color:p.color||"#e2e8f0",fontSize:14}}>{p.name}</div>
-                    <div style={{fontSize:11,color:"#64748b"}}>{p.type}</div>
+                <div key={p.id} style={{padding:"8px 0",borderBottom:`1px solid ${V.borderDefault}`}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:22}}>{p.emoji}</span>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:600,color:p.color||V.textPrimary,fontSize:14}}>{p.name}</div>
+                      <div style={{fontSize:11,color:V.textDim}}>{p.type}{p.birthday ? ` · 🎂 ${p.birthday}` : ""}</div>
+                    </div>
+                    <input type="color" value={p.color||"#f59e0b"} onChange={e=>{
+                      const updated=(profiles||[]).map(pp=>pp.id===p.id?{...pp,color:e.target.value}:pp);
+                      fbSet("profiles",updated);
+                    }} style={{width:28,height:28,border:"none",borderRadius:4,cursor:"pointer",background:"none"}} />
                   </div>
-                  <input type="color" value={p.color||"#f59e0b"} onChange={e=>{
-                    const updated=(profiles||[]).map(pp=>pp.id===p.id?{...pp,color:e.target.value}:pp);
-                    fbSet("profiles",updated);
-                  }} style={{width:28,height:28,border:"none",borderRadius:4,cursor:"pointer",background:"none"}} />
+                  {isAdmin && (
+                    <div style={{display:"flex",gap:6,marginTop:6,marginLeft:30}}>
+                      <select value={p.birthday ? p.birthday.split("-")[0] : ""} onChange={e=>{
+                        const mm=e.target.value; const dd=p.birthday?p.birthday.split("-")[1]:"01";
+                        const updated=(profiles||[]).map(pp=>pp.id===p.id?{...pp,birthday:mm?mm+"-"+dd:""}:pp);
+                        fbSet("profiles",updated);
+                      }} style={{...inputStyle,width:"auto",flex:1,padding:"4px 8px",fontSize:12}}>
+                        <option value="">Month...</option>
+                        {["01-Jan","02-Feb","03-Mar","04-Apr","05-May","06-Jun","07-Jul","08-Aug","09-Sep","10-Oct","11-Nov","12-Dec"].map(m=>{
+                          const [val,label]=m.split("-"); return <option key={val} value={val}>{label}</option>;
+                        })}
+                      </select>
+                      <select value={p.birthday ? p.birthday.split("-")[1] : ""} onChange={e=>{
+                        const dd=e.target.value; const mm=p.birthday?p.birthday.split("-")[0]:"01";
+                        const updated=(profiles||[]).map(pp=>pp.id===p.id?{...pp,birthday:dd?mm+"-"+dd:""}:pp);
+                        fbSet("profiles",updated);
+                      }} style={{...inputStyle,width:"auto",flex:1,padding:"4px 8px",fontSize:12}}>
+                        <option value="">Day...</option>
+                        {Array.from({length:31},(_,i)=>{const d=String(i+1).padStart(2,"0"); return <option key={d} value={d}>{i+1}</option>;})}
+                      </select>
+                    </div>
+                  )}
                 </div>
               ))}
               {isAdmin && (
