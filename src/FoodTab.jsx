@@ -27,22 +27,77 @@ function dayLabel(dateStr) {
   return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];
 }
 
+const ALL_MICRO_KEYS = [
+  "fiber","sodium","sugar","iron","vitC",
+  "vitA","vitB1","vitB2","vitB3","vitB6","vitB9","vitB12","vitD","vitE","vitK",
+  "calcium","magnesium","phosphorus","potassium","zinc","selenium",
+  "satFat","transFat","cholesterol","addedSugar","water"
+];
+
 function sumMacros(items) {
   let cal = 0, protein = 0, carbs = 0, fat = 0;
-  let fiber = 0, sodium = 0, sugar = 0, iron = 0, vitC = 0;
+  const micros = {};
+  for (const k of ALL_MICRO_KEYS) micros[k] = 0;
   for (const it of items) {
     cal += Number(it.calories) || 0;
     protein += Number(it.protein) || 0;
     carbs += Number(it.carbs) || 0;
     fat += Number(it.fat) || 0;
-    fiber += Number(it.fiber) || 0;
-    sodium += Number(it.sodium) || 0;
-    sugar += Number(it.sugar) || 0;
-    iron += Number(it.iron) || 0;
-    vitC += Number(it.vitC) || 0;
+    for (const k of ALL_MICRO_KEYS) {
+      micros[k] += Number(it[k]) || 0;
+    }
   }
-  return { cal, protein, carbs, fat, fiber, sodium, sugar, iron, vitC };
+  return { cal, protein, carbs, fat, ...micros };
 }
+
+const MICRO_SECTIONS = [
+  {
+    title: "Vitamins",
+    items: [
+      { key: "vitA", name: "Vitamin A", unit: "\u03BCg", rda: 900 },
+      { key: "vitB1", name: "B1 Thiamine", unit: "mg", rda: 1.2 },
+      { key: "vitB2", name: "B2 Riboflavin", unit: "mg", rda: 1.3 },
+      { key: "vitB3", name: "B3 Niacin", unit: "mg", rda: 16 },
+      { key: "vitB6", name: "Vitamin B6", unit: "mg", rda: 1.7 },
+      { key: "vitB9", name: "B9 Folate", unit: "\u03BCg", rda: 400 },
+      { key: "vitB12", name: "Vitamin B12", unit: "\u03BCg", rda: 2.4 },
+      { key: "vitC", name: "Vitamin C", unit: "mg", rda: 90 },
+      { key: "vitD", name: "Vitamin D", unit: "\u03BCg", rda: 20 },
+      { key: "vitE", name: "Vitamin E", unit: "mg", rda: 15 },
+      { key: "vitK", name: "Vitamin K", unit: "\u03BCg", rda: 120 },
+    ]
+  },
+  {
+    title: "Minerals",
+    items: [
+      { key: "calcium", name: "Calcium", unit: "mg", rda: 1000 },
+      { key: "iron", name: "Iron", unit: "mg", rda: 18 },
+      { key: "magnesium", name: "Magnesium", unit: "mg", rda: 420 },
+      { key: "phosphorus", name: "Phosphorus", unit: "mg", rda: 700 },
+      { key: "potassium", name: "Potassium", unit: "mg", rda: 4700 },
+      { key: "sodium", name: "Sodium", unit: "mg", rda: 2300 },
+      { key: "zinc", name: "Zinc", unit: "mg", rda: 11 },
+      { key: "selenium", name: "Selenium", unit: "\u03BCg", rda: 55 },
+    ]
+  },
+  {
+    title: "Fats Breakdown",
+    items: [
+      { key: "satFat", name: "Saturated Fat", unit: "g", ceiling: 22 },
+      { key: "transFat", name: "Trans Fat", unit: "g", ceiling: 2 },
+      { key: "cholesterol", name: "Cholesterol", unit: "mg", ceiling: 300 },
+    ]
+  },
+  {
+    title: "Other",
+    items: [
+      { key: "sugar", name: "Sugar", unit: "g", rda: 50, ceiling: 75 },
+      { key: "addedSugar", name: "Added Sugar", unit: "g", ceiling: 25 },
+      { key: "fiber", name: "Fiber", unit: "g", rda: 25 },
+      { key: "water", name: "Water", unit: "ml", rda: 3700 },
+    ]
+  },
+];
 
 function fmt(n) {
   return Math.round(n).toLocaleString();
@@ -95,25 +150,53 @@ function MacroRing({ value, target, color, label, unit, size = 70, strokeWidth =
 
 // ═══ MICRONUTRIENT BAR ═══
 
-function MicroBar({ name, value, floor, target, ceiling, V }) {
-  const pct = target > 0 ? Math.min((value / ceiling) * 100, 100) : 0;
-  let status = "In Range";
-  let barColor = V.success;
-  if (value <= floor) { status = "Below Target"; barColor = "#F1C40F"; }
-  else if (value > ceiling) { status = "Above Target"; barColor = "#E67E22"; }
+function MicroBar({ name, value, unit, rda, ceiling, V }) {
+  // rda = recommended daily allowance (target), ceiling = upper limit
+  const target = rda || ceiling || 1;
+  const rdaPct = Math.round((value / target) * 100);
+  const barPct = Math.min(rdaPct, 100);
+
+  let status, barColor;
+  if (ceiling && !rda) {
+    // ceiling-only items (sat fat, trans fat, cholesterol, added sugar)
+    if (value <= ceiling * 0.5) { status = "Low"; barColor = V.success; }
+    else if (value <= ceiling) { status = "Good"; barColor = "#F1C40F"; }
+    else { status = "High"; barColor = "#E67E22"; }
+  } else {
+    // RDA-based items
+    if (rdaPct < 50) { status = "Low"; barColor = "#F1C40F"; }
+    else if (rdaPct <= 150) { status = "Good"; barColor = V.success; }
+    else { status = "High"; barColor = "#E67E22"; }
+  }
+
+  const displayVal = value < 10 ? value.toFixed(1) : fmt(value);
+  const displayTarget = rda ? (rda < 10 ? rda.toFixed(1) : fmt(rda)) : (ceiling < 10 ? ceiling.toFixed(1) : fmt(ceiling));
 
   return (
     <div style={{ marginBottom: 8 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3, flexWrap: "wrap", gap: 2 }}>
         <span style={{ color: V.textPrimary, fontWeight: 600 }}>{name}</span>
-        <span style={{ color: V.textMuted }}>{fmt(value)} / {fmt(target)} — <span style={{ color: barColor, fontWeight: 600 }}>{status}</span></span>
+        <span style={{ color: V.textMuted }}>
+          {displayVal} / {displayTarget} {unit} ({rdaPct}%) — <span style={{ color: barColor, fontWeight: 600 }}>[{status}]</span>
+        </span>
       </div>
       <div style={{ height: 8, background: V.bgInput, borderRadius: 4, overflow: "hidden", position: "relative" }}>
         <div style={{
-          height: "100%", width: `${pct}%`, background: barColor,
+          height: "100%", width: `${barPct}%`, background: barColor,
           borderRadius: 4, transition: "width 0.4s ease",
         }} />
       </div>
+    </div>
+  );
+}
+
+function NetCarbsDisplay({ carbs, fiber, V }) {
+  const netCarbs = Math.max(0, Math.round(carbs - fiber));
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: V.textMuted, marginTop: 4, paddingLeft: 4 }}>
+      <span style={{ fontWeight: 600, color: V.textSecondary }}>Net Carbs:</span>
+      <span>{netCarbs}g</span>
+      <span style={{ fontSize: 10, color: V.textDim }}>(carbs {fmt(carbs)}g - fiber {fmt(fiber)}g)</span>
     </div>
   );
 }
@@ -225,6 +308,7 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
   const [quickFat, setQuickFat] = useState("");
   const [quickName, setQuickName] = useState("");
   const [addMode, setAddMode] = useState(null); // "search" | "voice" | "quick"
+  const [expandedMicroSections, setExpandedMicroSections] = useState({});
 
   const recognitionRef = useRef(null);
   const voiceTimerRef = useRef(null);
@@ -322,15 +406,14 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
       protein: Math.round(Number(item.protein) || 0),
       carbs: Math.round(Number(item.carbs) || 0),
       fat: Math.round(Number(item.fat) || 0),
-      fiber: Math.round(Number(item.fiber) || 0),
-      sodium: Math.round(Number(item.sodium) || 0),
-      sugar: Math.round(Number(item.sugar) || 0),
-      iron: Number(item.iron || 0),
-      vitC: Number(item.vitC || 0),
       date: today,
       profile: currentProfile,
       meal: meal,
     };
+    // Copy all micronutrient fields
+    for (const k of ALL_MICRO_KEYS) {
+      entry[k] = Number(item[k]) || 0;
+    }
     const newLog = [...log, entry];
     fbSet("foodLog", newLog);
     showToast(`Added ${entry.name}`);
@@ -353,8 +436,8 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
     }
     const res = await groqFetch(GROQ_KEY, [
       { role: "system", content: "You are a nutrition database. Return ONLY valid JSON, no explanation." },
-      { role: "user", content: `Estimate macros for "${searchQuery.trim()}". Return JSON: {"food":"name","cal":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sodium":number,"sugar":number} per 100g. Use USDA data.` }
-    ], { maxTokens: 300 });
+      { role: "user", content: `Estimate macros for "${searchQuery.trim()}". Return JSON: {"food":"name","cal":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sodium":number,"sugar":number,"vitA":number,"vitB1":number,"vitB2":number,"vitB3":number,"vitB6":number,"vitB9":number,"vitB12":number,"vitC":number,"vitD":number,"vitE":number,"vitK":number,"calcium":number,"iron":number,"magnesium":number,"phosphorus":number,"potassium":number,"zinc":number,"selenium":number,"satFat":number,"transFat":number,"cholesterol":number,"addedSugar":number,"water":number} per 100g. Use USDA data. All values as numbers.` }
+    ], { maxTokens: 600 });
     setSearchLoading(false);
     if (res.ok) {
       const parsed = parseGroqJSON(res.data);
@@ -372,16 +455,18 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
   function confirmSearchResult(meal) {
     if (!searchResults) return;
     const factor = servingSize / 100;
-    addFood({
+    const item = {
       name: searchResults.food || searchQuery,
       calories: (searchResults.cal || 0) * factor,
       protein: (searchResults.protein || 0) * factor,
       carbs: (searchResults.carbs || 0) * factor,
       fat: (searchResults.fat || 0) * factor,
-      fiber: (searchResults.fiber || 0) * factor,
-      sodium: (searchResults.sodium || 0) * factor,
-      sugar: (searchResults.sugar || 0) * factor,
-    }, meal);
+    };
+    // Scale all micronutrient fields
+    for (const k of ALL_MICRO_KEYS) {
+      item[k] = (Number(searchResults[k]) || 0) * factor;
+    }
+    addFood(item, meal);
   }
 
   function startVoice() {
@@ -527,16 +612,30 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
   }
 
   function reLogFood(item, meal) {
-    addFood({
+    const reItem = {
       name: item.name,
       calories: item.calories,
       protein: item.protein,
       carbs: item.carbs,
       fat: item.fat,
-      fiber: item.fiber,
-      sodium: item.sodium,
-      sugar: item.sugar,
-    }, meal || addPopup || "Snacks");
+    };
+    for (const k of ALL_MICRO_KEYS) {
+      reItem[k] = Number(item[k]) || 0;
+    }
+    addFood(reItem, meal || addPopup || "Snacks");
+  }
+
+  function quickAddMacro(macro, amount) {
+    const item = { name: "Quick add", calories: 0, protein: 0, carbs: 0, fat: 0 };
+    if (macro === "calories") item.calories = amount;
+    else if (macro === "protein") item.protein = amount;
+    else if (macro === "carbs") item.carbs = amount;
+    else if (macro === "fat") item.fat = amount;
+    addFood(item, "Snacks");
+  }
+
+  function toggleMicroSection(title) {
+    setExpandedMicroSections(prev => ({ ...prev, [title]: !prev[title] }));
   }
 
   // ── Styles ──
@@ -575,14 +674,8 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
     return { date: d, ...sumMacros(dayLog) };
   });
 
-  // ── Micro targets ──
-  const microTargets = {
-    fiber: { floor: 20, target: 25, ceiling: 40 },
-    sodium: { floor: 500, target: 2300, ceiling: 3000 },
-    sugar: { floor: 0, target: 50, ceiling: 75 },
-    iron: { floor: 8, target: 18, ceiling: 45 },
-    vitC: { floor: 60, target: 90, ceiling: 2000 },
-  };
+  // Net carbs (computed)
+  const netCarbs = Math.max(0, Math.round(todayMacros.carbs - todayMacros.fiber));
 
   // ═══ RENDER ═══
 
@@ -631,6 +724,7 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
           <div style={{ textAlign: "center", marginTop: 10, fontSize: 13, color: V.textMuted, fontWeight: 600 }}>
             Net: {fmt(todayMacros.cal)} cal
           </div>
+          <NetCarbsDisplay carbs={todayMacros.carbs} fiber={todayMacros.fiber} V={V} />
         </div>
       )}
 
@@ -670,14 +764,71 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
         </div>
       )}
 
-      {/* ── MICRONUTRIENT BARS ── */}
+      {/* ── MICRONUTRIENT SECTIONS (collapsible) ── */}
       <div style={card}>
         <div style={{ fontSize: 13, fontWeight: 700, color: V.textPrimary, marginBottom: 8 }}>Micronutrients</div>
-        <MicroBar name="Fiber" value={todayMacros.fiber} floor={microTargets.fiber.floor} target={microTargets.fiber.target} ceiling={microTargets.fiber.ceiling} V={V} />
-        <MicroBar name="Sodium" value={todayMacros.sodium} floor={microTargets.sodium.floor} target={microTargets.sodium.target} ceiling={microTargets.sodium.ceiling} V={V} />
-        <MicroBar name="Sugar" value={todayMacros.sugar} floor={microTargets.sugar.floor} target={microTargets.sugar.target} ceiling={microTargets.sugar.ceiling} V={V} />
-        <MicroBar name="Iron" value={todayMacros.iron} floor={microTargets.iron.floor} target={microTargets.iron.target} ceiling={microTargets.iron.ceiling} V={V} />
-        <MicroBar name="Vitamin C" value={todayMacros.vitC} floor={microTargets.vitC.floor} target={microTargets.vitC.target} ceiling={microTargets.vitC.ceiling} V={V} />
+        {MICRO_SECTIONS.map(section => {
+          const isOpen = !!expandedMicroSections[section.title];
+          return (
+            <div key={section.title} style={{ marginBottom: 4 }}>
+              <button
+                onClick={() => toggleMicroSection(section.title)}
+                style={{
+                  width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "8px 4px", border: "none", background: "transparent",
+                  cursor: "pointer", minHeight: 44, borderBottom: `1px solid ${V.borderSubtle}`,
+                }}
+              >
+                <span style={{ fontSize: 13, fontWeight: 600, color: V.textSecondary }}>{section.title}</span>
+                <span style={{ fontSize: 14, color: V.textMuted, transform: isOpen ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
+                  &#9660;
+                </span>
+              </button>
+              {isOpen && (
+                <div style={{ padding: "8px 0" }}>
+                  {section.items.map(item => {
+                    const val = todayMacros[item.key] || 0;
+                    // For "net carbs" display-only item
+                    if (item.key === "netCarbs") {
+                      return (
+                        <div key={item.key} style={{ fontSize: 12, color: V.textMuted, padding: "4px 0", fontWeight: 500 }}>
+                          Net Carbs: {netCarbs}g (display only)
+                        </div>
+                      );
+                    }
+                    return (
+                      <MicroBar
+                        key={item.key}
+                        name={item.name}
+                        value={val}
+                        unit={item.unit}
+                        rda={item.rda || null}
+                        ceiling={item.ceiling || null}
+                        V={V}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── QUICK ADD MACRO BUTTONS ── */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        <button onClick={() => quickAddMacro("calories", 100)} style={{ ...btnBase, flex: 1, minWidth: 80, padding: "6px 10px", background: V.bgCardAlt, color: V.textSecondary, fontSize: 12 }}>
+          +100 Cal
+        </button>
+        <button onClick={() => quickAddMacro("protein", 10)} style={{ ...btnBase, flex: 1, minWidth: 80, padding: "6px 10px", background: V.bgCardAlt, color: V.textSecondary, fontSize: 12 }}>
+          +10g Protein
+        </button>
+        <button onClick={() => quickAddMacro("carbs", 15)} style={{ ...btnBase, flex: 1, minWidth: 80, padding: "6px 10px", background: V.bgCardAlt, color: V.textSecondary, fontSize: 12 }}>
+          +15g Carbs
+        </button>
+        <button onClick={() => quickAddMacro("fat", 5)} style={{ ...btnBase, flex: 1, minWidth: 80, padding: "6px 10px", background: V.bgCardAlt, color: V.textSecondary, fontSize: 12 }}>
+          +5g Fat
+        </button>
       </div>
 
       {/* ── MEAL SECTIONS ── */}

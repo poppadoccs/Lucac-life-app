@@ -266,16 +266,30 @@ export default function App() {
 
   // Family
   const [custodySchedule, setCustodySchedule] = useState({});
+  const [custodyPattern, setCustodyPattern] = useState(null); // {pattern: ["D","D","M","M",...], startDate: "2026-01-05", preset: "2-2-5-5"}
+  const [custodyOverrides, setCustodyOverrides] = useState({}); // {"2026-03-20": "Mom"}
   const [myRules, setMyRules] = useState([]);
   const [theirRules, setTheirRules] = useState([]);
   const [sharedRules, setSharedRules] = useState([]);
+  const [ruleProposals, setRuleProposals] = useState([]); // [{id, text, proposedBy, status, rewriteText, timestamp}]
   const [newMyRule, setNewMyRule] = useState("");
   const [newTheirRule, setNewTheirRule] = useState("");
   const [newSharedRule, setNewSharedRule] = useState("");
+  const [newProposal, setNewProposal] = useState("");
+  const [editingProposal, setEditingProposal] = useState(null); // id of proposal being rewritten
+  const [rewriteText, setRewriteText] = useState("");
   const [exchangeLog, setExchangeLog] = useState([]);
   const [exchangeTimer, setExchangeTimer] = useState(null);
   const [exchangeStart, setExchangeStart] = useState(null);
   const [familySubTab, setFamilySubTab] = useState("schedule");
+  // Home widget state
+  const [calendarSize, setCalendarSize] = useState("default"); // compact, default, expanded
+  const [calendarSticky, setCalendarSticky] = useState(false);
+  const [birthdayExpanded, setBirthdayExpanded] = useState(false);
+  const [spotlightResponse, setSpotlightResponse] = useState("");
+  const [spotlightInput, setSpotlightInput] = useState("");
+  const [spotlightLoading, setSpotlightLoading] = useState(false);
+  const [shoppingInput, setShoppingInput] = useState("");
 
   // Settings
   const [settingsSubTab, setSettingsSubTab] = useState("profiles");
@@ -390,7 +404,8 @@ export default function App() {
   const FB_KEYS = ["events","eventStyles","routines","routineStyles","goals","goalStyles",
     "profiles","kidsData","custodySchedule","myRules","theirRules","sharedRules",
     "exchangeLog","foodLog","myFoods","nutritionGoals","trackedMacros","contacts","alertMinutes","themeName","widgetPrefs",
-    "budgetData","shoppingList","weightLog","homeworkSessions","callButtons","quoteMode","customQuotePrompt","jrHistory","themeOverrides"];
+    "budgetData","shoppingList","weightLog","homeworkSessions","callButtons","quoteMode","customQuotePrompt","jrHistory","themeOverrides",
+    "custodyPattern","custodyOverrides","ruleProposals","spotlightResponse","calendarSize"];
 
   const fbSetters = {
     events: setEvents, eventStyles: setEventStyles, routines: setRoutines,
@@ -412,6 +427,11 @@ export default function App() {
     customQuotePrompt: v => setCustomQuotePrompt(v || ""),
     jrHistory: v => setJrHistory(v || {}),
     themeOverrides: v => setThemeOverrides(v || {}),
+    custodyPattern: v => setCustodyPattern(v || null),
+    custodyOverrides: v => setCustodyOverrides(v || {}),
+    ruleProposals: v => setRuleProposals(v || []),
+    spotlightResponse: v => setSpotlightResponse(v || ""),
+    calendarSize: v => setCalendarSize(v || "default"),
   };
 
   // Pre-populate from localStorage cache on mount
@@ -953,18 +973,60 @@ export default function App() {
   const todayCalories = (foodLog || []).filter(f => f.date === todayStr && f.profile === currentProfile?.name)
     .reduce((s, f) => s + (f.calories || 0), 0);
 
-  // Custody schedule helpers
+  // ═══ CUSTODY SCHEDULE — PATTERN-BASED (2-2-5-5 etc.) ═══
+  const CUSTODY_PRESETS = {
+    "7-7": { label: "Week on / Week off", pattern: ["D","D","D","D","D","D","D","M","M","M","M","M","M","M"] },
+    "2-2-3": { label: "2-2-3 alternating", pattern: ["D","D","M","M","D","D","D","M","M","D","D","M","M","M"] },
+    "2-2-5-5": { label: "2-2-5-5", pattern: ["M","M","D","D","D","D","D","D","D","M","M","M","M","M"] },
+  };
   const custodyDayNames = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-  function cycleCustody(day) {
-    if (!isAdmin) return;
-    const current = (custodySchedule || {})[day] || "Free";
-    const next = current === "Free" ? "Dad" : current === "Dad" ? "Mom" : "Free";
-    fbSet("custodySchedule", { ...(custodySchedule||{}), [day]: next });
+
+  // Get custody for a specific date using pattern + overrides + fallback to legacy
+  function getCustodyForDate(dateStr) {
+    // Check manual overrides first
+    if (custodyOverrides && custodyOverrides[dateStr]) return custodyOverrides[dateStr];
+    // Pattern-based computation
+    if (custodyPattern && custodyPattern.pattern && custodyPattern.startDate) {
+      const start = new Date(custodyPattern.startDate + "T00:00:00");
+      const target = new Date(dateStr + "T00:00:00");
+      const diffDays = Math.round((target - start) / 86400000);
+      const cycleLen = custodyPattern.pattern.length;
+      const idx = ((diffDays % cycleLen) + cycleLen) % cycleLen; // handle negative
+      const val = custodyPattern.pattern[idx];
+      return val === "D" ? "Dad" : val === "M" ? "Mom" : "Free";
+    }
+    // Fallback to legacy day-of-week schedule
+    const dayName = DAYS[new Date(dateStr + "T00:00:00").getDay()];
+    return (custodySchedule || {})[dayName] || "Free";
   }
+
+  function cycleCustodyOverride(dateStr) {
+    if (!isAdmin) return;
+    const current = getCustodyForDate(dateStr);
+    const next = current === "Free" ? "Dad" : current === "Dad" ? "Mom" : "Free";
+    const updated = { ...(custodyOverrides||{}), [dateStr]: next };
+    fbSet("custodyOverrides", updated);
+  }
+
+  function setCustodyPreset(presetKey) {
+    if (!isAdmin) return;
+    const preset = CUSTODY_PRESETS[presetKey];
+    if (!preset) return;
+    const startDate = todayStr; // pattern starts from today
+    const cp = { pattern: preset.pattern, startDate, preset: presetKey };
+    fbSet("custodyPattern", cp);
+    showToast(`${preset.label} custody pattern set!`, "success");
+  }
+
   function custodyColor(val) {
-    if (val === "Dad") return "#f59e0b";
-    if (val === "Mom") return "#a855f7";
-    return V.borderSubtle;
+    if (val === "Dad") return "#fef3c7";
+    if (val === "Mom") return "#f3e8ff";
+    return V.bgCardAlt;
+  }
+  function custodyTextColor(val) {
+    if (val === "Dad") return "#92400e";
+    if (val === "Mom") return "#6b21a8";
+    return V.textDim;
   }
 
   // Kids helpers
@@ -1397,19 +1459,36 @@ export default function App() {
           </div>
         )}
 
-        {/* Quote — tap to refresh */}
-        <div onClick={() => {
-          const prompts = {
-            motivational: "Give me one short motivational quote (under 15 words) for a single dad building his own business. Just the quote, no attribution.",
-            tip: "Give me one short actionable business or productivity tip in under 15 words. No attribution.",
-            dolphin: "Give me one fun dolphin fact in under 15 words. Start with 🐬.",
-            custom: customQuotePrompt || "Give me a short motivational quote under 15 words."
-          };
-          groqFetch(GROQ_KEY, [{role:"user",content:prompts[quoteMode]||prompts.motivational}], {maxTokens:80})
-            .then(r => { if(r.ok && r.data) setQuote(r.data.replace(/"/g,"")); });
-        }} style={{ background: V.bgCardAlt, borderRadius:10, padding:"10px 14px", marginBottom:12,
-          border:`1px solid ${V.borderDefault}`, fontSize:13, color: V.textMuted, fontStyle:"italic", cursor:"pointer" }}>
-          ✦ {quote} <span style={{fontSize:10,opacity:0.5}}>tap to refresh</span>
+        {/* ═══ DAILY SPOTLIGHT — Groq-powered widget ═══ */}
+        <div style={{ background: V.bgCardAlt, borderRadius:10, padding:"10px 14px", marginBottom:12,
+          border:`1px solid ${V.borderDefault}` }}>
+          <div onClick={() => {
+            groqFetch(GROQ_KEY, [{role:"user",content:"Give me one short motivational quote (under 15 words) for a single dad. Just the quote."}], {maxTokens:80})
+              .then(r => { if(r.ok && r.data) { setQuote(r.data.replace(/"/g,"")); setSpotlightResponse(""); } });
+          }} style={{ fontSize:13, color: V.textMuted, fontStyle:"italic", cursor:"pointer", marginBottom:spotlightResponse?8:0 }}>
+            ✦ {spotlightResponse || quote} <span style={{fontSize:10,opacity:0.5}}>tap for new quote</span>
+          </div>
+          {spotlightLoading && <div style={{fontSize:12,color:V.textDim,fontStyle:"italic"}}>Thinking...</div>}
+          <div style={{display:"flex",gap:6,marginTop:6}}>
+            <input value={spotlightInput} onChange={e=>setSpotlightInput(e.target.value)}
+              onKeyDown={e=>{if(e.key==="Enter" && spotlightInput.trim()){
+                setSpotlightLoading(true);
+                const q = spotlightInput.trim(); setSpotlightInput("");
+                groqFetch(GROQ_KEY, [{role:"user",content:q}], {maxTokens:300})
+                  .then(r=>{setSpotlightLoading(false);if(r.ok&&r.data){setSpotlightResponse(r.data);fbSet("spotlightResponse",r.data);}
+                    else{showToast("Couldn't reach AI — showing daily quote instead","error");}});
+              }}}
+              placeholder="Ask anything... facts, news, motivation"
+              style={{...inputStyle,flex:1,padding:"6px 10px",fontSize:12,borderRadius:16}} />
+            <button onClick={()=>{
+              if(!spotlightInput.trim()) return;
+              setSpotlightLoading(true);
+              const q = spotlightInput.trim(); setSpotlightInput("");
+              groqFetch(GROQ_KEY, [{role:"user",content:q}], {maxTokens:300})
+                .then(r=>{setSpotlightLoading(false);if(r.ok&&r.data){setSpotlightResponse(r.data);fbSet("spotlightResponse",r.data);}
+                  else{showToast("Couldn't reach AI — showing daily quote instead","error");}});
+            }} style={{...btnPrimary,borderRadius:16,padding:"6px 12px",fontSize:12}}>Ask</button>
+          </div>
         </div>
 
         {/* ═══ CALENDAR ═══ */}
@@ -1432,11 +1511,17 @@ export default function App() {
               <div style={{ fontSize: 13, color: V.textDim, fontWeight: 500, marginTop: 2 }}>{calYear}</div>
               <button onClick={() => { setCalMonth(today.getMonth()); setCalYear(today.getFullYear()); }}
                 style={{ background: V.accentGlow, border: `1px solid ${V.accent}33`, color: V.accent, fontSize: 11, fontWeight: 600, cursor: "pointer", borderRadius: 20, padding: "3px 14px", marginTop: 6 }}>Today</button>
-              <div style={{ display:"flex", gap:4, marginTop:6 }}>
+              <div style={{ display:"flex", gap:4, marginTop:6, flexWrap:"wrap", justifyContent:"center" }}>
                 {["W","2W","M"].map(v => (
                   <button key={v} onClick={() => setCalView(v)}
                     style={{ padding:"2px 10px", borderRadius:12, fontSize:10, fontWeight:600, cursor:"pointer", border:"none",
-                      background: calView === v ? V.accent : V.bgElevated, color: calView === v ? "#fff" : V.textDim }}>{v}</button>
+                      background: calView === v ? V.accent : V.bgElevated, color: calView === v ? "#fff" : V.textDim }}>{v === "W" ? "1 Week" : v === "2W" ? "2 Weeks" : "Month"}</button>
+                ))}
+                <span style={{width:1,background:V.borderSubtle,margin:"0 2px"}} />
+                {[{k:"compact",l:"Small"},{k:"default",l:"Default"},{k:"expanded",l:"Large"}].map(s => (
+                  <button key={s.k} onClick={() => {setCalendarSize(s.k);fbSet("calendarSize",s.k);}}
+                    style={{ padding:"2px 8px", borderRadius:12, fontSize:10, fontWeight:600, cursor:"pointer", border:"none",
+                      background: calendarSize === s.k ? V.info : V.bgElevated, color: calendarSize === s.k ? "#fff" : V.textDim }}>{s.l}</button>
                 ))}
               </div>
             </div>
@@ -1453,7 +1538,8 @@ export default function App() {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 1, background: V.borderDefault, padding: 1 }}>
             {cells.map((d, i) => {
-              if (!d) return <div key={i} style={{ background: V.bgApp, minHeight: 85 }} />;
+              const cellH = calendarSize === "compact" ? 55 : calendarSize === "expanded" ? 110 : 85;
+              if (!d) return <div key={i} style={{ background: V.bgApp, minHeight: cellH }} />;
               const dk2 = dateKey(calYear, calMonth, d);
               const dayEvents = visibleEvents[dk2] || [];
               const isTodayCell = isToday(d);
@@ -1463,7 +1549,7 @@ export default function App() {
                 <div key={i}
                   onClick={() => { setSelectedDay(d); setAddingEvents([{ title:"", time:"12:00 PM", who:"", notes:"", repeat:"none", repeatEnd:"", repeatCount:0, duration:60 }]); }}
                   style={{
-                    minHeight: 85, padding: V.sp1 + 2, cursor: "pointer",
+                    minHeight: cellH, padding: V.sp1 + 2, cursor: "pointer",
                     background: selected ? V.calBgSelected : isTodayCell ? V.calBgToday : isWeekend ? V.bgApp : V.calBgCell,
                     boxShadow: isTodayCell ? `inset 0 0 0 2px ${V.accent}` : selected ? `inset 0 0 0 2px ${V.info}` : "none",
                     display: "flex", flexDirection: "column"
@@ -1476,10 +1562,9 @@ export default function App() {
                         display: "inline-flex", alignItems: "center", justifyContent: "center",
                         fontWeight: 800, fontSize: 13, boxShadow: `0 0 8px ${V.accentGlowStrong}` }}>{d}</span>
                     ) : <span>{d}</span>}
-                    {/* Custody badge — text label for colorblind safety */}
+                    {/* Custody badge — pattern-based, text label for colorblind safety */}
                     {(() => {
-                      const dayOfWeek = DAYS[new Date(calYear, calMonth, d).getDay()];
-                      const custodyVal = (custodySchedule||{})[dayOfWeek];
+                      const custodyVal = getCustodyForDate(dk2);
                       if (custodyVal === "Dad") return <span style={{ fontSize:8, fontWeight:700, background:"#fef3c7", color:"#92400e", borderRadius:3, padding:"0 3px", lineHeight:"14px" }}>Dad</span>;
                       if (custodyVal === "Mom") return <span style={{ fontSize:8, fontWeight:700, background:"#f3e8ff", color:"#6b21a8", borderRadius:3, padding:"0 3px", lineHeight:"14px" }}>Mom</span>;
                       return null;
@@ -1632,38 +1717,81 @@ export default function App() {
           </div>
         )}
 
-        {/* ═══ BIRTHDAY COUNTDOWNS ═══ */}
+        {/* ═══ BIRTHDAY COUNTDOWNS (collapsible, auto-expand within 30 days) ═══ */}
         {(() => {
           const upcoming = getUpcomingBirthdays();
           const todayBdays = upcoming.filter(b => b.daysUntil === 0);
+          const closeBdays = upcoming.filter(b => b.daysUntil > 0 && b.daysUntil <= 30);
           if (todayBdays.length > 0) setTimeout(() => triggerConfetti(document.body, "big"), 300);
+          const autoExpand = todayBdays.length > 0 || closeBdays.length > 0;
+          const isOpen = birthdayExpanded || autoExpand;
           return (
             <div style={{ marginTop: 12, marginBottom: 4 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: V.textDim, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 }}>🎂 Upcoming</div>
+              {/* Today's birthdays always show */}
               {todayBdays.map((b, i) => (
                 <div key={"bdt"+i} style={{ padding: 14, borderRadius: V.r3, background: `linear-gradient(135deg, ${V.accent}33, ${V.accent}11)`,
                   border: "2px solid gold", textAlign: "center", marginBottom: 8 }}>
                   <div style={{ fontSize: 20, fontWeight: 800, color: V.textPrimary }}>🎂 TODAY IS {b.name.toUpperCase()}'S BIRTHDAY! 👑🎉</div>
                 </div>
               ))}
-              {upcoming.length === 0 ? (
-                <div style={{ padding: 12, borderRadius: V.r2, background: V.bgCardAlt, color: V.textDim, textAlign: "center", fontSize: 13 }}>
-                  Add birthdays in Settings → Family Members
-                </div>
-              ) : upcoming.filter(b => b.daysUntil > 0).map((b, i) => (
-                <div key={"bd"+i} style={{ padding: 12, borderRadius: V.r2, background: V.bgCard, marginBottom: 6,
+              {/* Collapsible header */}
+              <div onClick={() => setBirthdayExpanded(!birthdayExpanded)}
+                style={{ display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer", padding:"6px 0" }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: V.textDim, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                  🎂 Birthdays {closeBdays.length > 0 && `(${closeBdays.length} soon)`}
+                </span>
+                <span style={{ fontSize: 12, color: V.textDim }}>{isOpen ? "▼" : "▶"}</span>
+              </div>
+              {isOpen && upcoming.filter(b => b.daysUntil > 0).map((b, i) => (
+                <div key={"bd"+i} style={{ padding: 10, borderRadius: V.r2, background: V.bgCard, marginBottom: 4,
                   border: b.daysUntil <= 7 ? "2px solid gold" : `1px solid ${V.borderDefault}`,
                   display: "flex", alignItems: "center", justifyContent: "space-between",
                   boxShadow: b.daysUntil <= 7 ? "0 0 10px rgba(255,215,0,0.15)" : "none" }}>
-                  <span style={{ color: V.textSecondary, fontWeight: 600, fontSize: 14 }}>
-                    {b.emoji} {b.name}'s birthday in {b.daysUntil} day{b.daysUntil !== 1 ? "s" : ""}! 🎉
+                  <span style={{ color: V.textSecondary, fontWeight: 600, fontSize: 13 }}>
+                    {b.emoji} {b.name} — {b.daysUntil} day{b.daysUntil !== 1 ? "s" : ""}
                   </span>
-                  {b.daysUntil <= 7 && <span style={{ fontSize: 20 }}>🎂</span>}
+                  {b.daysUntil <= 7 && <span style={{ fontSize: 16 }}>🎂</span>}
                 </div>
               ))}
             </div>
           );
         })()}
+
+        {/* ═══ SHOPPING LIST WIDGET ═══ */}
+        <div style={{ ...cardStyle, margin:"0 0 12px 0" }}>
+          <div style={{ fontWeight:700, color:V.accent, fontSize:14, marginBottom:8 }}>🛒 Shopping List</div>
+          {(shoppingList||[]).map((item,i) => (
+            <div key={item.id||i} style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 0", borderBottom:`1px solid ${V.borderDefault}` }}>
+              <div onClick={() => {
+                const updated = (shoppingList||[]).map((it,j) => j===i ? {...it, bought:!it.bought} : it);
+                fbSet("shoppingList", updated);
+              }} style={{ width:20, height:20, borderRadius:4, border:`2px solid ${item.bought ? V.success : V.borderSubtle}`,
+                background:item.bought ? V.success : "transparent", cursor:"pointer", flexShrink:0,
+                display:"flex",alignItems:"center",justifyContent:"center" }}>
+                {item.bought && <span style={{color:"#fff",fontSize:12}}>✓</span>}
+              </div>
+              <span style={{ flex:1, fontSize:13, color:item.bought?V.textDim:V.textPrimary,
+                textDecoration:item.bought?"line-through":"none" }}>{typeof item === "string" ? item : item.text}</span>
+              <button onClick={() => {
+                const updated = (shoppingList||[]).filter((_,j) => j!==i);
+                fbSet("shoppingList", updated);
+              }} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:V.danger,padding:4}}>✕</button>
+            </div>
+          ))}
+          <div style={{display:"flex",gap:6,marginTop:8}}>
+            <input value={shoppingInput} onChange={e=>setShoppingInput(e.target.value)}
+              onKeyDown={e=>{if(e.key==="Enter"&&shoppingInput.trim()){
+                fbSet("shoppingList",[...(shoppingList||[]),{id:Date.now(),text:shoppingInput.trim(),bought:false}]);
+                setShoppingInput("");
+              }}}
+              placeholder="Add item..." style={{...inputStyle,flex:1,padding:"6px 10px",fontSize:13}} />
+            <button onClick={()=>{
+              if(!shoppingInput.trim())return;
+              fbSet("shoppingList",[...(shoppingList||[]),{id:Date.now(),text:shoppingInput.trim(),bought:false}]);
+              setShoppingInput("");
+            }} style={{...btnPrimary,padding:"6px 14px"}}>+</button>
+          </div>
+        </div>
 
         {/* ═══ WIDGET EDIT MODAL ═══ */}
         {editingWidget && (() => {
@@ -2667,38 +2795,148 @@ export default function App() {
     return (
       <div style={{padding:12}}>
         <div style={{display:"flex",gap:8,marginBottom:12,overflowX:"auto"}}>
-          {["schedule","myrules","theirrules","shared",
-            ...(isAdmin ? ["log","budget"] : [])
+          {["schedule","proposals","shared",
+            ...(isAdmin ? ["myrules","theirrules","log","budget"] : [])
           ].map(t=>(
             <button key={t} onClick={()=>setFamilySubTab(t)}
               style={{...familySubTab===t?btnPrimary:btnSecondary,whiteSpace:"nowrap",padding:"6px 12px",fontSize:12}}>
-              {t==="schedule"?"📅 Schedule":t==="myrules"?"👑 My Rules":t==="theirrules"?"💜 Their Rules":t==="shared"?"🤝 Shared":t==="log"?"📋 Log":"💰 Budget"}
+              {t==="schedule"?"📅 Custody":t==="proposals"?"📝 Proposals":t==="shared"?"🤝 Agreed Rules":t==="myrules"?"👑 My Rules":t==="theirrules"?"💜 Their Rules":t==="log"?"📋 Log":"💰 Budget"}
             </button>
           ))}
         </div>
 
         {familySubTab === "schedule" && (
           <div style={cardStyle}>
-            <div style={{fontWeight:700,color:"#f59e0b",marginBottom:10}}>📅 Weekly Custody Schedule</div>
-            <div style={{fontSize:12,color:V.textDim,marginBottom:12}}>{isAdmin?"Tap a day to change":"View only"}</div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6}}>
-              {custodyDayNames.map(day=>{
-                const val=(custodySchedule||{})[day]||"Free";
-                return(
-                  <div key={day} onClick={()=>cycleCustody(day)}
-                    style={{textAlign:"center",padding:"10px 4px",borderRadius:8,cursor:isAdmin?"pointer":"default",
-                      background:custodyColor(val),border:`1px solid ${custodyColor(val)}`}}>
-                    <div style={{fontSize:11,color:V.textMuted,marginBottom:4}}>{day}</div>
-                    <div style={{fontSize:12,fontWeight:700,color:val==="Free"?V.textDim:V.textPrimary}}>{val}</div>
+            <div style={{fontWeight:700,color:V.accent,marginBottom:10}}>📅 Custody Schedule</div>
+            {/* Pattern presets (admin only) */}
+            {isAdmin && (
+              <div style={{marginBottom:12}}>
+                <div style={{fontSize:12,color:V.textDim,marginBottom:6}}>Pattern preset:</div>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {Object.entries(CUSTODY_PRESETS).map(([key, p]) => (
+                    <button key={key} onClick={() => setCustodyPreset(key)}
+                      style={{...custodyPattern?.preset === key ? btnPrimary : btnSecondary, padding:"6px 10px", fontSize:11}}>
+                      {p.label} {custodyPattern?.preset === key && "✓"}
+                    </button>
+                  ))}
+                </div>
+                {custodyPattern && <div style={{fontSize:11,color:V.textDim,marginTop:6}}>Started: {custodyPattern.startDate} · {custodyPattern.pattern.length}-day cycle</div>}
+              </div>
+            )}
+            {/* 2-week calendar view showing custody */}
+            <div style={{fontSize:12,color:V.textDim,marginBottom:8}}>{isAdmin ? "Tap any day to override" : "View only"}</div>
+            {(() => {
+              const rows = [];
+              const startOfWeek = new Date(today);
+              startOfWeek.setDate(today.getDate() - today.getDay());
+              for (let w = 0; w < 2; w++) {
+                const cells = [];
+                for (let d = 0; d < 7; d++) {
+                  const dt = new Date(startOfWeek);
+                  dt.setDate(startOfWeek.getDate() + w * 7 + d);
+                  const ds = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+                  const val = getCustodyForDate(ds);
+                  const isOverride = custodyOverrides && custodyOverrides[ds];
+                  const isToday2 = ds === todayStr;
+                  cells.push(
+                    <div key={ds} onClick={() => isAdmin && cycleCustodyOverride(ds)}
+                      style={{textAlign:"center",padding:"8px 2px",borderRadius:8,cursor:isAdmin?"pointer":"default",
+                        background:custodyColor(val),border:isToday2?`2px solid ${V.accent}`:`1px solid ${V.borderDefault}`,
+                        position:"relative"}}>
+                      <div style={{fontSize:10,color:V.textMuted}}>{DAYS[dt.getDay()]}</div>
+                      <div style={{fontSize:13,fontWeight:700,color:isToday2?V.accent:V.textPrimary}}>{dt.getDate()}</div>
+                      <div style={{fontSize:10,fontWeight:700,color:custodyTextColor(val)}}>{val}</div>
+                      {isOverride && <div style={{position:"absolute",top:1,right:2,fontSize:8}}>✏️</div>}
+                    </div>
+                  );
+                }
+                rows.push(<div key={w} style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4,marginBottom:4}}>{cells}</div>);
+              }
+              return rows;
+            })()}
+            <div style={{display:"flex",gap:12,marginTop:8}}>
+              <span style={{fontSize:11,color:"#92400e",fontWeight:600}}>■ Dad</span>
+              <span style={{fontSize:11,color:"#6b21a8",fontWeight:600}}>■ Mom</span>
+              <span style={{fontSize:11,color:V.textDim}}>■ Free</span>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ RULE PROPOSALS ═══ */}
+        {familySubTab === "proposals" && (
+          <div style={cardStyle}>
+            <div style={{fontWeight:700,color:V.accent,marginBottom:10}}>📝 Rule Proposals</div>
+            <div style={{fontSize:12,color:V.textDim,marginBottom:12}}>Propose rules for both households. The other parent can accept, decline, or rewrite.</div>
+            {/* Propose new rule */}
+            {(isAdmin || isParent) && (
+              <div style={{display:"flex",gap:6,marginBottom:12}}>
+                <input value={newProposal} onChange={e=>setNewProposal(e.target.value)}
+                  onKeyDown={e=>{ if(e.key==="Enter" && newProposal.trim()){
+                    const proposal = {id:Date.now()+"",text:newProposal.trim(),proposedBy:currentProfile?.name,status:"pending",timestamp:new Date().toISOString()};
+                    fbSet("ruleProposals",[...(ruleProposals||[]),proposal]); setNewProposal(""); showToast("Rule proposed!","success");
+                  }}}
+                  placeholder="Propose a new rule..." style={{...inputStyle,flex:1}} />
+                <button onClick={()=>{
+                  if(!newProposal.trim()) return;
+                  const proposal = {id:Date.now()+"",text:newProposal.trim(),proposedBy:currentProfile?.name,status:"pending",timestamp:new Date().toISOString()};
+                  fbSet("ruleProposals",[...(ruleProposals||[]),proposal]); setNewProposal(""); showToast("Rule proposed!","success");
+                }} style={{...btnPrimary,padding:"8px 14px"}}>Propose</button>
+              </div>
+            )}
+            {/* Pending proposals */}
+            {(ruleProposals||[]).filter(p=>p.status==="pending"||p.status==="rewritten").map(p => {
+              const isMyProposal = p.proposedBy === currentProfile?.name;
+              const showActions = !isMyProposal && (isAdmin || isParent);
+              const displayText = p.status === "rewritten" && p.rewriteText ? p.rewriteText : p.text;
+              return (
+                <div key={p.id} style={{padding:12,background:V.bgCardAlt,borderRadius:V.r2,marginBottom:8,
+                  borderLeft:`4px solid ${isMyProposal ? V.accent : V.info}`}}>
+                  <div style={{fontSize:13,color:V.textPrimary,marginBottom:4,fontWeight:600}}>"{displayText}"</div>
+                  <div style={{fontSize:11,color:V.textDim,marginBottom:8}}>
+                    Proposed by {p.proposedBy} · {p.status === "rewritten" ? "Rewritten — needs your review" : "Pending"}
                   </div>
-                );
-              })}
-            </div>
-            <div style={{display:"flex",gap:8,marginTop:12}}>
-              <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:12,height:12,borderRadius:3,background:"#f59e0b"}}/><span style={{fontSize:12,color:V.textMuted}}>Dad</span></div>
-              <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:12,height:12,borderRadius:3,background:"#a855f7"}}/><span style={{fontSize:12,color:V.textMuted}}>Mom</span></div>
-              <div style={{display:"flex",alignItems:"center",gap:4}}><div style={{width:12,height:12,borderRadius:3,background:V.borderSubtle}}/><span style={{fontSize:12,color:V.textMuted}}>Free</span></div>
-            </div>
+                  {/* Actions for the OTHER parent */}
+                  {showActions && editingProposal !== p.id && (
+                    <div style={{display:"flex",gap:6}}>
+                      <button onClick={()=>{
+                        const agreed = {text:displayText,proposedBy:p.proposedBy,acceptedBy:currentProfile?.name,agreedDate:new Date().toISOString()};
+                        fbSet("sharedRules",[...(sharedRules||[]),agreed]);
+                        fbSet("ruleProposals",(ruleProposals||[]).filter(r=>r.id!==p.id));
+                        showToast("Rule accepted! Moved to Agreed Rules.","success");
+                      }} style={{...btnPrimary,padding:"6px 12px",fontSize:12,background:V.success}}>✅ Accept</button>
+                      <button onClick={()=>{
+                        fbSet("ruleProposals",(ruleProposals||[]).filter(r=>r.id!==p.id));
+                        showToast("Rule declined","info");
+                      }} style={{...btnSecondary,padding:"6px 12px",fontSize:12,color:V.danger}}>❌ Decline</button>
+                      <button onClick={()=>{setEditingProposal(p.id);setRewriteText(displayText);}}
+                        style={{...btnSecondary,padding:"6px 12px",fontSize:12}}>✏️ Rewrite</button>
+                    </div>
+                  )}
+                  {/* Rewrite editor */}
+                  {editingProposal === p.id && (
+                    <div style={{marginTop:8}}>
+                      <input value={rewriteText} onChange={e=>setRewriteText(e.target.value)}
+                        style={{...inputStyle,marginBottom:6}} />
+                      <div style={{display:"flex",gap:6}}>
+                        <button onClick={()=>{
+                          const updated = (ruleProposals||[]).map(r=>r.id===p.id?{...r,status:"rewritten",rewriteText:rewriteText.trim(),rewrittenBy:currentProfile?.name}:r);
+                          fbSet("ruleProposals",updated); setEditingProposal(null); setRewriteText(""); showToast("Rewrite sent back for review","info");
+                        }} style={{...btnPrimary,padding:"6px 12px",fontSize:12}}>Send Rewrite</button>
+                        <button onClick={()=>{setEditingProposal(null);setRewriteText("");}}
+                          style={{...btnSecondary,padding:"6px 12px",fontSize:12}}>Cancel</button>
+                      </div>
+                    </div>
+                  )}
+                  {/* My proposal — waiting */}
+                  {isMyProposal && p.status === "pending" && (
+                    <div style={{fontSize:11,color:V.textDim,fontStyle:"italic"}}>Waiting for other parent to respond...</div>
+                  )}
+                </div>
+              );
+            })}
+            {!(ruleProposals||[]).filter(p=>p.status==="pending"||p.status==="rewritten").length && (
+              <div style={{fontSize:13,color:V.textDim,textAlign:"center",padding:16}}>No pending proposals. Propose a rule above!</div>
+            )}
           </div>
         )}
 
@@ -2741,19 +2979,31 @@ export default function App() {
 
         {familySubTab === "shared" && (
           <div style={cardStyle}>
-            <div style={{fontWeight:700,color:"#22c55e",marginBottom:10}}>🤝 Shared Rules</div>
-            {(sharedRules||[]).map((r,i)=>(
-              <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${V.borderDefault}`,fontSize:13}}>
-                <span style={{color:V.textSecondary}}>✓ {typeof r==="string"?r:r.text}</span>
-              </div>
-            ))}
-            {isAdmin&&(
-              <div style={{display:"flex",gap:6,marginTop:8}}>
-                <input value={newSharedRule} onChange={e=>setNewSharedRule(e.target.value)} onKeyDown={e=>e.key==="Enter"&&(fbSet("sharedRules",[...(sharedRules||[]),newSharedRule]),setNewSharedRule(""))}
-                  placeholder="Propose shared rule..." style={{...inputStyle,flex:1}} />
-                <button onClick={()=>{fbSet("sharedRules",[...(sharedRules||[]),newSharedRule]);setNewSharedRule("");}} style={{...btnPrimary}}>+</button>
-              </div>
-            )}
+            <div style={{fontWeight:700,color:V.success,marginBottom:10}}>🤝 Agreed Rules</div>
+            <div style={{fontSize:12,color:V.textDim,marginBottom:10}}>Rules both parents have agreed to. Propose new rules in the Proposals tab.</div>
+            {(sharedRules||[]).map((r,i)=>{
+              const text = typeof r === "string" ? r : r.text;
+              const meta = typeof r === "object" ? r : null;
+              return (
+                <div key={i} style={{padding:"10px 0",borderBottom:`1px solid ${V.borderDefault}`}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <span style={{fontSize:13,color:V.textPrimary,fontWeight:600}}>✓ {text}</span>
+                    {isAdmin && <button onClick={()=>{
+                      if(confirm(`Remove rule: "${text}"?`)){
+                        fbSet("sharedRules",(sharedRules||[]).filter((_,j)=>j!==i)); showToast("Rule removed","info");
+                      }
+                    }} style={{background:"none",border:"none",color:V.danger,cursor:"pointer",fontSize:12,padding:4}}>✕</button>}
+                  </div>
+                  {meta?.proposedBy && (
+                    <div style={{fontSize:10,color:V.textDim,marginTop:2}}>
+                      Proposed by {meta.proposedBy}{meta.acceptedBy ? ` · Accepted by ${meta.acceptedBy}` : ""}
+                      {meta.agreedDate ? ` · ${new Date(meta.agreedDate).toLocaleDateString()}` : ""}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {!(sharedRules||[]).length && <div style={{fontSize:13,color:V.textDim,textAlign:"center",padding:16}}>No agreed rules yet. Start proposing!</div>}
           </div>
         )}
 
