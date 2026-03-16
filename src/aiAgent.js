@@ -434,7 +434,8 @@ async function runAgentLoop(apiKey, userMessage, appState, conversationHistory =
       let args;
       try {
         args = JSON.parse(toolCall.function.arguments);
-      } catch {
+      } catch (e) {
+        console.warn(`aiAgent: failed to parse args for ${funcName}:`, e.message);
         args = {};
       }
 
@@ -489,4 +490,4 @@ function getActionPreviewLabel(action) {
   }
 }
 
-export { TOOLS, runAgentLoop, executeReadTool, callGroqWithRetry, buildSystemPrompt, getActionPreviewLabel, WRITE_ACTIONS };
+export { runAgentLoop, getActionPreviewLabel };

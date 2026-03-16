@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createSpeechRecognition } from "./utils";
-import { runAgentLoop, getActionPreviewLabel, WRITE_ACTIONS } from "./aiAgent";
+import { runAgentLoop, getActionPreviewLabel } from "./aiAgent";
 
 // ═══ bby sonnet Jr. — Floating Personal Assistant (v4 Agent Engine) ═══
 
