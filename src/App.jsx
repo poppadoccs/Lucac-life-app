@@ -816,15 +816,22 @@ export default function App() {
     const sr = createSpeechRecognition();
     if (!sr) { showToast("Voice not supported in this browser", "error"); return; }
     speechRef.current = sr;
-    let finalText = "";
+    // Single utterance mode — stops after one phrase, no spam
+    sr.continuous = false;
+    sr.interimResults = false; // Only fire when speech is finalized
+    let processed = false; // Debounce guard
     sr.onresult = (e) => {
-      let transcript = "";
+      if (processed) return;
+      // Only process final results
       for (let i = 0; i < e.results.length; i++) {
-        transcript += e.results[i][0].transcript;
+        if (e.results[i].isFinal) {
+          processed = true;
+          const transcript = e.results[i][0].transcript;
+          onResult(transcript);
+          try { sr.stop(); } catch(_) {}
+          return;
+        }
       }
-      finalText = transcript;
-      // Show interim text in the input as user speaks
-      onResult(transcript);
     };
     sr.onerror = (e) => {
       if (e.error !== "aborted") showToast("Couldn't hear you — try again", "error");
@@ -832,7 +839,6 @@ export default function App() {
     };
     sr.onend = () => {
       setIsRecording(false);
-      if (finalText) onResult(finalText);
     };
     sr.start();
     setIsRecording(true);
@@ -1785,14 +1791,15 @@ export default function App() {
                         <div style={{ display: "flex", gap: V.sp1, alignItems: "center" }}>
                           <button onClick={() => setEditingStyle({ dk: ev._baseDk || dk, idx: ev._baseIdx != null ? ev._baseIdx : idx })}
                             style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, padding: 4 }}>🎨</button>
-                          {isAdmin && <button onClick={() => {
+                          {/* Edit/Delete: admin can edit all, parent can edit their own */}
+                          {(isAdmin || ev.creator === currentProfile?.name) && <button onClick={() => {
                             const u = [...addingEvents];
                             u[0] = { title: ev.title, time: ev.time || "12:00 PM", who: ev.who || "", notes: ev.notes || "", repeat: ev.repeat || "none", repeatEnd: ev.repeatEnd || "", repeatCount: ev.repeatCount || 0, duration: ev.duration || 60 };
                             setAddingEvents(u);
                             deleteEvent(dk, idx, ev);
                             showToast("Event loaded for editing below", "info");
                           }} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, padding: 4 }}>✏️</button>}
-                          {isAdmin && <button onClick={() => {
+                          {(isAdmin || ev.creator === currentProfile?.name) && <button onClick={() => {
                             if (window.confirm(`Delete "${ev.title}"?${ev.repeat ? " This will delete the entire repeating series." : ""}`)) {
                               deleteEvent(dk, idx, ev);
                               showToast(`Deleted "${ev.title}"`, "success");
@@ -2823,9 +2830,9 @@ export default function App() {
 
         {settingsSubTab === "profiles" && (
           <div>
-            {isAdmin && (
+            {(isAdmin || isParent) && (
               <div style={cardStyle}>
-                <div style={{fontWeight:700,color:"#f59e0b",marginBottom:10}}>My Profile</div>
+                <div style={{fontWeight:700,color:V.accent,marginBottom:10}}>My Profile</div>
                 <div style={{marginBottom:8}}>
                   <div style={{fontSize:12,color:V.textMuted,marginBottom:3}}>Name</div>
                   <div style={{display:"flex",gap:6}}>
@@ -2841,19 +2848,19 @@ export default function App() {
                   </div>
                 </div>
                 <div style={{marginBottom:8}}>
-                  <div style={{fontSize:12,color:V.textMuted,marginBottom:3}}>PIN (4-6 digits)</div>
+                  <div style={{fontSize:12,color:V.textMuted,marginBottom:3}}>PIN (4-15 characters, letters + numbers)</div>
                   <div style={{display:"flex",gap:6}}>
                     <div style={{flex:1,position:"relative"}}>
                       <input type={showPin?"text":"password"} value={pinEdit} onChange={e=>setPinEdit(e.target.value)}
-                        placeholder="New PIN" maxLength={6} style={{...inputStyle,paddingRight:40}} />
+                        placeholder="New PIN" maxLength={15} style={{...inputStyle,paddingRight:40}} />
                       <button onClick={()=>setShowPin(!showPin)} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",
                         background:"none",border:"none",cursor:"pointer",fontSize:16,padding:4}}>{showPin?"🙈":"👁"}</button>
                     </div>
                     <button onClick={()=>{
-                      if(pinEdit.length>=4){
+                      if(pinEdit.length>=4 && pinEdit.length<=15){
                         const updated=(profiles||[]).map(p=>p.id===currentProfile?.id?{...p,pin:pinEdit}:p);
                         fbSet("profiles",updated);setCurrentProfile(p=>({...p,pin:pinEdit}));setPinEdit("");showSave("PIN saved!");
-                      }
+                      } else { showToast("PIN must be 4-15 characters","error"); }
                     }} style={{...btnPrimary,padding:"8px 12px",fontSize:12}}>Save</button>
                   </div>
                 </div>
@@ -2879,27 +2886,25 @@ export default function App() {
                   </div>
                   {isAdmin && (
                     <div style={{display:"flex",gap:6,marginTop:6,marginLeft:30,flexWrap:"wrap"}}>
-                      {/* Role selector (admin only) */}
+                      {/* Role selector — admin only, cannot promote others to admin */}
                       <select value={p.type || "kid"} onChange={e=>{
+                        if (e.target.value === "admin" && p.type !== "admin") {
+                          showToast("Only one admin allowed", "error"); return;
+                        }
                         const updated=(profiles||[]).map(pp=>pp.id===p.id?{...pp,type:e.target.value}:pp);
                         fbSet("profiles",updated); showSave(`${p.name} is now ${e.target.value}`);
                       }} style={{...inputStyle,width:"auto",flex:"0 0 auto",padding:"4px 8px",fontSize:12}}>
-                        <option value="admin">👑 Admin</option>
+                        {p.type === "admin" && <option value="admin">👑 Admin</option>}
                         <option value="parent">👨‍👩‍👧 Parent</option>
                         <option value="kid">🧒 Kid</option>
                         <option value="guest">👤 Guest</option>
                       </select>
-                      {/* PIN for this profile */}
-                      {(p.type === "admin" || p.type === "parent" || p.type === "family") && (
-                        <input type="text" placeholder="PIN" defaultValue={p.pin||""} maxLength={6}
-                          onBlur={e=>{
-                            const pin = e.target.value.trim();
-                            if (pin !== (p.pin||"")) {
-                              const updated=(profiles||[]).map(pp=>pp.id===p.id?{...pp,pin}:pp);
-                              fbSet("profiles",updated); showSave("PIN updated");
-                            }
-                          }}
-                          style={{...inputStyle,width:70,flex:"0 0 auto",padding:"4px 8px",fontSize:12}} />
+                      {/* PIN — admin can ONLY see/edit their OWN PIN, never others' */}
+                      {p.id === currentProfile?.id && (
+                        <div style={{display:"flex",alignItems:"center",gap:4}}>
+                          <span style={{fontSize:11,color:V.textDim}}>PIN:</span>
+                          <span style={{fontSize:12,color:V.textMuted,letterSpacing:2}}>{"●".repeat((p.pin||"").length) || "none"}</span>
+                        </div>
                       )}
                       <select value={p.birthday ? p.birthday.split("-")[0] : ""} onChange={e=>{
                         const mm=e.target.value; const dd=p.birthday?p.birthday.split("-")[1]:"01";
