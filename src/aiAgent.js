@@ -438,6 +438,22 @@ async function testGroqConnection(apiKey) {
   }
 }
 
+// ═══ TYPE COERCION — Groq returns strings for booleans/numbers ═══
+function coerceToolArgs(functionName, args) {
+  for (const key of Object.keys(args)) {
+    if (args[key] === "true") args[key] = true;
+    if (args[key] === "false") args[key] = false;
+  }
+  const numberFields = ['duration', 'amount', 'stars', 'repeatCount'];
+  for (const field of numberFields) {
+    if (field in args && typeof args[field] === 'string') {
+      const num = Number(args[field]);
+      if (!isNaN(num)) args[field] = num;
+    }
+  }
+  return args;
+}
+
 // ═══ THE AGENT LOOP — the entire brain ═══
 async function runAgentLoop(apiKey, userMessage, appState, conversationHistory = []) {
   console.log('[aiAgent] Starting loop:', userMessage?.slice(0, 50), '| key:', !!apiKey);
@@ -481,7 +497,7 @@ async function runAgentLoop(apiKey, userMessage, appState, conversationHistory =
       const funcName = toolCall.function.name;
       let args;
       try {
-        args = JSON.parse(toolCall.function.arguments);
+        args = coerceToolArgs(funcName, JSON.parse(toolCall.function.arguments));
       } catch (e) {
         console.warn(`aiAgent: failed to parse args for ${funcName}:`, e.message);
         args = {};
