@@ -49,7 +49,8 @@ const TOOLS = [
           date: { type: "string", description: "Delete all events on this date (YYYY-MM-DD). Omit to delete from entire calendar." },
           deleteAll: { type: "boolean", description: "If true, delete ALL events from the entire calendar" },
           searchTerm: { type: "string", description: "Optional keyword filter — only delete events matching this" }
-        }
+        },
+        required: []
       }
     }
   },
@@ -187,7 +188,8 @@ const TOOLS = [
         type: "object",
         properties: {
           forPerson: { type: "string", description: "Generate briefing for specific person or 'family'" }
-        }
+        },
+        required: []
       }
     }
   },
@@ -304,7 +306,7 @@ async function callGroqWithRetry(apiKey, messages, tools, options = {}) {
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 25000);
+    const timeout = setTimeout(() => controller.abort(), 30000);
 
     try {
       const body = {
