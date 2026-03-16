@@ -8,6 +8,7 @@ import FoodTab from "./FoodTab";
 import BudgetTab from "./BudgetTab";
 import HomeworkHelper from "./HomeworkHelper";
 import GroqAssistant from "./GroqAssistant";
+import { runAgentLoop, getActionPreviewLabel } from "./aiAgent";
 
 // ═══ SENTRY ERROR MONITORING ═══
 Sentry.init({
@@ -327,6 +328,10 @@ export default function App() {
   const [quickAddPreview, setQuickAddPreview] = useState(null); // {events: [...]}
   const [quickAddDeleteMatches, setQuickAddDeleteMatches] = useState(null); // {keyword, matches: [{dk, idx, ev}]}
   const [quickAddEditPreview, setQuickAddEditPreview] = useState(null); // {dk, idx, ev, changes}
+  const [agentActions, setAgentActions] = useState([]); // pending write actions from AI agent
+  const [agentResponse, setAgentResponse] = useState(""); // text response from agent
+  const [agentClarification, setAgentClarification] = useState(null); // {question, options}
+  const [placeholderIdx, setPlaceholderIdx] = useState(0);
 
   // Widget customization (per profile)
   const [widgetPrefs, setWidgetPrefs] = useState({});
@@ -506,6 +511,86 @@ export default function App() {
     const interval = setInterval(checkAlerts, 60000); // Check every minute
     return () => clearInterval(interval);
   }, [events]);
+
+  // ═══ QUICK ADD — ROTATING PLACEHOLDER ═══
+  const QUICK_ADD_HINTS = [
+    "Try: 'add soccer Tuesday 4pm for Luca'",
+    "Try: 'how much did I spend this week?'",
+    "Try: 'add milk to shopping list'",
+    "Try: 'what's on the schedule tomorrow?'",
+    "Try: 'rewrite this nicely: you were late again'",
+    "Try: 'give me today's family briefing'",
+  ];
+  useEffect(() => {
+    const iv = setInterval(() => setPlaceholderIdx(i => (i + 1) % QUICK_ADD_HINTS.length), 5000);
+    return () => clearInterval(iv);
+  }, []);
+
+  // ═══ APP STATE BUILDER (for AI agent) ═══
+  function buildAppState() {
+    return {
+      userName: currentProfile?.name || 'User',
+      userRole: currentProfile?.type || 'guest',
+      familyMembers: (profiles || []).map(p => p.name),
+      getEventsInRange: (start, end, person) => {
+        const results = [];
+        const endD = end || start;
+        Object.entries(events || {}).forEach(([dk, dayEvs]) => {
+          if (dk >= start && dk <= endD) {
+            (dayEvs || []).forEach(ev => {
+              if (!person || ev.who === person || !ev.who) {
+                results.push({ title: ev.title, date: dk, time: ev.time, who: ev.who });
+              }
+            });
+          }
+        });
+        return results;
+      },
+      getBudgetSummary: (period) => {
+        const txns = budgetData?.transactions || [];
+        const now = new Date();
+        let filtered = txns;
+        if (period === "this_week") {
+          const weekAgo = new Date(now.getTime() - 7 * 86400000).toISOString().split('T')[0];
+          filtered = txns.filter(t => (t.date || '') >= weekAgo);
+        } else if (period === "this_month") {
+          const monthStart = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`;
+          filtered = txns.filter(t => (t.date || '') >= monthStart);
+        }
+        const total = filtered.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+        const cats = {};
+        filtered.forEach(t => { cats[t.category || 'Other'] = (cats[t.category || 'Other'] || 0) + (Number(t.amount) || 0); });
+        const topCats = Object.entries(cats).sort((a,b) => b[1] - a[1]).slice(0, 3).map(([c, v]) => `${c}: $${v.toFixed(2)}`).join(', ');
+        return `Total: $${total.toFixed(2)} (${filtered.length} transactions)${topCats ? '. Top: ' + topCats : ''}`;
+      },
+      getKidsStatus: (kidName) => {
+        const names = kidName === 'both' ? (profiles || []).filter(p => p.type === 'kid').map(p => p.name) : [kidName];
+        return names.map(name => {
+          const kd = (kidsData || {})[name] || {};
+          const pendingChores = (chores || []).filter(c => c.assignedTo === name && c.completedBy && !c.verified).length;
+          return `${name}: ${kd.points || 0} stars, ${(kd.tasks || []).length} tasks${pendingChores ? ', ' + pendingChores + ' chores pending approval' : ''}`;
+        }).join('\n');
+      },
+      getDailyBriefingData: () => {
+        const td = todayStr;
+        const todayEvs = (events || {})[td] || [];
+        const custody = getCustodyForDate(td);
+        const lines = [];
+        lines.push(`📅 Events today: ${todayEvs.length > 0 ? todayEvs.map(e => `${e.title}${e.time ? ' at ' + e.time : ''}`).join(', ') : 'None'}`);
+        lines.push(`🏠 Custody: ${custody}`);
+        lines.push(`✅ Routines: ${(routines || []).filter(r => r.done).length}/${(routines || []).length} done`);
+        lines.push(`🎯 Goals: ${(goals || []).filter(g => g.done).length}/${(goals || []).length} done`);
+        const kidsInfo = (profiles || []).filter(p => p.type === 'kid').map(p => {
+          const kd = (kidsData || {})[p.name] || {};
+          return `${p.name}: ${kd.points || 0}⭐`;
+        }).join(', ');
+        if (kidsInfo) lines.push(`👧 Kids: ${kidsInfo}`);
+        const upcoming = getUpcomingBirthdays().filter(b => b.daysUntil <= 7);
+        if (upcoming.length) lines.push(`🎂 ${upcoming.map(b => `${b.name} in ${b.daysUntil}d`).join(', ')}`);
+        return lines.join('\n');
+      }
+    };
+  }
 
   // Fetch daily quote on mount (using groqFetch wrapper)
   useEffect(() => {
@@ -730,96 +815,139 @@ export default function App() {
     setQuickAddEditPreview(null);
   }
 
+  // ═══ AI AGENT — QUICK ADD (replaces all regex parsing) ═══
   async function handleQuickAdd() {
     if (!quickAddInput.trim()) return;
     if (!GROQ_KEY) { showToast("No Groq API key configured", "error"); return; }
     setQuickAddLoading(true);
-    const members = familyNames.join(", ");
+    setAgentActions([]); setAgentResponse(""); setAgentClarification(null);
     const input = quickAddInput.trim();
+    setQuickAddInput("");
 
-    // ── DELETE: show matching events as cards ──
-    const deleteMatch = input.match(/^(delete|remove|cancel)\s+(.+)$/i);
-    if (deleteMatch) {
-      const keyword = deleteMatch[2].trim();
-      if (!events || Object.keys(events).length === 0) {
-        showToast("No events found. Try adding some first!", "info");
-        setQuickAddLoading(false); setQuickAddInput(""); return;
+    try {
+      const appState = buildAppState();
+      const result = await runAgentLoop(GROQ_KEY, input, appState);
+
+      // Text response
+      if (result.content) setAgentResponse(result.content);
+
+      // Write actions → show preview cards for confirmation
+      if (result.actions && result.actions.length > 0) {
+        setAgentActions(result.actions);
       }
-      const matches = searchEvents(keyword);
-      if (matches.length === 0) {
-        // Show upcoming events as context
-        const upcoming = Object.entries(events || {}).flatMap(([dk, evs]) => (evs||[]).map(ev => ({dk, title: ev.title}))).slice(0, 3);
-        const hint = upcoming.length ? ` Your events include: ${upcoming.map(e => e.title).join(", ")}` : "";
-        showToast(`Couldn't find "${keyword}".${hint}`, "error", 5000);
-      } else if (matches.length === 1) {
-        setQuickAddDeleteMatches({ keyword, matches, single: true });
-      } else {
-        setQuickAddDeleteMatches({ keyword, matches, single: false });
+
+      // Check for clarification in the response
+      if (result.content) {
+        try {
+          // The agent may embed clarification JSON in tool responses
+          const lines = result.content.split('\n');
+          for (const line of lines) {
+            if (line.includes('"type":"clarification"') || line.includes('"type": "clarification"')) {
+              const parsed = JSON.parse(line);
+              if (parsed.type === 'clarification') {
+                setAgentClarification(parsed);
+                break;
+              }
+            }
+          }
+        } catch {}
       }
-      setQuickAddLoading(false); setQuickAddInput(""); return;
-    }
 
-    // ── EDIT: change time or rename ──
-    const editTimeMatch = input.match(/^(?:change|move|set)\s+(.+?)\s+to\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i);
-    const renameMatch = input.match(/^rename\s+(.+?)\s+to\s+(.+)$/i);
-    if (editTimeMatch || renameMatch) {
-      const keyword = (editTimeMatch ? editTimeMatch[1] : renameMatch[1]).trim();
-      const matches = searchEvents(keyword);
-      if (matches.length === 0) {
-        showToast(`I couldn't find anything called "${keyword}"`, "error");
-      } else {
-        const m = matches[0]; // take first match
-        const changes = editTimeMatch
-          ? { time: editTimeMatch[2].trim().toUpperCase() }
-          : { title: renameMatch[2].trim() };
-        setQuickAddEditPreview({ ...m, changes, keyword });
+      // If no response AND no actions, something went wrong
+      if (!result.content && (!result.actions || result.actions.length === 0)) {
+        showToast("Jr. didn't understand that. Try rephrasing?", "error");
       }
-      setQuickAddLoading(false); setQuickAddInput(""); return;
-    }
-
-    // ── COLOR: make X red ──
-    const colorMatch = input.match(/^(make|change|set|update)\s+(.+?)\s+(?:color\s+(?:to\s+)?)?(red|orange|gold|yellow|green|teal|blue|purple|pink|coral|brown|gray|#[0-9a-f]{6})/i);
-    if (colorMatch) {
-      const keyword = colorMatch[2].toLowerCase().replace(/\s*(events?|color|to)\s*/g," ").trim();
-      const colorMap = {}; SWATCH_COLORS.forEach(c => { colorMap[c.label.toLowerCase()] = c.hex; });
-      const targetColor = colorMap[colorMatch[3].toLowerCase()] || colorMatch[3];
-      const matches = searchEvents(keyword);
-      if (matches.length > 0) {
-        const updated = { ...(eventStyles || {}) };
-        matches.forEach(m => { updated[`${m.dk}_${m.idx}`] = { ...(updated[`${m.dk}_${m.idx}`] || {}), bg: targetColor }; });
-        fbSet("eventStyles", updated);
-        showToast(`Updated ${matches.length} event${matches.length>1?"s":""} to ${colorMatch[3]}`, "success");
-      } else {
-        showToast(`I couldn't find anything called "${keyword}"`, "error");
-      }
-      setQuickAddLoading(false); setQuickAddInput(""); return;
-    }
-
-    // ── CREATE: normal Groq event creation ──
-    const result = await groqFetch(GROQ_KEY, [
-      { role: "system", content: `You extract calendar events from natural language. Family members: ${members}. Today is ${todayStr}. Return ONLY valid JSON array. Each event: {"title":"string","date":"YYYY-MM-DD","time":"HH:MM AM/PM","who":"name or empty","notes":"","repeat":"none|daily|weekly|monthly","repeatCount":number_or_0,"duration":minutes}. For repeating, set repeatCount to total occurrences. Default duration 60. Return raw JSON array only.` },
-      { role: "user", content: input }
-    ]);
-
-    if (!result.ok) {
-      showToast(`I heard "${input}" but couldn't process it — ${result.error}`, "error");
-      setQuickAddLoading(false); return;
-    }
-
-    const parsed = parseGroqJSON(result.data);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      let totalInstances = 0;
-      parsed.forEach(ev => {
-        const fakeEv = { ...ev, repeatEnd: "", repeatCount: ev.repeatCount || 0 };
-        totalInstances += generateRepeats(fakeEv, new Date(ev.date + "T00:00:00")).length;
-      });
-      const repeatDesc = parsed.some(e => e.repeat && e.repeat !== "none")
-        ? ` (${parsed[0].repeat}, ${totalInstances} occurrences)` : "";
-      setQuickAddPreview({ events: parsed, totalInstances: parsed.length, repeatDesc, input });
-    } else {
-      showToast(`I heard "${input}" but couldn't understand it — try rephrasing`, "error");
+    } catch (error) {
+      showToast("Jr. got confused. Try saying it differently? 😅", "error");
     }
     setQuickAddLoading(false);
+  }
+
+  // Execute confirmed agent write actions
+  function executeAgentActions(actions) {
+    for (const action of actions) {
+      const { args } = action;
+      switch (action.function) {
+        case 'create_calendar_event': {
+          const dk = args.date;
+          const eventData = {
+            title: args.title, time: args.time || "12:00 PM", who: args.person || "",
+            duration: args.duration || 60, creator: currentProfile?.name || "Unknown",
+            repeat: args.repeat || "none"
+          };
+          if (args.alert && args.alert !== "none") eventData.alert = args.alert;
+          if (args.isPrivate && isAdmin) eventData.private = true;
+          const updated = { ...(events || {}) };
+          updated[dk] = [...(updated[dk] || []), eventData];
+          fbSet("events", updated);
+          showToast(`Created "${args.title}" on ${args.date}`, "success");
+          break;
+        }
+        case 'delete_event': {
+          const matches = searchEvents(args.searchTerm);
+          if (matches.length > 0) {
+            const m = matches[0];
+            const updated = { ...(events || {}) };
+            updated[m.dk] = (updated[m.dk] || []).filter((_, i) => i !== m.idx);
+            if (!updated[m.dk]?.length) delete updated[m.dk];
+            fbSet("events", updated);
+            showToast(`Deleted "${m.ev.title}"`, "success");
+          } else {
+            showToast(`Couldn't find "${args.searchTerm}"`, "error");
+          }
+          break;
+        }
+        case 'edit_event': {
+          const matches = searchEvents(args.searchTerm);
+          if (matches.length > 0) {
+            const m = matches[0];
+            const updated = { ...(events || {}) };
+            updated[m.dk] = [...(updated[m.dk] || [])];
+            const changes = {};
+            if (args.newTitle) changes.title = args.newTitle;
+            if (args.newTime) changes.time = args.newTime;
+            if (args.newDate && args.newDate !== m.dk) {
+              // Move to new date
+              updated[m.dk] = updated[m.dk].filter((_, i) => i !== m.idx);
+              if (!updated[m.dk]?.length) delete updated[m.dk];
+              updated[args.newDate] = [...(updated[args.newDate] || []), { ...m.ev, ...changes }];
+            } else {
+              updated[m.dk][m.idx] = { ...updated[m.dk][m.idx], ...changes };
+            }
+            fbSet("events", updated);
+            showToast(`Updated "${m.ev.title}"`, "success");
+          } else {
+            showToast(`Couldn't find "${args.searchTerm}"`, "error");
+          }
+          break;
+        }
+        case 'add_expense': {
+          const txn = { id: Date.now() + "", amount: args.amount, description: args.description, category: args.category || "Other", date: todayStr };
+          fbSet("budgetData", { ...(budgetData || {}), transactions: [...(budgetData?.transactions || []), txn] });
+          showToast(`Logged $${args.amount} — ${args.description}`, "success");
+          break;
+        }
+        case 'add_shopping_item': {
+          fbSet("shoppingList", [...(shoppingList || []), { id: Date.now(), text: args.item, bought: false }]);
+          showToast(`Added "${args.item}" to shopping list`, "success");
+          break;
+        }
+        case 'add_task_for_kid': {
+          const kd = getKidData(args.kidName);
+          const task = { text: args.task, done: false, emoji: args.emoji || "📝" };
+          fbSet("kidsData", { ...(kidsData || {}), [args.kidName]: { ...kd, tasks: [...(kd.tasks || []), task] } });
+          showToast(`Assigned "${args.task}" to ${args.kidName}`, "success");
+          break;
+        }
+        case 'log_food': {
+          const entry = { name: args.food, calories: 0, protein: 0, carbs: 0, fat: 0, date: todayStr, profile: currentProfile?.name, meal: args.meal || "Snacks" };
+          fbSet("foodLog", [...(foodLog || []), entry]);
+          showToast(`Logged ${args.food}`, "success");
+          break;
+        }
+      }
+    }
+    setAgentActions([]);
   }
 
   function confirmQuickAdd() {
@@ -1435,7 +1563,7 @@ export default function App() {
           </button>
           <input value={quickAddInput} onChange={e => setQuickAddInput(e.target.value)}
             onKeyDown={e => e.key === "Enter" && handleQuickAdd()}
-            placeholder="Add anything... 'Soccer every Friday for 3 months at 4PM for Luca'"
+            placeholder={QUICK_ADD_HINTS[placeholderIdx]}
             style={{ ...inputStyle, flex:1, padding:"10px 14px", fontSize:13, borderRadius:24 }} />
           <button onClick={handleQuickAdd} disabled={quickAddLoading || !quickAddInput.trim()}
             style={{ ...btnPrimary, borderRadius:24, padding:"10px 16px", fontSize:16, opacity: quickAddLoading ? 0.6 : 1 }}>
@@ -1450,7 +1578,55 @@ export default function App() {
           </div>
         )}
 
-        {/* AI Quick Add Preview */}
+        {/* ═══ AGENT RESPONSE ═══ */}
+        {agentResponse && !agentActions.length && !agentClarification && (
+          <div style={{ ...cardStyle, border:`1px solid ${V.accent}33`, marginBottom:12 }}>
+            <div style={{ fontSize:13, color:V.textPrimary, whiteSpace:"pre-wrap", lineHeight:1.5 }}>{agentResponse}</div>
+            <button onClick={() => setAgentResponse("")} style={{ fontSize:11, color:V.textDim, background:"none", border:"none", cursor:"pointer", marginTop:4, padding:0 }}>Dismiss</button>
+          </div>
+        )}
+
+        {/* ═══ AGENT ACTION PREVIEW CARDS ═══ */}
+        {agentActions.length > 0 && (
+          <div style={{ ...cardStyle, border:`2px solid ${V.accent}`, marginBottom:12 }}>
+            <div style={{ fontWeight:700, color:V.accent, marginBottom:8 }}>Jr. wants to:</div>
+            {agentActions.map((action, i) => (
+              <div key={i} style={{ fontSize:13, color:V.textPrimary, marginBottom:6, padding:"8px 10px", background:V.bgCardAlt, borderRadius:V.r2, fontWeight:600 }}>
+                {getActionPreviewLabel(action)}
+              </div>
+            ))}
+            {agentResponse && <div style={{ fontSize:12, color:V.textMuted, marginTop:4, marginBottom:8 }}>{agentResponse}</div>}
+            <div style={{ display:"flex", gap:8, marginTop:8 }}>
+              <button onClick={() => { executeAgentActions(agentActions); setAgentResponse(""); }}
+                style={{ ...btnPrimary, flex:1, minHeight:48, background:V.success, fontSize:15 }}>✅ Confirm</button>
+              <button onClick={() => { setAgentActions([]); setAgentResponse(""); showToast("Cancelled","info"); }}
+                style={{ ...btnSecondary, flex:1, minHeight:48, fontSize:15 }}>❌ Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ AGENT CLARIFICATION ═══ */}
+        {agentClarification && (
+          <div style={{ ...cardStyle, border:`2px solid ${V.info}`, marginBottom:12 }}>
+            <div style={{ fontSize:14, color:V.textPrimary, fontWeight:600, marginBottom:10 }}>{agentClarification.question}</div>
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+              {(agentClarification.options || []).map((opt, i) => (
+                <button key={i} onClick={() => {
+                  setAgentClarification(null); setQuickAddInput(opt);
+                  setTimeout(() => handleQuickAdd(), 100);
+                }}
+                  style={{ padding:"10px 16px", borderRadius:20, background:V.bgElevated, border:`1px solid ${V.borderSubtle}`,
+                    color:V.textPrimary, cursor:"pointer", fontSize:13, fontWeight:600, minHeight:44 }}>
+                  {opt}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setAgentClarification(null)}
+              style={{ fontSize:11, color:V.textDim, background:"none", border:"none", cursor:"pointer", marginTop:8, padding:0 }}>Dismiss</button>
+          </div>
+        )}
+
+        {/* AI Quick Add Preview (legacy — kept for backward compat) */}
         {quickAddPreview && (
           <div style={{ ...cardStyle, border:`2px solid ${V.accent}`, marginBottom:12 }}>
             <div style={{ fontWeight:700, color:V.accent, marginBottom:8 }}>Creating {quickAddPreview.totalInstances} event{quickAddPreview.totalInstances>1?"s":""}{quickAddPreview.repeatDesc}</div>
