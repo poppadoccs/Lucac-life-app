@@ -41,6 +41,21 @@ const TOOLS = [
   {
     type: "function",
     function: {
+      name: "delete_events_bulk",
+      description: "Delete multiple events at once. Use when user wants to delete ALL events, clear the calendar, or remove everything on a specific date.",
+      parameters: {
+        type: "object",
+        properties: {
+          date: { type: "string", description: "Delete all events on this date (YYYY-MM-DD). Omit to delete from entire calendar." },
+          deleteAll: { type: "boolean", description: "If true, delete ALL events from the entire calendar" },
+          searchTerm: { type: "string", description: "Optional keyword filter — only delete events matching this" }
+        }
+      }
+    }
+  },
+  {
+    type: "function",
+    function: {
       name: "edit_event",
       description: "Edit an existing calendar event. Use when user wants to change, update, move, or reschedule something.",
       parameters: {
@@ -243,7 +258,7 @@ const TOOLS = [
 
 // ═══ WRITE vs READ classification ═══
 const WRITE_ACTIONS = new Set([
-  'create_calendar_event', 'delete_event', 'edit_event',
+  'create_calendar_event', 'delete_event', 'delete_events_bulk', 'edit_event',
   'add_expense', 'add_shopping_item', 'add_task_for_kid', 'log_food'
 ]);
 
@@ -288,7 +303,7 @@ async function callGroqWithRetry(apiKey, messages, tools, options = {}) {
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), 25000);
 
     try {
       const body = {
@@ -314,14 +329,23 @@ async function callGroqWithRetry(apiKey, messages, tools, options = {}) {
 
       clearTimeout(timeout);
 
-      if (response.ok) return await response.json();
+      if (response.ok) {
+        const data = await response.json();
+        if (typeof window !== 'undefined' && window.location?.hostname === 'localhost') {
+          console.log('[aiAgent] Groq response:', data.choices?.[0]?.message?.tool_calls ? 'TOOL_CALLS' : 'TEXT', data.choices?.[0]?.finish_reason);
+        }
+        return data;
+      }
+
+      const errorBody = await response.text().catch(() => '');
+      console.error(`[aiAgent] Groq API error ${response.status}:`, errorBody.slice(0, 300));
 
       if ((response.status === 429 || response.status >= 500) && attempt < maxRetries) {
         await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
         continue;
       }
 
-      throw new Error(`Groq API error: ${response.status}`);
+      throw new Error(`Groq API error: ${response.status} — ${errorBody.slice(0, 100)}`);
     } catch (error) {
       clearTimeout(timeout);
       if (attempt === maxRetries) throw error;
@@ -475,6 +499,8 @@ function getActionPreviewLabel(action) {
       return `📅 Add: "${args.title}" on ${args.date}${args.time ? ' at ' + args.time : ''}${args.person ? ' for ' + args.person : ''}`;
     case 'delete_event':
       return `🗑️ Delete: events matching "${args.searchTerm}"`;
+    case 'delete_events_bulk':
+      return args.deleteAll ? `🗑️ Delete ALL events from calendar` : `🗑️ Delete all events on ${args.date}${args.searchTerm ? ' matching "' + args.searchTerm + '"' : ''}`;
     case 'edit_event':
       return `✏️ Edit: "${args.searchTerm}"${args.newTitle ? ' → "' + args.newTitle + '"' : ''}${args.newTime ? ' → ' + args.newTime : ''}${args.newDate ? ' → ' + args.newDate : ''}`;
     case 'add_expense':

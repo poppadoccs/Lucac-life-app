@@ -858,7 +858,15 @@ export default function App() {
         showToast("Jr. didn't understand that. Try rephrasing?", "error");
       }
     } catch (error) {
-      showToast("Jr. got confused. Try saying it differently? 😅", "error");
+      console.error("[QuickAdd] Agent error:", error);
+      const msg = error?.message || "";
+      if (msg.includes("429")) {
+        showToast("AI is busy — try again in a few seconds", "error");
+      } else if (msg.includes("AbortError") || msg.includes("timeout")) {
+        showToast("Request timed out — try a shorter command", "error");
+      } else {
+        showToast(`Jr. had trouble: ${msg.slice(0, 80) || "try rephrasing"}`, "error");
+      }
     }
     setQuickAddLoading(false);
   }
@@ -894,6 +902,25 @@ export default function App() {
             showToast(`Deleted "${m.ev.title}"`, "success");
           } else {
             showToast(`Couldn't find "${args.searchTerm}"`, "error");
+          }
+          break;
+        }
+        case 'delete_events_bulk': {
+          const updated = { ...(events || {}) };
+          if (args.deleteAll) {
+            fbSet("events", {});
+            showToast("All events deleted", "success");
+          } else if (args.date) {
+            if (args.searchTerm) {
+              // Delete matching events on that date
+              const kw = args.searchTerm.toLowerCase();
+              updated[args.date] = (updated[args.date] || []).filter(ev => !(ev.title || "").toLowerCase().includes(kw));
+              if (!updated[args.date]?.length) delete updated[args.date];
+            } else {
+              delete updated[args.date];
+            }
+            fbSet("events", updated);
+            showToast(`Deleted events on ${args.date}`, "success");
           }
           break;
         }
@@ -975,16 +1002,90 @@ export default function App() {
     setQuickAddInput("");
   }
 
-  // ═══ WIDGET CUSTOMIZATION ═══
+  // ═══ WIDGET CUSTOMIZATION — size, order, pin, visibility ═══
+  const WIDGET_SIZES = {
+    compact: { minHeight: 48, maxHeight: 80, overflow: 'hidden', padding: '8px 12px' },
+    default: { minHeight: 'auto', maxHeight: 'none', overflow: 'visible', padding: '14px' },
+    tall: { minHeight: 400, maxHeight: 'none', overflow: 'auto', padding: '14px' },
+    wide: { minHeight: 80, maxHeight: 160, width: '100%', overflow: 'hidden', padding: '10px 14px' },
+  };
+  const DEFAULT_WIDGET_ORDER = { calendar:0, spotlight:1, quickStats:2, routines:3, goals:4, shoppingList:5, birthdays:6 };
+
   function getWidgetPref(key) {
     const profilePrefs = (widgetPrefs || {})[currentProfile?.name] || {};
-    return profilePrefs[key] || { name: null, hidden: false };
+    return { name: null, hidden: false, size: 'default', order: DEFAULT_WIDGET_ORDER[key] ?? 99, pinned: false, ...(profilePrefs[key] || {}) };
   }
   function setWidgetPref(key, pref) {
     const profilePrefs = { ...((widgetPrefs || {})[currentProfile?.name] || {}), [key]: pref };
     const updated = { ...(widgetPrefs || {}), [currentProfile?.name]: profilePrefs };
     fbSet("widgetPrefs", updated);
     setWidgetPrefs(updated);
+  }
+  function moveWidget(key, direction) {
+    const pref = getWidgetPref(key);
+    const newOrder = pref.order + (direction === 'up' ? -1.5 : 1.5);
+    setWidgetPref(key, { ...pref, order: newOrder });
+  }
+  function cycleWidgetSize(key) {
+    const pref = getWidgetPref(key);
+    const sizes = ['compact', 'default', 'tall', 'wide'];
+    const next = sizes[(sizes.indexOf(pref.size || 'default') + 1) % sizes.length];
+    setWidgetPref(key, { ...pref, size: next });
+  }
+  function toggleWidgetPin(key) {
+    const pref = getWidgetPref(key);
+    setWidgetPref(key, { ...pref, pinned: !pref.pinned });
+  }
+  function hideWidget(key) {
+    const pref = getWidgetPref(key);
+    setWidgetPref(key, { ...pref, hidden: true });
+  }
+
+  // Widget toolbar rendered at top-right of each widget
+  function WidgetToolbar({ widgetKey }) {
+    const pref = getWidgetPref(widgetKey);
+    const sizeLabels = { compact: 'Small', default: 'Default', tall: 'Tall', wide: 'Wide' };
+    return (
+      <div style={{ display:'flex', gap:4, alignItems:'center', fontSize:11 }}>
+        <button onClick={() => cycleWidgetSize(widgetKey)} title="Resize"
+          style={{ background:V.bgElevated, border:`1px solid ${V.borderSubtle}`, borderRadius:4, padding:'2px 6px', cursor:'pointer', color:V.textDim, fontSize:10 }}>
+          📏 {sizeLabels[pref.size] || 'Default'}
+        </button>
+        <button onClick={() => toggleWidgetPin(widgetKey)} title={pref.pinned ? "Unpin" : "Pin"}
+          style={{ background: pref.pinned ? `${V.accent}22` : V.bgElevated, border:`1px solid ${pref.pinned ? V.accent : V.borderSubtle}`,
+            borderRadius:4, padding:'2px 6px', cursor:'pointer', color: pref.pinned ? V.accent : V.textDim, fontSize:10 }}>
+          📌 {pref.pinned ? 'Pinned' : 'Pin'}
+        </button>
+        <button onClick={() => moveWidget(widgetKey, 'up')} title="Move up"
+          style={{ background:V.bgElevated, border:`1px solid ${V.borderSubtle}`, borderRadius:4, padding:'2px 4px', cursor:'pointer', color:V.textDim, fontSize:10 }}>↑</button>
+        <button onClick={() => moveWidget(widgetKey, 'down')} title="Move down"
+          style={{ background:V.bgElevated, border:`1px solid ${V.borderSubtle}`, borderRadius:4, padding:'2px 4px', cursor:'pointer', color:V.textDim, fontSize:10 }}>↓</button>
+        <button onClick={() => hideWidget(widgetKey)} title="Hide"
+          style={{ background:V.bgElevated, border:`1px solid ${V.borderSubtle}`, borderRadius:4, padding:'2px 4px', cursor:'pointer', color:V.danger, fontSize:10 }}>👁️</button>
+      </div>
+    );
+  }
+
+  // Widget wrapper with size/pin styling
+  function WidgetCard({ widgetKey, title, children }) {
+    const pref = getWidgetPref(widgetKey);
+    if (pref.hidden) return null;
+    const sizeStyle = WIDGET_SIZES[pref.size] || WIDGET_SIZES.default;
+    return (
+      <div style={{
+        ...cardStyle, ...sizeStyle, margin: '0 0 12px 0',
+        position: pref.pinned ? 'sticky' : 'relative',
+        top: pref.pinned ? 60 : 'auto',
+        zIndex: pref.pinned ? 10 : 'auto',
+        border: pref.pinned ? `2px solid ${V.accent}` : cardStyle.border,
+      }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+          <div style={{ fontWeight:700, color:V.accent, fontSize:14 }}>{title}</div>
+          <WidgetToolbar widgetKey={widgetKey} />
+        </div>
+        {children}
+      </div>
+    );
   }
 
   // ═══ AI GOALS SUGGESTER ═══
