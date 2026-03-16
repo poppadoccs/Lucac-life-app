@@ -290,6 +290,15 @@ export default function App() {
   const [spotlightInput, setSpotlightInput] = useState("");
   const [spotlightLoading, setSpotlightLoading] = useState(false);
   const [shoppingInput, setShoppingInput] = useState("");
+  // Custody custom editor
+  const [editingCustodyPattern, setEditingCustodyPattern] = useState(null); // temp array being edited
+  const [custodyStartDate, setCustodyStartDate] = useState("");
+  // Chores
+  const [chores, setChores] = useState([]);
+  const [newChoreName, setNewChoreName] = useState("");
+  const [newChoreEmoji, setNewChoreEmoji] = useState("🧹");
+  const [newChoreKid, setNewChoreKid] = useState("");
+  const [newChoreStars, setNewChoreStars] = useState(5);
 
   // Settings
   const [settingsSubTab, setSettingsSubTab] = useState("profiles");
@@ -405,7 +414,7 @@ export default function App() {
     "profiles","kidsData","custodySchedule","myRules","theirRules","sharedRules",
     "exchangeLog","foodLog","myFoods","nutritionGoals","trackedMacros","contacts","alertMinutes","themeName","widgetPrefs",
     "budgetData","shoppingList","weightLog","homeworkSessions","callButtons","quoteMode","customQuotePrompt","jrHistory","themeOverrides",
-    "custodyPattern","custodyOverrides","ruleProposals","spotlightResponse","calendarSize"];
+    "custodyPattern","custodyOverrides","ruleProposals","spotlightResponse","calendarSize","chores"];
 
   const fbSetters = {
     events: setEvents, eventStyles: setEventStyles, routines: setRoutines,
@@ -432,6 +441,7 @@ export default function App() {
     ruleProposals: v => setRuleProposals(v || []),
     spotlightResponse: v => setSpotlightResponse(v || ""),
     calendarSize: v => setCalendarSize(v || "default"),
+    chores: v => setChores(v || []),
   };
 
   // Pre-populate from localStorage cache on mount
@@ -466,6 +476,36 @@ export default function App() {
     setSaveFeedback(msg);
     setTimeout(() => setSaveFeedback(""), 2000);
   }
+
+  // ═══ EVENT ALERT NOTIFICATIONS ═══
+  useEffect(() => {
+    if (!events || typeof Notification === "undefined") return;
+    // Request permission on first load
+    if (Notification.permission === "default") Notification.requestPermission();
+    const checkAlerts = () => {
+      const now = new Date();
+      const nowMin = now.getHours() * 60 + now.getMinutes();
+      const todayDk = dateKey(now.getFullYear(), now.getMonth(), now.getDate());
+      const todayEvs = (events || {})[todayDk] || [];
+      todayEvs.forEach(ev => {
+        if (!ev.alert || ev.alert === "none") return;
+        const alertMin = parseInt(ev.alert) || 0;
+        const p = parseTime(ev.time);
+        let evMin = (p.ampm === "PM" && p.h !== 12 ? p.h + 12 : p.ampm === "AM" && p.h === 12 ? 0 : p.h) * 60 + p.m;
+        const triggerMin = evMin - alertMin;
+        if (nowMin === triggerMin) {
+          const msg = alertMin === 0 ? `${ev.title} is starting now!` : `${ev.title} in ${alertMin} minutes`;
+          if (Notification.permission === "granted") {
+            new Notification("LUCAC Life", { body: msg, icon: "/favicon.svg" });
+          } else {
+            showToast(`🔔 ${msg}`, "info", 5000);
+          }
+        }
+      });
+    };
+    const interval = setInterval(checkAlerts, 60000); // Check every minute
+    return () => clearInterval(interval);
+  }, [events]);
 
   // Fetch daily quote on mount (using groqFetch wrapper)
   useEffect(() => {
@@ -565,6 +605,7 @@ export default function App() {
     const baseDk = dateKey(calYear, calMonth, selectedDay);
     valid.forEach(ev => {
       const eventData = { title: ev.title, time: ev.time, who: ev.who, notes: ev.notes, duration: ev.duration || 60, creator: currentProfile?.name || "Unknown" };
+      if (ev.alert && ev.alert !== "none") eventData.alert = ev.alert;
       if (eventPrivate && isAdmin) { eventData.private = true; }
       if (ev.repeat && ev.repeat !== "none") {
         eventData.repeat = ev.repeat;
@@ -1273,6 +1314,34 @@ export default function App() {
                     </div>
                     {!(kd.tasks||[]).length && <div style={{color:V.textDim,fontSize:14}}>No tasks yet!</div>}
                   </div>
+                  {/* Chores for this kid */}
+                  {(chores||[]).filter(c=>!c.assignedTo||c.assignedTo===currentProfile.name).filter(c=>!c.verified).length > 0 && (
+                    <div style={cardStyle}>
+                      <div style={{fontWeight:700,marginBottom:10,color:V.accent}}>📋 My Chores</div>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:10}}>
+                        {(chores||[]).filter(c=>(!c.assignedTo||c.assignedTo===currentProfile.name)&&!c.verified).map((chore,i) => {
+                          const completed = chore.completedBy === currentProfile.name;
+                          return (
+                            <div key={chore.id||i} onClick={()=>{
+                              if(completed) return;
+                              const updated = (chores||[]).map(c=>c.id===chore.id?{...c,completedBy:currentProfile.name}:c);
+                              fbSet("chores",updated);
+                              showToast("Done! Waiting for parent to verify ⏳","info");
+                            }}
+                              style={{minHeight:120,borderRadius:14,background:completed?`${V.accent}15`:V.bgCard,
+                                border:`2px solid ${completed?V.accent:V.borderDefault}`,
+                                display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                                padding:14,cursor:completed?"default":"pointer",position:"relative"}}>
+                              {completed && <div style={{position:"absolute",top:4,right:6,fontSize:10,color:V.accent,fontWeight:700}}>⏳ Pending</div>}
+                              <div style={{fontSize:44}}>{chore.emoji||"📝"}</div>
+                              <div style={{fontSize:13,fontWeight:700,color:V.textPrimary,textAlign:"center"}}>{chore.name}</div>
+                              <div style={{fontSize:11,color:V.accent,fontWeight:600}}>⭐ {chore.stars||5}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   <HomeworkHelper V={V} profiles={profiles} kidsData={kidsData} fbSet={fbSet} GROQ_KEY={GROQ_KEY} showToast={showToast} />
                 </div>
               )}
@@ -2019,6 +2088,21 @@ export default function App() {
                       </div>
                     </div>
                   )}
+                  {/* Alert dropdown */}
+                  <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:V.sp2 }}>
+                    <span style={{ fontSize:12, color:V.textDim }}>🔔 Alert:</span>
+                    <select value={ev.alert||"none"} onChange={e => {
+                      const u = [...addingEvents]; u[i] = {...u[i], alert:e.target.value}; setAddingEvents(u);
+                    }} style={{...inputStyle,width:"auto",flex:1,padding:"4px 8px",fontSize:12}}>
+                      <option value="none">None</option>
+                      <option value="0">At time of event</option>
+                      <option value="5">5 min before</option>
+                      <option value="15">15 min before</option>
+                      <option value="30">30 min before</option>
+                      <option value="60">1 hour before</option>
+                      <option value="1440">1 day before</option>
+                    </select>
+                  </div>
                   {/* Private event toggle — admin only */}
                   {isAdmin && i === 0 && (
                     <label style={{ display:"flex", alignItems:"center", gap:8, marginTop:V.sp2, cursor:"pointer", fontSize:13, color:V.textSecondary }}>
@@ -2783,6 +2867,75 @@ export default function App() {
         })}
         {!kidProfiles.length && <div style={{...cardStyle,color:V.textDim,textAlign:"center"}}>Add kids in Settings → Profiles</div>}
 
+        {/* ═══ CHORES MANAGEMENT (admin/parent only) ═══ */}
+        {(isAdmin || isParent) && (
+          <div style={cardStyle}>
+            <div style={{fontWeight:700,color:V.accent,marginBottom:10}}>📋 Manage Chores</div>
+            {/* Existing chores */}
+            {(chores||[]).map((chore,i) => {
+              const completed = chore.completedBy && !chore.verified;
+              return (
+                <div key={chore.id||i} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:`1px solid ${V.borderDefault}`}}>
+                  <span style={{fontSize:24}}>{chore.emoji||"📝"}</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:600,color:V.textPrimary,fontSize:13}}>{chore.name}</div>
+                    <div style={{fontSize:11,color:V.textDim}}>
+                      For: {chore.assignedTo||"Anyone"} · ⭐ {chore.stars||5} stars
+                      {completed && <span style={{color:V.accent,fontWeight:700}}> · Waiting for approval</span>}
+                      {chore.verified && <span style={{color:V.success,fontWeight:700}}> · Verified ✓</span>}
+                    </div>
+                  </div>
+                  {completed && (
+                    <button onClick={()=>{
+                      const updated=[...(chores||[])]; updated[i]={...updated[i],verified:true};
+                      fbSet("chores",updated);
+                      // Award stars
+                      const kidName=chore.completedBy;
+                      const kd=getKidData(kidName);
+                      fbSet("kidsData",{...(kidsData||{}),[kidName]:{...kd,points:(kd.points||0)+(chore.stars||5)}});
+                      triggerConfetti(document.body,"small");
+                      showToast(`${kidName} earned ${chore.stars||5} stars! ⭐`,"success");
+                    }} style={{...btnPrimary,padding:"6px 12px",fontSize:12,background:V.success}}>✅ Verify</button>
+                  )}
+                  <button onClick={()=>{
+                    if(confirm(`Delete chore "${chore.name}"?`)){
+                      fbSet("chores",(chores||[]).filter((_,j)=>j!==i));
+                    }
+                  }} style={{background:"none",border:"none",cursor:"pointer",fontSize:12,color:V.danger,padding:4}}>🗑️</button>
+                </div>
+              );
+            })}
+            {/* Add new chore */}
+            <div style={{marginTop:10,padding:10,background:V.bgCardAlt,borderRadius:V.r2}}>
+              <div style={{fontSize:12,color:V.textMuted,marginBottom:6}}>Add Chore</div>
+              <div style={{display:"flex",gap:6,marginBottom:6}}>
+                <input value={newChoreName} onChange={e=>setNewChoreName(e.target.value)} placeholder="Chore name"
+                  style={{...inputStyle,flex:1}} />
+                <input value={newChoreEmoji} onChange={e=>setNewChoreEmoji(e.target.value)} placeholder="🧹"
+                  style={{...inputStyle,width:50}} />
+              </div>
+              <div style={{display:"flex",gap:6,marginBottom:6}}>
+                <select value={newChoreKid} onChange={e=>setNewChoreKid(e.target.value)} style={{...inputStyle,flex:1}}>
+                  <option value="">Assign to...</option>
+                  {kidProfiles.map(k=><option key={k.id} value={k.name}>{k.name}</option>)}
+                </select>
+                <div style={{display:"flex",alignItems:"center",gap:4}}>
+                  <span style={{fontSize:12,color:V.textDim}}>⭐</span>
+                  <input type="number" min={1} max={50} value={newChoreStars} onChange={e=>setNewChoreStars(Number(e.target.value)||5)}
+                    style={{...inputStyle,width:50,padding:"4px 8px",fontSize:12}} />
+                </div>
+              </div>
+              <button onClick={()=>{
+                if(!newChoreName.trim())return;
+                const chore={id:Date.now()+"",name:newChoreName.trim(),emoji:newChoreEmoji||"📝",assignedTo:newChoreKid,stars:newChoreStars,verified:false};
+                fbSet("chores",[...(chores||[]),chore]);
+                setNewChoreName("");setNewChoreEmoji("🧹");setNewChoreKid("");setNewChoreStars(5);
+                showToast("Chore added!","success");
+              }} style={{...btnPrimary,width:"100%"}}>Add Chore</button>
+            </div>
+          </div>
+        )}
+
         {/* 📚 Homework Helper */}
         <HomeworkHelper V={V} profiles={profiles} kidsData={kidsData} fbSet={fbSet}
           GROQ_KEY={GROQ_KEY} showToast={showToast} />
@@ -2795,32 +2948,138 @@ export default function App() {
     return (
       <div style={{padding:12}}>
         <div style={{display:"flex",gap:8,marginBottom:12,overflowX:"auto"}}>
-          {["schedule","proposals","shared",
+          {["calendar","schedule","proposals","shared",
             ...(isAdmin ? ["myrules","theirrules","log","budget"] : [])
           ].map(t=>(
             <button key={t} onClick={()=>setFamilySubTab(t)}
               style={{...familySubTab===t?btnPrimary:btnSecondary,whiteSpace:"nowrap",padding:"6px 12px",fontSize:12}}>
-              {t==="schedule"?"📅 Custody":t==="proposals"?"📝 Proposals":t==="shared"?"🤝 Agreed Rules":t==="myrules"?"👑 My Rules":t==="theirrules"?"💜 Their Rules":t==="log"?"📋 Log":"💰 Budget"}
+              {t==="calendar"?"📅 Calendar":t==="schedule"?"🔄 Custody":t==="proposals"?"📝 Proposals":t==="shared"?"🤝 Agreed Rules":t==="myrules"?"👑 My Rules":t==="theirrules"?"💜 Their Rules":t==="log"?"📋 Log":"💰 Budget"}
             </button>
           ))}
         </div>
 
+        {/* ═══ FAMILY SHARED CALENDAR ═══ */}
+        {familySubTab === "calendar" && (
+          <div style={cardStyle}>
+            <div style={{fontWeight:700,color:V.accent,marginBottom:10}}>📅 Family Calendar</div>
+            <div style={{fontSize:12,color:V.textDim,marginBottom:12}}>Shared events visible to both parents. Private events are hidden.</div>
+            {/* 2-week view with shared events */}
+            {(() => {
+              const startOfWeek = new Date(today);
+              startOfWeek.setDate(today.getDate() - today.getDay());
+              const weeks = [];
+              for (let w = 0; w < 2; w++) {
+                const days = [];
+                for (let d = 0; d < 7; d++) {
+                  const dt = new Date(startOfWeek);
+                  dt.setDate(startOfWeek.getDate() + w * 7 + d);
+                  const ds = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+                  const dayEvs = (visibleEvents[ds] || []).filter(ev => !ev.private);
+                  const custody = getCustodyForDate(ds);
+                  const isToday3 = ds === todayStr;
+                  days.push(
+                    <div key={ds} style={{background:custodyColor(custody),borderRadius:6,padding:4,
+                      border:isToday3?`2px solid ${V.accent}`:`1px solid ${V.borderDefault}`,minHeight:60}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <span style={{fontSize:11,fontWeight:isToday3?800:500,color:isToday3?V.accent:V.textMuted}}>{dt.getDate()}</span>
+                        <span style={{fontSize:8,fontWeight:700,color:custodyTextColor(custody)}}>{custody}</span>
+                      </div>
+                      {dayEvs.slice(0,2).map((ev,i) => {
+                        const creatorColor = profiles?.find(p=>p.name===ev.creator)?.color || V.info;
+                        return (
+                          <div key={i} style={{fontSize:9,padding:"1px 3px",borderRadius:3,marginTop:2,
+                            background:`${creatorColor}22`,borderLeft:`2px solid ${creatorColor}`,
+                            overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",color:V.textPrimary}}>
+                            {ev.title}
+                          </div>
+                        );
+                      })}
+                      {dayEvs.length > 2 && <div style={{fontSize:8,color:V.textDim}}>+{dayEvs.length-2}</div>}
+                    </div>
+                  );
+                }
+                weeks.push(
+                  <div key={w} style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:3}}>{days}</div>
+                );
+              }
+              return (
+                <div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:4}}>
+                    {DAYS.map(d=><div key={d} style={{textAlign:"center",fontSize:10,fontWeight:700,color:V.textDim}}>{d}</div>)}
+                  </div>
+                  {weeks}
+                </div>
+              );
+            })()}
+            <div style={{display:"flex",gap:8,marginTop:8}}>
+              <span style={{fontSize:10,color:"#92400e",fontWeight:600}}>■ Dad</span>
+              <span style={{fontSize:10,color:"#6b21a8",fontWeight:600}}>■ Mom</span>
+            </div>
+          </div>
+        )}
+
         {familySubTab === "schedule" && (
           <div style={cardStyle}>
             <div style={{fontWeight:700,color:V.accent,marginBottom:10}}>📅 Custody Schedule</div>
-            {/* Pattern presets (admin only) */}
+            {/* Pattern presets + custom editor (admin only) */}
             {isAdmin && (
               <div style={{marginBottom:12}}>
-                <div style={{fontSize:12,color:V.textDim,marginBottom:6}}>Pattern preset:</div>
-                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                <div style={{fontSize:12,color:V.textDim,marginBottom:6}}>Custody pattern:</div>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
                   {Object.entries(CUSTODY_PRESETS).map(([key, p]) => (
-                    <button key={key} onClick={() => setCustodyPreset(key)}
+                    <button key={key} onClick={() => {setCustodyPreset(key);setEditingCustodyPattern(null);}}
                       style={{...custodyPattern?.preset === key ? btnPrimary : btnSecondary, padding:"6px 10px", fontSize:11}}>
                       {p.label} {custodyPattern?.preset === key && "✓"}
                     </button>
                   ))}
+                  <button onClick={() => {
+                    setEditingCustodyPattern(custodyPattern?.pattern || ["D","D","D","D","D","D","D","M","M","M","M","M","M","M"]);
+                    setCustodyStartDate(custodyPattern?.startDate || todayStr);
+                  }} style={{...editingCustodyPattern ? btnPrimary : btnSecondary, padding:"6px 10px", fontSize:11}}>
+                    ✏️ Custom {editingCustodyPattern && "✓"}
+                  </button>
                 </div>
-                {custodyPattern && <div style={{fontSize:11,color:V.textDim,marginTop:6}}>Started: {custodyPattern.startDate} · {custodyPattern.pattern.length}-day cycle</div>}
+                {/* Custom pattern editor */}
+                {editingCustodyPattern && (
+                  <div style={{padding:12,background:V.bgCardAlt,borderRadius:V.r2,marginBottom:8}}>
+                    <div style={{fontSize:11,color:V.textDim,marginBottom:6}}>Tap each day to cycle: Dad → Mom → Free. This pattern repeats.</div>
+                    <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>
+                      {editingCustodyPattern.map((val,i) => (
+                        <button key={i} onClick={() => {
+                          const next = val === "D" ? "M" : val === "M" ? "F" : "D";
+                          const updated = [...editingCustodyPattern]; updated[i] = next; setEditingCustodyPattern(updated);
+                        }} style={{width:40,height:44,borderRadius:6,cursor:"pointer",border:`1px solid ${V.borderDefault}`,
+                          background: val==="D"?"#fef3c7":val==="M"?"#f3e8ff":V.bgCardAlt,
+                          display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontSize:10}}>
+                          <span style={{fontWeight:700,color:val==="D"?"#92400e":val==="M"?"#6b21a8":V.textDim}}>{val==="D"?"Dad":val==="M"?"Mom":"Free"}</span>
+                          <span style={{fontSize:8,color:V.textDim}}>Day {i+1}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:8,flexWrap:"wrap"}}>
+                      <button onClick={() => setEditingCustodyPattern([...editingCustodyPattern,"D"])}
+                        style={{...btnSecondary,padding:"4px 10px",fontSize:11}}>+ Day</button>
+                      {editingCustodyPattern.length > 7 && (
+                        <button onClick={() => setEditingCustodyPattern(editingCustodyPattern.slice(0,-1))}
+                          style={{...btnSecondary,padding:"4px 10px",fontSize:11}}>− Day</button>
+                      )}
+                      <span style={{fontSize:11,color:V.textDim}}>{editingCustodyPattern.length}-day cycle</span>
+                    </div>
+                    <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:8}}>
+                      <span style={{fontSize:11,color:V.textDim}}>Start date:</span>
+                      <input type="date" value={custodyStartDate} onChange={e=>setCustodyStartDate(e.target.value)}
+                        style={{...inputStyle,width:"auto",padding:"4px 8px",fontSize:12}} />
+                    </div>
+                    <button onClick={() => {
+                      fbSet("custodyPattern",{pattern:editingCustodyPattern,startDate:custodyStartDate,preset:"custom"});
+                      setEditingCustodyPattern(null);
+                      showToast(`Custom ${editingCustodyPattern.length}-day custody pattern saved!`,"success");
+                    }} style={{...btnPrimary,width:"100%"}}>Save Custom Pattern</button>
+                  </div>
+                )}
+                {custodyPattern && !editingCustodyPattern && <div style={{fontSize:11,color:V.textDim}}>
+                  {custodyPattern.preset === "custom" ? "Custom" : CUSTODY_PRESETS[custodyPattern.preset]?.label || "Custom"} pattern · Started {custodyPattern.startDate} · {custodyPattern.pattern.length}-day cycle
+                </div>}
               </div>
             )}
             {/* 2-week calendar view showing custody */}
@@ -3241,38 +3500,51 @@ export default function App() {
         {/* ═══ WIDGETS RESTORE (Fix: hidden widgets recoverable) ═══ */}
         {settingsSubTab === "widgets" && (
           <div style={cardStyle}>
-            <div style={{fontWeight:700,color:V.accent,marginBottom:4,fontSize:15}}>Hidden Widgets</div>
-            <div style={{fontSize:12,color:V.textMuted,marginBottom:14}}>Restore widgets you've hidden from the home screen</div>
+            <div style={{fontWeight:700,color:V.accent,marginBottom:4,fontSize:15}}>📦 Home Screen Widgets</div>
+            <div style={{fontSize:12,color:V.textMuted,marginBottom:14}}>Control what appears on your home screen</div>
             {(() => {
               const profilePrefs = (widgetPrefs || {})[currentProfile?.name] || {};
               const allWidgets = [
+                {key:"calendar",label:"Calendar",icon:"📅"},
                 {key:"routines",label:"Routines",icon:"✅"},
                 {key:"goals",label:"Goals",icon:"🎯"},
                 {key:"stats",label:"Quick Stats",icon:"📊"},
+                {key:"shopping",label:"Shopping List",icon:"🛒"},
+                {key:"spotlight",label:"Daily Spotlight",icon:"✦"},
+                {key:"birthdays",label:"Birthday Countdowns",icon:"🎂"},
               ];
-              const hidden = allWidgets.filter(w => profilePrefs[w.key]?.hidden);
-              const visible = allWidgets.filter(w => !profilePrefs[w.key]?.hidden);
               return (
                 <div>
-                  {hidden.length === 0 && <div style={{fontSize:13,color:V.textDim,fontStyle:"italic",marginBottom:10}}>No hidden widgets — all widgets are visible</div>}
-                  {hidden.map(w => (
-                    <div key={w.key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:`1px solid ${V.borderDefault}`}}>
-                      <span style={{fontSize:14,color:V.textSecondary}}>{w.icon} {profilePrefs[w.key]?.name || w.label} <span style={{fontSize:11,color:V.textDim}}>(hidden)</span></span>
-                      <button onClick={() => setWidgetPref(w.key, {...(profilePrefs[w.key]||{}), hidden:false})}
-                        style={{...btnPrimary,padding:"6px 14px",fontSize:12}}>Show</button>
-                    </div>
-                  ))}
-                  {visible.length > 0 && (
-                    <div style={{marginTop:12}}>
-                      <div style={{fontSize:12,color:V.textDim,marginBottom:6}}>Visible widgets:</div>
-                      {visible.map(w => (
-                        <div key={w.key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${V.borderDefault}`}}>
-                          <span style={{fontSize:14,color:V.textSecondary}}>{w.icon} {profilePrefs[w.key]?.name || w.label}</span>
-                          <span style={{fontSize:11,color:V.success}}>Visible</span>
+                  {allWidgets.map(w => {
+                    const pref = profilePrefs[w.key] || {};
+                    const isHidden = pref.hidden;
+                    return (
+                      <div key={w.key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:`1px solid ${V.borderDefault}`}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{fontSize:18}}>{w.icon}</span>
+                          <div>
+                            <div style={{fontSize:14,color:V.textPrimary,fontWeight:600}}>{pref.name || w.label}</div>
+                            <div style={{fontSize:11,color:isHidden?V.danger:V.success,fontWeight:600}}>{isHidden?"Hidden":"Visible"}</div>
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                          {/* Size selector */}
+                          <select value={pref.size||"default"} onChange={e=>{
+                            setWidgetPref(w.key,{...pref,size:e.target.value});
+                          }} style={{...inputStyle,width:"auto",padding:"3px 6px",fontSize:11}}>
+                            <option value="compact">Small</option>
+                            <option value="default">Default</option>
+                            <option value="expanded">Large</option>
+                          </select>
+                          {/* Toggle visibility */}
+                          <button onClick={() => setWidgetPref(w.key, {...pref, hidden:!isHidden})}
+                            style={{...isHidden?btnPrimary:btnSecondary,padding:"5px 10px",fontSize:11}}>
+                            {isHidden?"Show":"Hide"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })()}

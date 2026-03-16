@@ -656,6 +656,24 @@ RULES:
     const userMsg = { role: "user", content: text, ts: Date.now() };
     const newMsgs = [...messages, userMsg];
     setMessages(newMsgs);
+
+    // ── Local command: "add [item] to shopping list" ──
+    const shoppingMatch = text.match(/^add\s+(.+?)\s+to\s+(?:the\s+)?shopping\s*list$/i);
+    if (shoppingMatch && fbSet) {
+      const itemName = shoppingMatch[1].trim();
+      const newList = [...(shoppingList || []), { id: Date.now(), text: itemName, bought: false }];
+      fbSet("shoppingList", newList);
+      const confirmText = personality === "sassy"
+        ? `Done! Added "${itemName}" to your shopping list. You're welcome. \u{1F6D2}`
+        : personality === "kids"
+          ? `Added "${itemName}" to the shopping list! \u{1F6D2}`
+          : `Added "${itemName}" to your shopping list! \u{1F6D2}`;
+      const jrMsg = { role: "assistant", content: confirmText, ts: Date.now() };
+      setMessages(prev => [...prev, jrMsg]);
+      showToast && showToast(`Added "${itemName}" to shopping list`);
+      return;
+    }
+
     setLoading(true);
 
     // Safety net: track whether we produced a response

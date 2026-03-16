@@ -29,6 +29,7 @@ function buildSystemPrompt(name, age, subject) {
     `NEVER give the answer directly. Always guide them to figure it out. Use encouraging language. ` +
     `If they get it right, celebrate with enthusiasm. If wrong, say 'Almost! Let's try again \u{1F4AA}' — never say 'wrong' or 'incorrect'. ` +
     `For math, show step by step. Keep responses under 100 words. ${ageNote} ` +
+    `When the student asks for more detail or says they don't understand, go DEEPER — do NOT repeat your previous explanation. Reference what you already said and build on it with a new angle or analogy. NEVER repeat yourself. ` +
     `SAFETY: If the child asks anything inappropriate, off-topic, or not school-related, kindly redirect them back to homework. ` +
     `Never discuss violence, adult content, or anything not age-appropriate. ` +
     MATH_VERIFICATION_PROMPT
@@ -164,7 +165,7 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
     const systemPrompt = buildSystemPrompt(kidName, kidAge, subject);
     const apiMessages = [
       { role: "system", content: systemPrompt },
-      ...newMessages.map((m) => ({ role: m.role, content: m.content })),
+      ...newMessages.slice(-10).map((m) => ({ role: m.role, content: m.content })),
     ];
 
     const result = await groqFetch(GROQ_KEY, apiMessages, { maxTokens: 300 });

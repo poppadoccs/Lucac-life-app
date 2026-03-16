@@ -34,6 +34,59 @@ const ALL_MICRO_KEYS = [
   "satFat","transFat","cholesterol","addedSugar","water"
 ];
 
+const DEFAULT_TRACKED = ["calories", "protein", "carbs", "fat", "fiber"];
+
+const TRACKING_PRESETS = {
+  "Just Macros": ["calories","protein","carbs","fat","fiber"],
+  "Weight Loss": ["calories","protein","carbs","fat","fiber","sodium","sugar","water"],
+  "General Health": ["calories","protein","carbs","fat","fiber","vitA","vitC","vitD","vitB12","iron","calcium"],
+  "Track Everything": null,
+};
+
+// All trackable nutrient keys with display info for the modal
+const ALL_TRACKABLE = [
+  { section: "Macros", items: [
+    { key: "calories", name: "Calories" },
+    { key: "protein", name: "Protein" },
+    { key: "carbs", name: "Carbs" },
+    { key: "fat", name: "Fat" },
+  ]},
+  { section: "Vitamins", items: [
+    { key: "vitA", name: "Vitamin A" },
+    { key: "vitB1", name: "B1 Thiamine" },
+    { key: "vitB2", name: "B2 Riboflavin" },
+    { key: "vitB3", name: "B3 Niacin" },
+    { key: "vitB6", name: "Vitamin B6" },
+    { key: "vitB9", name: "B9 Folate" },
+    { key: "vitB12", name: "Vitamin B12" },
+    { key: "vitC", name: "Vitamin C" },
+    { key: "vitD", name: "Vitamin D" },
+    { key: "vitE", name: "Vitamin E" },
+    { key: "vitK", name: "Vitamin K" },
+  ]},
+  { section: "Minerals", items: [
+    { key: "calcium", name: "Calcium" },
+    { key: "iron", name: "Iron" },
+    { key: "magnesium", name: "Magnesium" },
+    { key: "phosphorus", name: "Phosphorus" },
+    { key: "potassium", name: "Potassium" },
+    { key: "sodium", name: "Sodium" },
+    { key: "zinc", name: "Zinc" },
+    { key: "selenium", name: "Selenium" },
+  ]},
+  { section: "Fats", items: [
+    { key: "satFat", name: "Saturated Fat" },
+    { key: "transFat", name: "Trans Fat" },
+    { key: "cholesterol", name: "Cholesterol" },
+  ]},
+  { section: "Other", items: [
+    { key: "fiber", name: "Fiber" },
+    { key: "sugar", name: "Sugar" },
+    { key: "addedSugar", name: "Added Sugar" },
+    { key: "water", name: "Water" },
+  ]},
+];
+
 function sumMacros(items) {
   let cal = 0, protein = 0, carbs = 0, fat = 0;
   const micros = {};
@@ -309,6 +362,9 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
   const [quickName, setQuickName] = useState("");
   const [addMode, setAddMode] = useState(null); // "search" | "voice" | "quick"
   const [expandedMicroSections, setExpandedMicroSections] = useState({});
+  const [trackedNutrients, setTrackedNutrients] = useState(null); // null = use defaults
+  const [showTrackingModal, setShowTrackingModal] = useState(false);
+  const [pendingTracked, setPendingTracked] = useState(null); // editing state in modal
 
   const recognitionRef = useRef(null);
   const voiceTimerRef = useRef(null);
@@ -335,6 +391,21 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
       setManualFat(nutritionGoals.fat || 70);
     }
   }, [nutritionGoals]);
+
+  // Load tracked nutrients from Firebase nutritionGoals
+  useEffect(() => {
+    if (nutritionGoals && currentProfile) {
+      const profileName = typeof currentProfile === "string" ? currentProfile : currentProfile?.name;
+      const profileTracked = nutritionGoals[profileName]?.tracked;
+      if (profileTracked) {
+        setTrackedNutrients(profileTracked);
+      } else if (nutritionGoals.tracked) {
+        setTrackedNutrients(nutritionGoals.tracked);
+      } else {
+        setTrackedNutrients(null); // will use DEFAULT_TRACKED
+      }
+    }
+  }, [nutritionGoals, currentProfile]);
 
   // Load weight log & shopping list from cache on mount, sync from firebase if available
   useEffect(() => {
@@ -638,6 +709,54 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
     setExpandedMicroSections(prev => ({ ...prev, [title]: !prev[title] }));
   }
 
+  // Resolved tracked list: null means "track everything"
+  const activeTracked = trackedNutrients === null ? null : (trackedNutrients || DEFAULT_TRACKED);
+
+  function isTracked(key) {
+    if (activeTracked === null) return true; // Track Everything
+    return activeTracked.includes(key);
+  }
+
+  function openTrackingModal() {
+    // Initialize pending state from current tracked
+    setPendingTracked(activeTracked === null ? null : [...activeTracked]);
+    setShowTrackingModal(true);
+  }
+
+  function togglePendingNutrient(key) {
+    setPendingTracked(prev => {
+      if (prev === null) {
+        // "Track Everything" active — switching to explicit list minus this key
+        const allKeys = ALL_TRACKABLE.flatMap(s => s.items.map(i => i.key));
+        return allKeys.filter(k => k !== key);
+      }
+      if (prev.includes(key)) {
+        return prev.filter(k => k !== key);
+      }
+      return [...prev, key];
+    });
+  }
+
+  function applyPreset(presetName) {
+    const preset = TRACKING_PRESETS[presetName];
+    setPendingTracked(preset === null ? null : [...preset]);
+  }
+
+  function saveTracking() {
+    const profileName = typeof currentProfile === "string" ? currentProfile : currentProfile?.name;
+    setTrackedNutrients(pendingTracked);
+    // Save to Firebase under nutritionGoals
+    const updatedGoals = { ...nutritionGoals };
+    if (profileName) {
+      updatedGoals[profileName] = { ...(updatedGoals[profileName] || {}), tracked: pendingTracked };
+    } else {
+      updatedGoals.tracked = pendingTracked;
+    }
+    fbSet("nutritionGoals", updatedGoals);
+    showToast("Tracking preferences saved");
+    setShowTrackingModal(false);
+  }
+
   // ── Styles ──
   const card = {
     background: V.bgCard, borderRadius: V.r3, padding: V.sp4,
@@ -710,21 +829,32 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
         >
           &#9881;
         </button>
+        <button
+          onClick={openTrackingModal}
+          style={{ ...btnBase, padding: "6px 12px", background: V.bgCardAlt, color: V.textMuted, fontSize: 12, fontWeight: 600 }}
+          title="Customize Tracking"
+        >
+          &#9776; Track
+        </button>
       </div>
 
       {/* ── DASHBOARD HAT: DAILY ── */}
       {hatMode === "daily" && (
         <div style={card}>
           <div style={{ display: "flex", justifyContent: "space-around", flexWrap: "wrap", gap: 8 }}>
-            <MacroRing value={todayMacros.cal} target={goals.calories || 2200} color="#4A90D9" label="Calories" unit="cal" size={76} />
-            <MacroRing value={todayMacros.protein} target={goals.protein || 150} color="#E74C3C" label="Protein" unit="g" size={76} />
-            <MacroRing value={todayMacros.carbs} target={goals.carbs || 250} color="#F1C40F" label="Carbs" unit="g" size={76} />
-            <MacroRing value={todayMacros.fat} target={goals.fat || 70} color="#9B59B6" label="Fat" unit="g" size={76} />
+            {isTracked("calories") && <MacroRing value={todayMacros.cal} target={goals.calories || 2200} color="#4A90D9" label="Calories" unit="cal" size={76} />}
+            {isTracked("protein") && <MacroRing value={todayMacros.protein} target={goals.protein || 150} color="#E74C3C" label="Protein" unit="g" size={76} />}
+            {isTracked("carbs") && <MacroRing value={todayMacros.carbs} target={goals.carbs || 250} color="#F1C40F" label="Carbs" unit="g" size={76} />}
+            {isTracked("fat") && <MacroRing value={todayMacros.fat} target={goals.fat || 70} color="#9B59B6" label="Fat" unit="g" size={76} />}
           </div>
-          <div style={{ textAlign: "center", marginTop: 10, fontSize: 13, color: V.textMuted, fontWeight: 600 }}>
-            Net: {fmt(todayMacros.cal)} cal
-          </div>
-          <NetCarbsDisplay carbs={todayMacros.carbs} fiber={todayMacros.fiber} V={V} />
+          {isTracked("calories") && (
+            <div style={{ textAlign: "center", marginTop: 10, fontSize: 13, color: V.textMuted, fontWeight: 600 }}>
+              Net: {fmt(todayMacros.cal)} cal
+            </div>
+          )}
+          {isTracked("carbs") && isTracked("fiber") && (
+            <NetCarbsDisplay carbs={todayMacros.carbs} fiber={todayMacros.fiber} V={V} />
+          )}
         </div>
       )}
 
@@ -764,10 +894,12 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
         </div>
       )}
 
-      {/* ── MICRONUTRIENT SECTIONS (collapsible) ── */}
+      {/* ── MICRONUTRIENT SECTIONS (collapsible, filtered by tracked) ── */}
       <div style={card}>
         <div style={{ fontSize: 13, fontWeight: 700, color: V.textPrimary, marginBottom: 8 }}>Micronutrients</div>
         {MICRO_SECTIONS.map(section => {
+          const trackedItems = section.items.filter(item => isTracked(item.key));
+          if (trackedItems.length === 0) return null;
           const isOpen = !!expandedMicroSections[section.title];
           return (
             <div key={section.title} style={{ marginBottom: 4 }}>
@@ -786,9 +918,8 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
               </button>
               {isOpen && (
                 <div style={{ padding: "8px 0" }}>
-                  {section.items.map(item => {
+                  {trackedItems.map(item => {
                     const val = todayMacros[item.key] || 0;
-                    // For "net carbs" display-only item
                     if (item.key === "netCarbs") {
                       return (
                         <div key={item.key} style={{ fontSize: 12, color: V.textMuted, padding: "4px 0", fontWeight: 500 }}>
@@ -1283,6 +1414,121 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
 
             <button onClick={saveGoals} style={{ ...btnPrimary, width: "100%" }}>
               Save Goals
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── CUSTOMIZE TRACKING MODAL ── */}
+      {showTrackingModal && (
+        <div
+          style={{
+            position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+            background: V.bgOverlay, zIndex: 9999,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: 16,
+          }}
+          onClick={e => { if (e.target === e.currentTarget) setShowTrackingModal(false); }}
+        >
+          <div style={{
+            background: V.bgCard, borderRadius: V.r4, padding: V.sp5,
+            width: "100%", maxWidth: 420, boxShadow: V.shadowModal,
+            maxHeight: "85vh", overflowY: "auto",
+          }}>
+            {/* Header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <span style={{ fontSize: 17, fontWeight: 700, color: V.textPrimary }}>Customize Tracking</span>
+              <button onClick={() => setShowTrackingModal(false)} style={{ ...btnBase, minWidth: 36, minHeight: 36, padding: 0, background: "transparent", color: V.textMuted, fontSize: 18 }}>
+                &#10005;
+              </button>
+            </div>
+
+            {/* Presets */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: V.textSecondary, marginBottom: 8 }}>Quick Presets</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {Object.keys(TRACKING_PRESETS).map(presetName => {
+                  const presetVal = TRACKING_PRESETS[presetName];
+                  const isActive = pendingTracked === null
+                    ? presetVal === null
+                    : presetVal !== null && JSON.stringify([...presetVal].sort()) === JSON.stringify([...pendingTracked].sort());
+                  return (
+                    <button
+                      key={presetName}
+                      onClick={() => applyPreset(presetName)}
+                      style={{
+                        ...btnBase, padding: "8px 14px", fontSize: 12,
+                        background: isActive ? V.accent : V.bgCardAlt,
+                        color: isActive ? "#fff" : V.textSecondary,
+                        border: isActive ? "none" : `1px solid ${V.borderDefault}`,
+                      }}
+                    >
+                      {presetName}
+                      {isActive ? " (Active)" : ""}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Nutrient Toggles by Section */}
+            {ALL_TRACKABLE.map(group => (
+              <div key={group.section} style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: V.textPrimary, marginBottom: 6, borderBottom: `1px solid ${V.borderSubtle}`, paddingBottom: 4 }}>
+                  {group.section}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+                  {group.items.map(item => {
+                    const on = pendingTracked === null ? true : pendingTracked.includes(item.key);
+                    const val = todayMacros[item.key] || todayMacros[item.key === "calories" ? "cal" : item.key] || 0;
+                    return (
+                      <button
+                        key={item.key}
+                        onClick={() => togglePendingNutrient(item.key)}
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "space-between",
+                          padding: "8px 10px", minHeight: 44,
+                          background: on ? V.bgCardAlt : "transparent",
+                          border: `1.5px solid ${on ? V.accent : V.borderSubtle}`,
+                          borderRadius: V.r2, cursor: "pointer",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: on ? V.textPrimary : V.textDim }}>
+                            {item.name}
+                          </span>
+                          {on && val > 0 && (
+                            <span style={{ fontSize: 10, color: V.textMuted }}>
+                              Today: {val < 10 ? val.toFixed(1) : fmt(val)}
+                            </span>
+                          )}
+                        </div>
+                        {/* Toggle indicator with text label */}
+                        <span style={{
+                          display: "inline-flex", alignItems: "center", justifyContent: "center",
+                          minWidth: 36, height: 22, borderRadius: 11, fontSize: 10, fontWeight: 700,
+                          background: on ? V.accent : V.borderSubtle,
+                          color: on ? "#fff" : V.textDim,
+                          transition: "all 0.15s ease",
+                        }}>
+                          {on ? "ON" : "OFF"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            {/* Summary + Save */}
+            <div style={{ fontSize: 12, color: V.textMuted, textAlign: "center", marginBottom: 12 }}>
+              {pendingTracked === null
+                ? "Tracking all nutrients"
+                : `Tracking ${pendingTracked.length} nutrient${pendingTracked.length !== 1 ? "s" : ""}`}
+            </div>
+            <button onClick={saveTracking} style={{ ...btnPrimary, width: "100%" }}>
+              Save Tracking Preferences
             </button>
           </div>
         </div>
