@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { groqFetch, parseGroqJSON } from "./utils";
+// groqFetch/parseGroqJSON no longer needed — all game content is hardcoded
 
 // ═══════════════════════════════════════════════════════════
 // LUCAC LEGENDS — Full Adventure RPG for Kids
@@ -84,6 +84,39 @@ const ITEMS = {
 };
 
 // ─── MATH PROBLEM GENERATOR (verified, no Groq needed) ─────
+function generateMathProblem(difficulty) {
+  let a, b, op, answer, question;
+  if (difficulty === 'easy') {
+    op = Math.random() > 0.5 ? '+' : '-';
+    a = Math.floor(Math.random() * 9) + 1;
+    b = Math.floor(Math.random() * (op === '-' ? a : 9)) + 1;
+    answer = op === '+' ? a + b : a - b;
+    question = `${a} ${op} ${b}`;
+  } else {
+    if (Math.random() > 0.5) {
+      a = Math.floor(Math.random() * 10) + 2;
+      b = Math.floor(Math.random() * 10) + 2;
+      answer = a * b;
+      question = `${a} × ${b}`;
+    } else {
+      b = Math.floor(Math.random() * 9) + 2;
+      answer = Math.floor(Math.random() * 10) + 1;
+      a = answer * b;
+      question = `${a} ÷ ${b}`;
+    }
+  }
+  const choices = [answer];
+  while (choices.length < 3) {
+    const wrong = answer + (Math.random() > 0.5 ? 1 : -1) * (Math.floor(Math.random() * 3) + 1);
+    if (wrong > 0 && !choices.includes(wrong)) choices.push(wrong);
+  }
+  for (let i = choices.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [choices[i], choices[j]] = [choices[j], choices[i]];
+  }
+  return { question, answer, choices };
+}
+// Legacy wrapper for RPG adventure mode
 function genMathProblem(difficulty) {
   const ops = [];
   if (difficulty?.addition !== false) ops.push('+');
@@ -99,6 +132,34 @@ function genMathProblem(difficulty) {
   else { answer = Math.floor(Math.random()*12)+1; b = Math.floor(Math.random()*12)+1; a = answer*b; }
   return { text: `${a} ${op} ${b}`, answer };
 }
+
+// ─── HARDCODED STORIES (no Groq) ────────────────────────────
+const STORIES = {
+  easy: [
+    { title: "The Lost Puppy 🐕", sentences: ["A small ___ was lost in the park.", "It was very ___ outside.", "A kind ___ helped the puppy find home."],
+      blanks: [{ options: ["🐕 dog", "🚗 car", "📚 book"], answer: "🐕 dog" }, { options: ["☀️ hot", "🥶 cold", "🟢 green"], answer: "☀️ hot" }, { options: ["👧 girl", "🪨 rock", "🐟 fish"], answer: "👧 girl" }] },
+    { title: "The Magic Cat 🐱", sentences: ["A ___ cat sat on the mat.", "It could ___ very high.", "The cat loved to eat ___."],
+      blanks: [{ options: ["🟠 orange", "🚀 rocket", "🌊 wave"], answer: "🟠 orange" }, { options: ["🚀 jump", "💤 sleep", "🎵 sing"], answer: "🚀 jump" }, { options: ["🐟 fish", "📚 books", "🔑 keys"], answer: "🐟 fish" }] },
+    { title: "The Big Truck 🚚", sentences: ["The truck was very ___.", "It carried lots of ___.", "The driver was very ___."],
+      blanks: [{ options: ["💪 big", "🐜 tiny", "🤫 quiet"], answer: "💪 big" }, { options: ["🍎 apples", "☁️ clouds", "⭐ stars"], answer: "🍎 apples" }, { options: ["😄 happy", "😢 sad", "😴 sleepy"], answer: "😄 happy" }] },
+    { title: "Beach Day 🏖️", sentences: ["We went to the ___ today.", "I built a big ___ castle.", "A ___ splashed in the water."],
+      blanks: [{ options: ["🏖️ beach", "🏫 school", "🏥 hospital"], answer: "🏖️ beach" }, { options: ["🏰 sand", "❄️ ice", "🍓 berry"], answer: "🏰 sand" }, { options: ["🐬 dolphin", "🐦 bird", "🐛 bug"], answer: "🐬 dolphin" }] },
+    { title: "My Pet Bunny 🐰", sentences: ["My bunny is soft and ___.", "It loves to eat ___.", "At night it sleeps in a ___."],
+      blanks: [{ options: ["🧸 fluffy", "🪨 hard", "💧 wet"], answer: "🧸 fluffy" }, { options: ["🥕 carrots", "🍕 pizza", "🍫 candy"], answer: "🥕 carrots" }, { options: ["🛏️ bed", "🚗 car", "🌳 tree"], answer: "🛏️ bed" }] },
+  ],
+  hard: [
+    { title: "The Secret Garden", sentences: ["Maya discovered a ___ door behind the old bookshelf.", "Inside, she found a garden filled with ___ flowers.", "A tiny fairy ___ from behind a mushroom.", "The fairy said the garden needed a brave ___ to save it.", "Maya promised to ___ the garden every day."],
+      blanks: [{ options: ["hidden", "purple", "broken"], answer: "hidden" }, { options: ["glowing", "paper", "angry"], answer: "glowing" }, { options: ["appeared", "vanished", "exploded"], answer: "appeared" }, { options: ["hero", "villain", "storm"], answer: "hero" }, { options: ["protect", "forget", "paint"], answer: "protect" }] },
+    { title: "The Dragon's Riddle", sentences: ["A wise dragon lived on top of a ___ mountain.", "Anyone who solved its riddle would win a ___ prize.", "The riddle was: What gets ___ the more you take away?", "A clever girl answered: A ___!", "The dragon ___ and gave her a golden crown."],
+      blanks: [{ options: ["tall", "flat", "tiny"], answer: "tall" }, { options: ["magnificent", "terrible", "invisible"], answer: "magnificent" }, { options: ["bigger", "smaller", "louder"], answer: "bigger" }, { options: ["hole", "mountain", "river"], answer: "hole" }, { options: ["smiled", "cried", "disappeared"], answer: "smiled" }] },
+    { title: "Space Explorer", sentences: ["Captain Zara flew her spaceship toward a ___ planet.", "The planet had two ___ moons orbiting around it.", "She landed and ___ strange footprints in the purple sand.", "A friendly alien ___ her and offered a gift.", "Zara brought the gift back to ___ as proof of alien life."],
+      blanks: [{ options: ["mysterious", "boring", "empty"], answer: "mysterious" }, { options: ["glittering", "invisible", "broken"], answer: "glittering" }, { options: ["discovered", "ignored", "painted"], answer: "discovered" }, { options: ["greeted", "frightened", "chased"], answer: "greeted" }, { options: ["Earth", "Mars", "the moon"], answer: "Earth" }] },
+    { title: "The Underwater Kingdom", sentences: ["Deep beneath the ocean was a ___ kingdom of merfolk.", "The queen's crown was made of ___ pearls.", "One day, a storm ___ the crown from the palace.", "A brave young mermaid ___ to find it.", "She returned the crown and was ___ a hero forever."],
+      blanks: [{ options: ["magnificent", "tiny", "boring"], answer: "magnificent" }, { options: ["shimmering", "wooden", "paper"], answer: "shimmering" }, { options: ["swept", "placed", "polished"], answer: "swept" }, { options: ["volunteered", "refused", "forgot"], answer: "volunteered" }, { options: ["called", "punished", "forgotten"], answer: "called" }] },
+    { title: "Time Traveler", sentences: ["Sam found a ___ watch in his grandmother's attic.", "When he pressed the button, everything around him ___.", "He was standing in a ___ castle from long ago!", "A knight asked Sam to help ___ a baby dragon.", "Sam pressed the watch again and ___ safely home."],
+      blanks: [{ options: ["golden", "plastic", "broken"], answer: "golden" }, { options: ["changed", "stopped", "melted"], answer: "changed" }, { options: ["medieval", "modern", "underwater"], answer: "medieval" }, { options: ["rescue", "capture", "forget"], answer: "rescue" }, { options: ["returned", "vanished", "stayed"], answer: "returned" }] },
+  ]
+};
 
 function speakText(text) {
   if (!window.speechSynthesis) return;
@@ -263,6 +324,15 @@ const KEYFRAMES_CSS = `
 @keyframes ll-confetti {
   0% { transform: translateY(0) rotate(0deg); opacity: 1; }
   100% { transform: translateY(200px) rotate(720deg); opacity: 0; }
+}
+@keyframes ll-swim {
+  0%, 100% { transform: translateY(0); }
+  25% { transform: translateY(-4px) rotate(2deg); }
+  75% { transform: translateY(4px) rotate(-2deg); }
+}
+@keyframes ll-bubble-rise {
+  0% { transform: translateY(0) scale(1); opacity: 0.7; }
+  100% { transform: translateY(-60px) scale(0.5); opacity: 0; }
 }
 @keyframes ll-leaf-fall {
   0% { transform: translateY(-20px) translateX(0px) rotate(0deg); opacity: 0.8; }
@@ -666,63 +736,65 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
   const [screen, setScreen] = useState("menu"); // menu, world_select, adventure, battle, victory, game_over, store, chores, mini_games, racing, fish, potion, reading, coop
 
   // ─── MINI-GAME SHARED STATE ─────────────────────────────
-  const kidDifficulty = kidsData?.[profile?.name]?.difficulty || { math: { addition: true, subtraction: false, multiplication: false, division: false }, reading: { level: "beginner" } };
   const kidAge = profile?.name === "Luca" ? 6 : profile?.name === "Yana" ? 8 : 7;
   const isLucaMode = kidAge <= 7;
-  const GROQ_KEY_GAME = typeof window !== "undefined" ? (import.meta?.env?.VITE_GROQ_KEY || "") : "";
+  const mathDifficulty = isLucaMode ? 'easy' : 'hard';
 
-  // Racing state
-  const [raceBarriers, setRaceBarriers] = useState([]);
-  const [raceLane, setRaceLane] = useState(1);
-  const [raceScore, setRaceScore] = useState(0);
-  const [raceStars, setRaceStars] = useState(0);
-  const [raceActive, setRaceActive] = useState(false);
-  const [raceTimer, setRaceTimer] = useState(60);
-  const [raceAnswer, setRaceAnswer] = useState("");
-  const [raceCurrentBarrier, setRaceCurrentBarrier] = useState(null);
-  const raceRef = useRef(null);
-
-  // Fish state
-  const [fishSize, setFishSize] = useState(1);
+  // Fish game state
+  const [fishSize, setFishSize] = useState(3);
   const [fishPos, setFishPos] = useState({ x: 50, y: 50 });
   const [fishEnemies, setFishEnemies] = useState([]);
-  const [fishBubbles, setFishBubbles] = useState([]);
   const [fishScore, setFishScore] = useState(0);
-  const [fishStars, setFishStars] = useState(0);
   const [fishActive, setFishActive] = useState(false);
   const [fishGameOver, setFishGameOver] = useState(false);
-  const fishRef = useRef(null);
+  const [fishMathBubble, setFishMathBubble] = useState(null);
+  const [fishFlashRed, setFishFlashRed] = useState(false);
+  const [fishPowerMsg, setFishPowerMsg] = useState(null);
+  const fishPosRef = useRef({ x: 50, y: 50 });
+  const fishSizeRef = useRef(3);
+  const fishAnimRef = useRef(null);
+  const fishDragRef = useRef(false);
 
-  // Potion state
+  // Racing game state
+  const [raceLane, setRaceLane] = useState(1); // 0,1,2
+  const [raceSpeed, setRaceSpeed] = useState(0);
+  const [raceScore, setRaceScore] = useState(0);
+  const [raceActive, setRaceActive] = useState(false);
+  const [raceObstacles, setRaceObstacles] = useState([]);
+  const [raceStarPickups, setRaceStarPickups] = useState([]);
+  const [raceHits, setRaceHits] = useState(0);
+  const [raceMathBarrier, setRaceMathBarrier] = useState(null);
+  const [raceShake, setRaceShake] = useState(false);
+  const [raceFrozen, setRaceFrozen] = useState(false);
+  const [raceRoadOffset, setRaceRoadOffset] = useState(0);
+  const raceAnimRef = useRef(null);
+  const raceSpeedRef = useRef(0);
+  const gasRef = useRef(false);
+  const brakeRef = useRef(false);
+
+  // Potion game state
   const [potionRound, setPotionRound] = useState(0);
   const [potionScore, setPotionScore] = useState(0);
-  const [potionLeft, setPotionLeft] = useState(null);
-  const [potionRight, setPotionRight] = useState(null);
+  const [potionProblems, setPotionProblems] = useState(null);
   const [potionChosen, setPotionChosen] = useState(null);
   const [potionResult, setPotionResult] = useState(null);
   const [potionComplete, setPotionComplete] = useState(false);
 
-  // Reading state
-  const [storyData, setStoryData] = useState(null);
-  const [storyBlankIdx, setStoryBlankIdx] = useState(0);
-  const [storyScore, setStoryScore] = useState(0);
-  const [storyComplete, setStoryComplete] = useState(false);
-  const [storyLoading, setStoryLoading] = useState(false);
+  // Reading game state
+  const [readingStory, setReadingStory] = useState(null);
+  const [readingSentenceIdx, setReadingSentenceIdx] = useState(0);
+  const [readingScore, setReadingScore] = useState(0);
+  const [readingComplete, setReadingComplete] = useState(false);
+  const [readingWrong, setReadingWrong] = useState(false);
 
   // Co-op state
-  const [coopActive, setCoopActive] = useState(false);
   const [coopScoreLeft, setCoopScoreLeft] = useState(0);
   const [coopScoreRight, setCoopScoreRight] = useState(0);
   const [coopRound, setCoopRound] = useState(0);
   const [coopProblemLeft, setCoopProblemLeft] = useState(null);
   const [coopProblemRight, setCoopProblemRight] = useState(null);
-  const [coopAnswerLeft, setCoopAnswerLeft] = useState("");
-  const [coopAnswerRight, setCoopAnswerRight] = useState("");
   const [coopVersus, setCoopVersus] = useState(false);
-  const [coopRoundWinner, setCoopRoundWinner] = useState(null); // "left"|"right"|null
-
-  // Racing manual speed
-  const [raceSpeedManual, setRaceSpeedManual] = useState(0); // 0-5, player-controlled
+  const [coopRoundWinner, setCoopRoundWinner] = useState(null);
   const [currentWorld, setCurrentWorld] = useState(0);
   const [currentScene, setCurrentScene] = useState(0);
   const [hp, setHp] = useState(MAX_HP);
@@ -1044,34 +1116,181 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
     setTotalStarsSession(s => s + n);
   }
 
-  // ─── RACE TIMER ────────────────────────────────────────
-  useEffect(() => {
-    if (!raceActive || raceTimer <= 0) {
-      if (raceTimer <= 0) setRaceActive(false);
-      return;
-    }
-    const t = setTimeout(() => setRaceTimer(s => s - 1), 1000);
-    return () => clearTimeout(t);
-  }, [raceActive, raceTimer]);
+  // ─── FISH: keep refs in sync ────────────────────────────
+  useEffect(() => { fishPosRef.current = fishPos; }, [fishPos]);
+  useEffect(() => { fishSizeRef.current = fishSize; }, [fishSize]);
+  useEffect(() => { raceSpeedRef.current = raceSpeed; }, [raceSpeed]);
 
-  // ─── FISH BUBBLE SPAWNER ───────────────────────────────
+  // ─── FISH: enemy spawner ──────────────────────────────
+  useEffect(() => {
+    if (!fishActive || fishSize >= 10 || fishGameOver) return;
+    const FISH_EMOJIS = ['🐠','🐡','🐟','🐠','🐡','🐟','🦈'];
+    const spawn = () => {
+      setFishEnemies(enemies => {
+        if (enemies.length >= 10) return enemies;
+        const playerSz = fishSizeRef.current;
+        const sizeBase = Math.random() < 0.6
+          ? Math.max(1, playerSz - 1 - Math.random() * 3)
+          : playerSz + 1 + Math.random() * 3;
+        const size = Math.max(1, Math.min(12, sizeBase));
+        const fromLeft = Math.random() > 0.5;
+        const emoji = size > playerSz + 1
+          ? (Math.random() > 0.5 ? '🐡' : '🦈')
+          : FISH_EMOJIS[Math.floor(Math.random() * 5)];
+        return [...enemies, {
+          id: Date.now() + Math.random(),
+          x: fromLeft ? -8 : 108,
+          y: Math.random() * 70 + 10,
+          size, emoji,
+          speed: (Math.random() * 1.0 + 0.3) * (fromLeft ? 1 : -1),
+        }];
+      });
+    };
+    spawn();
+    const iv = setInterval(spawn, 1500);
+    return () => clearInterval(iv);
+  }, [fishActive, fishSize >= 10, fishGameOver]);
+
+  // ─── FISH: movement + collision loop ──────────────────
+  useEffect(() => {
+    if (!fishActive || fishGameOver) return;
+    const iv = setInterval(() => {
+      const pos = fishPosRef.current;
+      const sz = fishSizeRef.current;
+      setFishEnemies(enemies => {
+        const surviving = [];
+        for (const enemy of enemies) {
+          const movedX = enemy.x + enemy.speed;
+          if (movedX < -15 || movedX > 115) continue;
+          const dx = movedX - pos.x;
+          const dy = enemy.y - pos.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const collisionDist = 6 + sz * 1.2;
+          if (dist < collisionDist) {
+            if (enemy.size < sz) {
+              setFishScore(s => s + 10);
+              setFishSize(s => Math.min(10, s + 0.5));
+              setFishPowerMsg("CHOMP! +10");
+              setTimeout(() => setFishPowerMsg(null), 600);
+              continue;
+            } else if (enemy.size > sz + 0.5) {
+              setFishScore(s => Math.max(0, s - 20));
+              setFishSize(s => {
+                const newSz = s - 1;
+                if (newSz <= 0) setFishGameOver(true);
+                return Math.max(0.5, newSz);
+              });
+              setFishFlashRed(true);
+              setTimeout(() => setFishFlashRed(false), 300);
+              continue;
+            }
+          }
+          surviving.push({ ...enemy, x: movedX });
+        }
+        return surviving;
+      });
+    }, 50);
+    return () => clearInterval(iv);
+  }, [fishActive, fishGameOver]);
+
+  // ─── FISH: math bonus bubble every 15s ────────────────
   useEffect(() => {
     if (!fishActive || fishSize >= 10 || fishGameOver) return;
     const iv = setInterval(() => {
-      const p = genMathProblem(kidDifficulty.math);
-      const wrong1 = p.answer + Math.floor(Math.random()*5) + 1;
-      const wrong2 = Math.max(1, p.answer - Math.floor(Math.random()*5) - 1);
-      const options = [p.answer, wrong1, wrong2].sort(() => Math.random()-0.5);
-      setFishBubbles(bs => [...bs.slice(-4), {
-        x: Math.random()*80+10, y: Math.random()*70+10,
-        correct: p.answer, options, text: p.text, id: Date.now()
-      }]);
-    }, 3000);
-    return () => clearInterval(iv);
-  }, [fishActive, fishSize, fishGameOver]);
+      if (!fishMathBubble) {
+        const prob = generateMathProblem(mathDifficulty);
+        setFishMathBubble({ ...prob, x: Math.random() * 60 + 20, y: Math.random() * 50 + 15 });
+      }
+    }, 15000);
+    // Spawn first one after 8s
+    const firstTimeout = setTimeout(() => {
+      const prob = generateMathProblem(mathDifficulty);
+      setFishMathBubble({ ...prob, x: Math.random() * 60 + 20, y: Math.random() * 50 + 15 });
+    }, 8000);
+    return () => { clearInterval(iv); clearTimeout(firstTimeout); };
+  }, [fishActive, fishSize >= 10, fishGameOver]);
+
+  // ─── RACING: animation loop ───────────────────────────
+  useEffect(() => {
+    if (!raceActive) return;
+    let lastObstacleTime = Date.now();
+    let lastStarTime = Date.now();
+    let lastBarrierTime = 0;
+    const OBSTACLE_EMOJIS = ['🪨','🌳','🚧'];
+    const loop = () => {
+      // Speed physics
+      if (gasRef.current && !raceFrozen) {
+        setRaceSpeed(s => Math.min(10, s + 0.15));
+      } else if (brakeRef.current) {
+        setRaceSpeed(s => Math.max(0, s - 0.3));
+      } else {
+        setRaceSpeed(s => Math.max(0, s - 0.03)); // coast decel
+      }
+      const spd = raceSpeedRef.current;
+      // Scroll road
+      setRaceRoadOffset(o => (o + spd * 3) % 40);
+      // Move obstacles down
+      setRaceObstacles(obs => {
+        const next = [];
+        for (const o of obs) {
+          const ny = o.y + spd * 2;
+          if (ny > 110) continue;
+          // collision with player (player is at y~85%, lane matches)
+          if (ny > 75 && ny < 95 && o.lane === raceLane) {
+            setRaceScore(sc => Math.max(0, sc - 50));
+            setRaceHits(h => h + 1);
+            setRaceSpeed(0);
+            setRaceShake(true);
+            setTimeout(() => setRaceShake(false), 400);
+            continue;
+          }
+          next.push({ ...o, y: ny });
+        }
+        return next;
+      });
+      // Move stars down
+      setRaceStarPickups(stars => {
+        const next = [];
+        for (const s of stars) {
+          const ny = s.y + spd * 2;
+          if (ny > 110) continue;
+          if (ny > 75 && ny < 95 && s.lane === raceLane) {
+            setRaceScore(sc => sc + 25);
+            continue;
+          }
+          next.push({ ...s, y: ny });
+        }
+        return next;
+      });
+      // Spawn obstacles
+      const now = Date.now();
+      if (now - lastObstacleTime > 2000 && spd > 1) {
+        lastObstacleTime = now;
+        const lane = Math.floor(Math.random() * 3);
+        const emoji = OBSTACLE_EMOJIS[Math.floor(Math.random() * OBSTACLE_EMOJIS.length)];
+        setRaceObstacles(obs => [...obs, { id: now, lane, y: -10, emoji }]);
+      }
+      // Spawn stars
+      if (now - lastStarTime > 3000 && spd > 0.5) {
+        lastStarTime = now;
+        const lane = Math.floor(Math.random() * 3);
+        setRaceStarPickups(s => [...s, { id: now, lane, y: -10 }]);
+      }
+      // Spawn math barrier every ~20s
+      if (now - lastBarrierTime > 20000 && spd > 2 && !raceMathBarrier) {
+        lastBarrierTime = now;
+        const prob = generateMathProblem(mathDifficulty);
+        setRaceMathBarrier(prob);
+        setRaceFrozen(true);
+        setRaceSpeed(0);
+      }
+      raceAnimRef.current = requestAnimationFrame(loop);
+    };
+    raceAnimRef.current = requestAnimationFrame(loop);
+    return () => { if (raceAnimRef.current) cancelAnimationFrame(raceAnimRef.current); };
+  }, [raceActive, raceLane, raceFrozen]);
 
   // ─── CLEANUP ────────────────────────────────────────────
-
   useEffect(() => {
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, []);
@@ -1089,6 +1308,10 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
     minHeight: 500,
     borderRadius: 16,
     overflow: "hidden",
+    overflowX: "hidden",
+    maxWidth: "100vw",
+    width: "100%",
+    boxSizing: "border-box",
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     ...fadeStyle,
   };
@@ -1753,6 +1976,32 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
 
   // ─── MINI GAMES MENU ─────────────────────────────────────
   if (screen === "mini_games") {
+    const startFish = () => {
+      setFishSize(3); setFishPos({x:50,y:50}); setFishEnemies([]); setFishScore(0);
+      setFishActive(true); setFishGameOver(false); setFishMathBubble(null);
+      setFishFlashRed(false); setFishPowerMsg(null); transitionTo("fish");
+    };
+    const startRacing = () => {
+      setRaceLane(1); setRaceSpeed(0); setRaceScore(0); setRaceActive(true);
+      setRaceObstacles([]); setRaceStarPickups([]); setRaceHits(0);
+      setRaceMathBarrier(null); setRaceShake(false); setRaceFrozen(false);
+      setRaceRoadOffset(0); transitionTo("racing");
+    };
+    const startPotion = () => {
+      setPotionRound(1); setPotionScore(0); setPotionChosen(null); setPotionResult(null);
+      setPotionComplete(false);
+      const l = generateMathProblem(mathDifficulty), r = generateMathProblem(mathDifficulty);
+      setPotionProblems({ left: l, right: r });
+      transitionTo("potion");
+    };
+    const startReading = () => {
+      const pool = isLucaMode ? STORIES.easy : STORIES.hard;
+      const story = pool[Math.floor(Math.random() * pool.length)];
+      setReadingStory(story); setReadingSentenceIdx(0); setReadingScore(0);
+      setReadingComplete(false); setReadingWrong(false);
+      if (isLucaMode) speakText(story.title);
+      transitionTo("reading");
+    };
     return (
       <>
         <style>{KEYFRAMES_CSS}</style>
@@ -1764,39 +2013,28 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
               </div>
               <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)" }}>Learn while you play!</div>
               <Avatar emoji={playerEmoji} emotion="happy" anim="bounce" size={50} />
+              <div style={{ fontSize:14, color:"#fbbf24", marginTop:4 }}>⭐ {currentPoints} Total Stars</div>
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, maxWidth:340, margin:"0 auto" }}>
-              <div onClick={() => { setRaceBarriers([]); setRaceLane(1); setRaceScore(0); setRaceStars(0); setRaceTimer(60); setRaceActive(true); setRaceAnswer(""); setRaceCurrentBarrier(genMathProblem(kidDifficulty.math)); transitionTo("racing"); }}
-                style={{ background:"linear-gradient(135deg, #dc2626, #f97316)", borderRadius:16, padding:20, textAlign:"center", cursor:"pointer", minHeight:120 }}>
-                <div style={{ fontSize:40 }}>🏎️</div>
-                <div style={{ fontSize:16, fontWeight:700, color:"#fff", marginTop:6 }}>Racing</div>
-                <div style={{ fontSize:11, color:"rgba(255,255,255,0.7)" }}>Blast barriers!</div>
-              </div>
-              <div onClick={() => { setFishSize(1); setFishPos({x:50,y:50}); setFishEnemies([]); setFishBubbles([]); setFishScore(0); setFishStars(0); setFishActive(true); setFishGameOver(false); transitionTo("fish"); }}
-                style={{ background:"linear-gradient(135deg, #0369a1, #22d3ee)", borderRadius:16, padding:20, textAlign:"center", cursor:"pointer", minHeight:120 }}>
-                <div style={{ fontSize:40 }}>🐟</div>
-                <div style={{ fontSize:16, fontWeight:700, color:"#fff", marginTop:6 }}>Fish Eater</div>
-                <div style={{ fontSize:11, color:"rgba(255,255,255,0.7)" }}>Grow big!</div>
-              </div>
-              <div onClick={() => { setPotionRound(1); setPotionScore(0); setPotionChosen(null); setPotionResult(null); setPotionComplete(false);
-                const l=genMathProblem(kidDifficulty.math), r=genMathProblem(kidDifficulty.math); setPotionLeft({...l,color:"#a855f7"}); setPotionRight({...r,color:"#22c55e"}); transitionTo("potion"); }}
-                style={{ background:"linear-gradient(135deg, #7c3aed, #a855f7)", borderRadius:16, padding:20, textAlign:"center", cursor:"pointer", minHeight:120 }}>
-                <div style={{ fontSize:40 }}>🧪</div>
-                <div style={{ fontSize:16, fontWeight:700, color:"#fff", marginTop:6 }}>Potions</div>
-                <div style={{ fontSize:11, color:"rgba(255,255,255,0.7)" }}>Brew spells!</div>
-              </div>
-              <div onClick={() => { setStoryData(null); setStoryBlankIdx(0); setStoryScore(0); setStoryComplete(false); setStoryLoading(true); transitionTo("reading"); }}
-                style={{ background:"linear-gradient(135deg, #059669, #34d399)", borderRadius:16, padding:20, textAlign:"center", cursor:"pointer", minHeight:120 }}>
-                <div style={{ fontSize:40 }}>📖</div>
-                <div style={{ fontSize:16, fontWeight:700, color:"#fff", marginTop:6 }}>Reading</div>
-                <div style={{ fontSize:11, color:"rgba(255,255,255,0.7)" }}>Complete stories!</div>
-              </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, maxWidth:400, margin:"0 auto" }}>
+              {[
+                { emoji:"🐟", name:"Fish Eater", desc:"Eat fish & grow!", bg:"linear-gradient(135deg, #0369a1, #22d3ee)", fn: startFish },
+                { emoji:"🏎️", name:"Racing", desc:"Dodge & drive!", bg:"linear-gradient(135deg, #dc2626, #f97316)", fn: startRacing },
+                { emoji:"🧪", name:"Potions", desc:"Brew spells!", bg:"linear-gradient(135deg, #7c3aed, #a855f7)", fn: startPotion },
+                { emoji:"📖", name:"Reading", desc:"Complete stories!", bg:"linear-gradient(135deg, #059669, #34d399)", fn: startReading },
+              ].map((g, i) => (
+                <div key={i} onClick={g.fn}
+                  style={{ background:g.bg, borderRadius:16, padding:20, textAlign:"center", cursor:"pointer", minHeight:120 }}>
+                  <div style={{ fontSize:48 }}>{g.emoji}</div>
+                  <div style={{ fontSize:17, fontWeight:700, color:"#fff", marginTop:8 }}>{g.name}</div>
+                  <div style={{ fontSize:12, color:"rgba(255,255,255,0.7)" }}>{g.desc}</div>
+                </div>
+              ))}
             </div>
             <div style={{ marginTop:16, maxWidth:340, margin:"16px auto 0", display:"flex", flexDirection:"column", gap:8 }}>
-              <GameBtn color="#f59e0b" onClick={() => { setCoopActive(false); setCoopScoreLeft(0); setCoopScoreRight(0); setCoopRound(0); setCoopVersus(false); transitionTo("coop"); }}>
+              <GameBtn color="#f59e0b" onClick={() => { setCoopScoreLeft(0); setCoopScoreRight(0); setCoopRound(0); setCoopVersus(false); setCoopProblemLeft(null); setCoopProblemRight(null); transitionTo("coop"); }}>
                 👫 Play Together (Co-op)
               </GameBtn>
-              <GameBtn color="#ef4444" onClick={() => { setCoopActive(false); setCoopScoreLeft(0); setCoopScoreRight(0); setCoopRound(0); setCoopVersus(true); transitionTo("coop"); }}>
+              <GameBtn color="#ef4444" onClick={() => { setCoopScoreLeft(0); setCoopScoreRight(0); setCoopRound(0); setCoopVersus(true); setCoopProblemLeft(null); setCoopProblemRight(null); transitionTo("coop"); }}>
                 🏆 Play Against Each Other
               </GameBtn>
             </div>
@@ -1811,80 +2049,137 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
 
   // ─── RACING GAME ──────────────────────────────────────────
   if (screen === "racing") {
+    const raceOver = raceHits >= 3;
+    if (raceOver && raceActive) { setRaceActive(false); }
+    const raceStarsEarned = raceScore <= 100 ? 1 : raceScore <= 300 ? 2 : 3;
+    const laneX = [15, 50, 85]; // lane center percentages
+    const speedInt = Math.round(raceSpeed);
     return (
       <>
         <style>{KEYFRAMES_CSS}</style>
         <div style={containerStyle}>
-          <div style={{ minHeight:500, background:"linear-gradient(180deg, #1a1a2e, #16213e)", padding:16 }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-              <GameBtn color="#475569" onClick={() => { setRaceActive(false); transitionTo("mini_games"); }}>← Back</GameBtn>
-              <div style={{ color:"#fbbf24", fontWeight:700 }}>⭐ {raceStars} | Score: {raceScore}</div>
-              <div style={{ color:"#ef4444", fontWeight:700 }}>⏱ {raceTimer}s</div>
+          <div style={{ minHeight:500, background:"linear-gradient(180deg, #1a1a2e, #16213e)", padding:0, animation: raceShake ? "ll-screen-shake 0.4s" : "none" }}>
+            {/* Header */}
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 12px", flexWrap:"wrap", gap:4 }}>
+              <GameBtn color="#475569" onClick={() => { setRaceActive(false); transitionTo("mini_games"); }}
+                style={{ width:"auto", padding:"8px 14px", minHeight:44 }}>← Back</GameBtn>
+              <div style={{ color:"#fbbf24", fontWeight:700, fontSize:14 }}>Score: {raceScore}</div>
+              <div style={{ color:"#fff", fontWeight:700, fontSize:14 }}>Speed: {speedInt}/10 | Hits: {raceHits}/3</div>
             </div>
-            {/* Track */}
-            <div style={{ background:"linear-gradient(90deg, #374151 0%, #374151 48%, #fbbf24 49%, #fbbf24 51%, #374151 52%, #374151 100%)",
-              borderRadius:12, height:200, position:"relative", overflow:"hidden", border:"2px solid #4b5563", marginBottom:12 }}>
-              {/* Lanes */}
-              {[0,1,2].map(lane => (
-                <div key={lane} style={{ position:"absolute", top: lane*66+4, left:0, right:0, height:60, borderBottom: lane<2?"1px dashed rgba(255,255,255,0.2)":"none" }}>
-                  {raceLane === lane && <div style={{ position:"absolute", left:30, top:10, fontSize:40, transition:"top 0.2s" }}>🏎️</div>}
-                </div>
+            {/* Speed bar */}
+            <div style={{ display:"flex", alignItems:"center", gap:8, padding:"0 12px 6px" }}>
+              <span style={{ color:"#94a3b8", fontSize:12, minWidth:48 }}>Speed:</span>
+              <div style={{ flex:1, height:12, background:"#1e293b", borderRadius:6, overflow:"hidden" }}>
+                <div style={{ width:`${raceSpeed*10}%`, height:"100%", borderRadius:6, transition:"width 0.1s",
+                  background: raceSpeed > 7 ? "linear-gradient(90deg, #f59e0b, #ef4444)" : "linear-gradient(90deg, #22c55e, #f59e0b)" }} />
+              </div>
+              <span style={{ color:"#fff", fontSize:13, fontWeight:700, minWidth:20 }}>{speedInt}</span>
+            </div>
+            {/* Road */}
+            <div style={{ position:"relative", width:"60%", margin:"0 auto", height:300, background:"#374151", borderRadius:8,
+              overflow:"hidden", border:"2px solid #4b5563" }}>
+              {/* Green shoulders */}
+              <div style={{ position:"absolute", top:0, bottom:0, left:-4, width:4, background:"#22c55e" }} />
+              <div style={{ position:"absolute", top:0, bottom:0, right:-4, width:4, background:"#22c55e" }} />
+              {/* Dashed center line */}
+              <div style={{ position:"absolute", left:"50%", top:0, bottom:0, width:3, transform:"translateX(-50%)",
+                backgroundImage:`repeating-linear-gradient(0deg, #fbbf24 0px, #fbbf24 20px, transparent 20px, transparent 40px)`,
+                backgroundPositionY: raceRoadOffset }} />
+              {/* Lane dividers */}
+              <div style={{ position:"absolute", left:"33.3%", top:0, bottom:0, width:1, background:"rgba(255,255,255,0.15)" }} />
+              <div style={{ position:"absolute", left:"66.6%", top:0, bottom:0, width:1, background:"rgba(255,255,255,0.15)" }} />
+              {/* Player car */}
+              <div style={{ position:"absolute", bottom:20, left:`${laneX[raceLane]}%`, transform:"translateX(-50%)",
+                fontSize:36, transition:"left 0.15s ease-out", zIndex:5 }}>🏎️</div>
+              {/* Obstacles */}
+              {raceObstacles.map(o => (
+                <div key={o.id} style={{ position:"absolute", top:`${o.y}%`, left:`${laneX[o.lane]}%`,
+                  transform:"translateX(-50%)", fontSize:28, zIndex:3 }}>{o.emoji}</div>
               ))}
-              {/* Current barrier */}
-              {raceCurrentBarrier && raceActive && (
-                <div style={{ position:"absolute", right:20, top: raceLane*66+10, background:"#ef4444", borderRadius:8, padding:"8px 14px",
-                  color:"#fff", fontWeight:800, fontSize:18, border:"2px solid #fca5a5" }}>
-                  {raceCurrentBarrier.text} = ?
+              {/* Star pickups */}
+              {raceStarPickups.map(s => (
+                <div key={s.id} style={{ position:"absolute", top:`${s.y}%`, left:`${laneX[s.lane]}%`,
+                  transform:"translateX(-50%)", fontSize:24, zIndex:3 }}>⭐</div>
+              ))}
+              {/* Math barrier overlay */}
+              {raceMathBarrier && (
+                <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.75)", zIndex:10,
+                  display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:12 }}>
+                  <div style={{ fontSize:14, color:"#fbbf24", fontWeight:700 }}>MATH BARRIER!</div>
+                  <div style={{ fontSize:24, fontWeight:900, color:"#fff" }}>{raceMathBarrier.question} = ?</div>
+                  <div style={{ display:"flex", gap:10 }}>
+                    {raceMathBarrier.choices.map((c, i) => (
+                      <button key={i} onClick={() => {
+                        if (c === raceMathBarrier.answer) {
+                          setRaceScore(s => s + 100); setRaceSpeed(5);
+                        } else {
+                          setRaceScore(s => Math.max(0, s - 50));
+                          setRaceFrozen(true);
+                          setTimeout(() => setRaceFrozen(false), 2000);
+                        }
+                        setRaceMathBarrier(null); setRaceFrozen(false);
+                      }} style={{ minWidth:64, minHeight:64, borderRadius:14, border:"3px solid #fbbf24",
+                        background:"rgba(59,130,246,0.8)", color:"#fff", fontSize:22, fontWeight:800, cursor:"pointer" }}>
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Game over overlay */}
+              {raceOver && (
+                <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,0.8)", zIndex:20,
+                  display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
+                  <div style={{ fontSize:48 }}>🏁</div>
+                  <div style={{ fontSize:28, fontWeight:900, color:"#fbbf24", marginTop:8 }}>Race Over!</div>
+                  <div style={{ fontSize:18, color:"#fff", marginTop:4 }}>Score: {raceScore}</div>
+                  <div style={{ fontSize:16, color:"#fbbf24", marginTop:4 }}>⭐ {raceStarsEarned} Stars!</div>
                 </div>
               )}
             </div>
-            {/* Speed indicator */}
-            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8, padding:"0 8px" }}>
-              <span style={{ color:"#94a3b8", fontSize:12, minWidth:50 }}>Speed:</span>
-              <div style={{ flex:1, height:8, background:"#1e293b", borderRadius:4, overflow:"hidden" }}>
-                <div style={{ width:`${raceSpeedManual*20}%`, height:"100%", borderRadius:4, transition:"width 0.15s",
-                  background: raceSpeedManual > 3 ? "linear-gradient(90deg, #f59e0b, #ef4444)" : "linear-gradient(90deg, #22c55e, #f59e0b)" }} />
-              </div>
-              <span style={{ color: raceSpeedManual > 3 ? "#ef4444" : "#22c55e", fontSize:12, fontWeight:700, minWidth:20 }}>{raceSpeedManual}</span>
-            </div>
-            {/* Controls: lane + speed */}
-            <div style={{ display:"flex", gap:8, justifyContent:"center", marginBottom:12 }}>
-              <GameBtn color="#3b82f6" onClick={() => setRaceLane(Math.max(0, raceLane-1))}>⬆️ Lane Up</GameBtn>
-              <GameBtn color="#22c55e" onClick={() => setRaceSpeedManual(s => Math.min(5, s+1))}>🚀 Gas</GameBtn>
-              <GameBtn color="#ef4444" onClick={() => setRaceSpeedManual(s => Math.max(0, s-1))}>🛑 Brake</GameBtn>
-              <GameBtn color="#3b82f6" onClick={() => setRaceLane(Math.min(2, raceLane+1))}>⬇️ Lane Down</GameBtn>
-            </div>
-            {/* Answer input */}
-            {raceActive && raceCurrentBarrier && (
-              <div style={{ display:"flex", gap:8, justifyContent:"center" }}>
-                <input value={raceAnswer} onChange={e => setRaceAnswer(e.target.value.replace(/[^0-9-]/g,""))}
-                  onKeyDown={e => {
-                    if (e.key === "Enter" && raceAnswer) {
-                      if (parseInt(raceAnswer) === raceCurrentBarrier.answer) {
-                        const speedBonus = Math.max(1, raceSpeedManual);
-                        setRaceScore(s => s + 10 * speedBonus); setRaceStars(s => s + speedBonus);
-                        setRaceCurrentBarrier(genMathProblem(kidDifficulty.math));
-                      } else { setRaceSpeedManual(s => Math.max(0, s-2)); } // wrong = slow down
-                      setRaceAnswer("");
-                    }
-                  }}
-                  placeholder="Answer..." style={{ background:"#1e293b", color:"#fff", border:"2px solid #3b82f6", borderRadius:12,
-                    padding:"12px 16px", fontSize:20, width:120, textAlign:"center" }} />
-                <GameBtn color="#22c55e" onClick={() => {
-                  if (raceAnswer && parseInt(raceAnswer) === raceCurrentBarrier.answer) {
-                    const speedBonus = Math.max(1, raceSpeedManual);
-                    setRaceScore(s => s + 10 * speedBonus); setRaceStars(s => s + speedBonus);
-                    setRaceCurrentBarrier(genMathProblem(kidDifficulty.math));
-                  } else if (raceAnswer) { setRaceSpeedManual(s => Math.max(0, s-2)); }
-                  setRaceAnswer("");
-                }}>💥 Blast!</GameBtn>
-              </div>
+            {/* Controls */}
+            {!raceOver && !raceMathBarrier && (
+              <>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, padding:"8px 12px" }}>
+                  <button onClick={() => setRaceLane(l => Math.max(0, l-1))}
+                    style={{ minHeight:60, fontSize:20, fontWeight:700, background:"#3b82f6", color:"#fff",
+                      border:"none", borderRadius:12, cursor:"pointer" }}>⬅️ Left</button>
+                  <button onClick={() => setRaceLane(l => Math.min(2, l+1))}
+                    style={{ minHeight:60, fontSize:20, fontWeight:700, background:"#3b82f6", color:"#fff",
+                      border:"none", borderRadius:12, cursor:"pointer" }}>➡️ Right</button>
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, padding:"0 12px 12px" }}>
+                  <button
+                    onTouchStart={() => { gasRef.current = true; }}
+                    onTouchEnd={() => { gasRef.current = false; }}
+                    onMouseDown={() => { gasRef.current = true; }}
+                    onMouseUp={() => { gasRef.current = false; }}
+                    onMouseLeave={() => { gasRef.current = false; }}
+                    style={{ minHeight:80, fontSize:22, fontWeight:800, background:"linear-gradient(135deg, #16a34a, #22c55e)",
+                      color:"#fff", border:"none", borderRadius:14, cursor:"pointer",
+                      boxShadow:"0 4px 12px rgba(34,197,94,0.4)", touchAction:"none" }}>🚀 GAS</button>
+                  <button
+                    onTouchStart={() => { brakeRef.current = true; }}
+                    onTouchEnd={() => { brakeRef.current = false; }}
+                    onMouseDown={() => { brakeRef.current = true; }}
+                    onMouseUp={() => { brakeRef.current = false; }}
+                    onMouseLeave={() => { brakeRef.current = false; }}
+                    style={{ minHeight:80, fontSize:22, fontWeight:800, background:"linear-gradient(135deg, #dc2626, #ef4444)",
+                      color:"#fff", border:"none", borderRadius:14, cursor:"pointer",
+                      boxShadow:"0 4px 12px rgba(239,68,68,0.4)", touchAction:"none" }}>🔴 BRAKE</button>
+                </div>
+              </>
             )}
-            {!raceActive && raceScore > 0 && (
-              <div style={{ textAlign:"center", marginTop:20 }}>
-                <div style={{ fontSize:24, fontWeight:800, color:"#fbbf24" }}>🏁 Race Over!</div>
-                <div style={{ fontSize:18, color:"#fff", marginTop:8 }}>Score: {raceScore} | Stars: ⭐{raceStars}</div>
-                <GameBtn color="#22c55e" onClick={() => { awardStars(raceStars); transitionTo("mini_games"); }}>Collect Stars!</GameBtn>
+            {/* Collect stars after game over */}
+            {raceOver && (
+              <div style={{ textAlign:"center", padding:"16px 12px" }}>
+                <GameBtn color="#22c55e" onClick={() => {
+                  awardStars(raceStarsEarned);
+                  if (fbSet && profile?.name) fbSet(`gameHistory/${profile.name}/${Date.now()}`, { game:'racing', score:raceScore, stars:raceStarsEarned, timestamp:new Date().toISOString(), profile:profile.name });
+                  transitionTo("mini_games");
+                }} style={{ minHeight:80, fontSize:20 }}>
+                  Collect ⭐ {raceStarsEarned} Stars! 🏁
+                </GameBtn>
               </div>
             )}
           </div>
@@ -1895,77 +2190,215 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
 
   // ─── FISH EATER GAME ──────────────────────────────────────
   if (screen === "fish") {
+    const handleFishMove = (clientX, clientY, rect) => {
+      if (!fishActive || fishGameOver || fishSize >= 10) return;
+      const x = ((clientX - rect.left) / rect.width) * 100;
+      const y = ((clientY - rect.top) / rect.height) * 100;
+      setFishPos({ x: Math.max(5, Math.min(95, x)), y: Math.max(5, Math.min(90, y)) });
+    };
+    const handleOceanTouch = (e) => {
+      e.preventDefault();
+      if (!fishActive || fishGameOver || fishSize >= 10) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const touch = e.touches ? e.touches[0] : e.changedTouches ? e.changedTouches[0] : e;
+      handleFishMove(touch.clientX, touch.clientY, rect);
+    };
+    const handleOceanClick = (e) => {
+      if (!fishActive || fishGameOver || fishSize >= 10) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      handleFishMove(e.clientX, e.clientY, rect);
+    };
+    const sizeRounded = Math.round(fishSize);
+    const fishStarsEarned = fishScore <= 100 ? 1 : fishScore <= 300 ? 2 : 3;
+    const fishDone = fishSize >= 10 || fishGameOver;
     return (
       <>
         <style>{KEYFRAMES_CSS}</style>
         <div style={containerStyle}>
-          <div style={{ minHeight:500, background:"linear-gradient(180deg, #0c4a6e, #0369a1, #0284c7)", padding:16 }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-              <GameBtn color="#475569" onClick={() => { setFishActive(false); transitionTo("mini_games"); }}>← Back</GameBtn>
-              <div style={{ color:"#fbbf24", fontWeight:700 }}>Size: {fishSize}/10 | ⭐ {fishStars}</div>
+          <div style={{ minHeight:500, background:"linear-gradient(180deg, #0c4a6e, #0369a1, #0284c7)", padding:12,
+            ...(fishFlashRed ? { boxShadow:"inset 0 0 60px rgba(239,68,68,0.6)" } : {}) }}>
+            {/* Header */}
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8, flexWrap:"wrap", gap:4 }}>
+              <GameBtn color="#475569" onClick={() => { setFishActive(false); transitionTo("mini_games"); }}
+                style={{ width:"auto", padding:"8px 14px", minHeight:44 }}>← Back</GameBtn>
+              <div style={{ color:"#fbbf24", fontWeight:700, fontSize:16 }}>
+                Score: {fishScore}
+              </div>
+              <div style={{ color:"#22d3ee", fontWeight:700, fontSize:14 }}>
+                Size: {sizeRounded}/10
+              </div>
+            </div>
+            {/* Size bar */}
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8, padding:"0 4px" }}>
+              <span style={{ color:"#22d3ee", fontSize:12, fontWeight:600 }}>Size:</span>
+              <div style={{ flex:1, height:12, background:"rgba(0,0,0,0.3)", borderRadius:6, overflow:"hidden" }}>
+                <div style={{ width:`${(fishSize/10)*100}%`, height:"100%", borderRadius:6, transition:"width 0.3s",
+                  background: fishSize > 7 ? "linear-gradient(90deg, #22c55e, #fbbf24)" : "linear-gradient(90deg, #22d3ee, #22c55e)" }} />
+              </div>
+              <span style={{ color:"#fff", fontSize:13, fontWeight:700 }}>{sizeRounded}</span>
             </div>
             {/* Ocean */}
-            <div style={{ background:"linear-gradient(180deg, #0c4a6e, #164e63)", borderRadius:16, height:300, position:"relative",
-              overflow:"hidden", border:"2px solid #22d3ee" }}>
-              {/* Wave animation at top */}
-              <div style={{ position:"absolute", top:0, left:0, right:0, height:8, background:"rgba(34,211,238,0.3)" }} />
-              {/* Your fish */}
-              <div style={{ position:"absolute", left:`${fishPos.x}%`, top:`${fishPos.y}%`, fontSize: 20 + fishSize * 4,
-                transition:"left 0.15s, top 0.15s, font-size 0.3s", transform:"translateX(-50%) translateY(-50%)" }}>
-                🐟
+            <div
+              onClick={handleOceanClick}
+              onTouchStart={handleOceanTouch}
+              onTouchMove={handleOceanTouch}
+              style={{ background:"linear-gradient(180deg, #0c4a6e, #164e63, #0a3d5c)", borderRadius:16,
+                width:"100%", paddingBottom:"80%", position:"relative",
+                overflow:"hidden", border:"2px solid #22d3ee", touchAction:"none" }}>
+              {/* Wave */}
+              <div style={{ position:"absolute", top:0, left:0, right:0, height:8,
+                background:"linear-gradient(90deg, rgba(34,211,238,0.5), rgba(34,211,238,0.15), rgba(34,211,238,0.5))",
+                animation:"ll-pulse 2s ease-in-out infinite" }} />
+              {/* Seaweed */}
+              {[8,25,50,72,90].map((x,i) => (
+                <div key={`w${i}`} style={{ position:"absolute", bottom:0, left:`${x}%`, fontSize:16+i*3,
+                  opacity:0.35, animation:`ll-pulse ${2+i*0.4}s ease-in-out infinite` }}>🌿</div>
+              ))}
+              {/* Bubbles decoration */}
+              {[0,1,2].map(i => (
+                <div key={`db${i}`} style={{ position:"absolute", bottom:`${10+i*25}%`, left:`${20+i*25}%`,
+                  fontSize:10, opacity:0.25, animation:`ll-bubble-rise ${3+i}s ease-in-out ${i}s infinite` }}>🫧</div>
+              ))}
+              {/* Power up message */}
+              {fishPowerMsg && (
+                <div style={{ position:"absolute", top:"40%", left:"50%", transform:"translate(-50%,-50%)",
+                  fontSize:20, fontWeight:900, color:"#4ade80", textShadow:"0 0 10px #22c55e",
+                  animation:"ll-float-up 0.6s ease-out forwards", zIndex:15, pointerEvents:"none" }}>
+                  {fishPowerMsg}
+                </div>
+              )}
+              {/* Player fish */}
+              <div style={{ position:"absolute", left:`${fishPos.x}%`, top:`${fishPos.y}%`,
+                fontSize: 20 + sizeRounded * 4, zIndex:5,
+                transition:"left 0.15s ease-out, top 0.15s ease-out, font-size 0.3s",
+                transform:"translateX(-50%) translateY(-50%)",
+                filter:"drop-shadow(0 0 8px rgba(34,211,238,0.6))",
+                animation:"ll-swim 1.5s ease-in-out infinite" }}>
+                🐠
               </div>
-              {/* Bubbles with math — 3 answer options */}
-              {fishBubbles.map((b, i) => (
-                <div key={b.id||i} style={{ position:"absolute", left:`${b.x}%`, top:`${b.y}%`,
-                  display:"flex", flexDirection:"column", alignItems:"center", gap:4, transform:"translate(-50%,-50%)", zIndex:5 }}>
-                  <div style={{ background:"rgba(255,255,255,0.25)", borderRadius:10, padding:"4px 8px",
-                    color:"#fff", fontWeight:700, fontSize:13, border:"1px solid rgba(255,255,255,0.4)" }}>
-                    🫧 {b.text}
+              {/* Enemy fish */}
+              {fishEnemies.map(enemy => {
+                const isSmaller = enemy.size < fishSize;
+                const isBigger = enemy.size > fishSize + 0.5;
+                return (
+                  <div key={enemy.id} style={{
+                    position:"absolute", left:`${enemy.x}%`, top:`${enemy.y}%`,
+                    fontSize: 14 + Math.round(enemy.size) * 3.5,
+                    transform:`translateX(-50%) translateY(-50%) scaleX(${enemy.speed > 0 ? 1 : -1})`,
+                    zIndex:3, pointerEvents:"none",
+                    filter: isBigger ? "drop-shadow(0 0 6px rgba(239,68,68,0.5))" : isSmaller ? "drop-shadow(0 0 4px rgba(34,197,94,0.4))" : "none",
+                    animation:"ll-swim 1.2s ease-in-out infinite",
+                  }}>
+                    {enemy.emoji}
+                    <div style={{ position:"absolute", top:-14, left:"50%", transform:"translateX(-50%)",
+                      fontSize:10, fontWeight:800, whiteSpace:"nowrap",
+                      color: isSmaller ? "#4ade80" : isBigger ? "#fca5a5" : "#fde68a",
+                      textShadow:"0 1px 3px rgba(0,0,0,0.9)",
+                      background: isSmaller ? "rgba(34,197,94,0.4)" : isBigger ? "rgba(239,68,68,0.4)" : "rgba(251,191,36,0.3)",
+                      padding:"2px 6px", borderRadius:4 }}>
+                      {isSmaller ? "EAT" : isBigger ? "DANGER" : "SAME"}
+                    </div>
                   </div>
-                  <div style={{ display:"flex", gap:4 }}>
-                    {(b.options||[b.correct]).map((opt, oi) => (
-                      <button key={oi} onClick={e => { e.stopPropagation();
-                        if (opt === b.correct) {
-                          setFishSize(s => Math.min(10, s+1)); setFishStars(s => s+1); setFishScore(s => s+10);
-                          setFishBubbles(bs => bs.filter((_,j) => j!==i));
+                );
+              })}
+              {/* Math bonus bubble */}
+              {fishMathBubble && !fishDone && (
+                <div style={{ position:"absolute", left:`${fishMathBubble.x}%`, top:`${fishMathBubble.y}%`,
+                  transform:"translate(-50%,-50%)", zIndex:10, display:"flex", flexDirection:"column", alignItems:"center", gap:6 }}>
+                  <div style={{ background:"rgba(251,191,36,0.4)", borderRadius:14, padding:"6px 14px",
+                    color:"#fbbf24", fontWeight:800, fontSize:14, border:"2px solid rgba(251,191,36,0.7)",
+                    animation:"ll-pulse 1.2s ease-in-out infinite", whiteSpace:"nowrap",
+                    boxShadow:"0 0 20px rgba(251,191,36,0.3)" }}>
+                    BONUS: {fishMathBubble.question} = ?
+                  </div>
+                  <div style={{ display:"flex", gap:8 }}>
+                    {fishMathBubble.choices.map((c, ci) => (
+                      <button key={ci} onClick={(e) => { e.stopPropagation();
+                        if (c === fishMathBubble.answer) {
+                          setFishSize(s => Math.min(10, s + 2)); setFishScore(s => s + 50);
+                          setFishPowerMsg("POWER UP! +2 Size!");
+                          setTimeout(() => setFishPowerMsg(null), 800);
+                          if (isLucaMode) speakText("Power up!");
                         } else {
-                          setFishSize(s => Math.max(1, s-1));
-                          setTimeout(() => setFishSize(s => Math.min(10, s+1)), 2000);
+                          setFishSize(s => Math.max(0.5, s - 1));
+                          setFishFlashRed(true);
+                          setTimeout(() => setFishFlashRed(false), 300);
                         }
-                      }} style={{ width:36, height:36, borderRadius:"50%", border:"2px solid rgba(255,255,255,0.5)",
-                        background:"rgba(59,130,246,0.6)", color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer" }}>
-                        {opt}
+                        setFishMathBubble(null);
+                      }} style={{ minWidth:60, minHeight:60, borderRadius:14, border:"3px solid rgba(251,191,36,0.7)",
+                        background:"rgba(59,130,246,0.8)", color:"#fff", fontSize:20, fontWeight:800, cursor:"pointer" }}>
+                        {c}
                       </button>
                     ))}
                   </div>
-                  {b.answer}
                 </div>
-              ))}
+              )}
+              {/* Win overlay */}
               {fishSize >= 10 && (
                 <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center",
-                  background:"rgba(0,0,0,0.5)", zIndex:10 }}>
+                  background:"rgba(0,0,0,0.6)", zIndex:20 }}>
                   <div style={{ textAlign:"center", color:"#fbbf24" }}>
-                    <div style={{ fontSize:40 }}>🎉</div>
-                    <div style={{ fontSize:24, fontWeight:800 }}>MAX SIZE!</div>
-                    <div style={{ fontSize:16, marginTop:4 }}>⭐ {fishStars} Stars earned!</div>
+                    <div style={{ fontSize:48 }}>🎉🐠</div>
+                    <div style={{ fontSize:28, fontWeight:800 }}>BIGGEST FISH!</div>
+                    <div style={{ fontSize:18, marginTop:4 }}>Score: {fishScore} | ⭐ {fishStarsEarned} Stars!</div>
+                  </div>
+                </div>
+              )}
+              {/* Game over overlay */}
+              {fishGameOver && fishSize < 10 && (
+                <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center",
+                  background:"rgba(0,0,0,0.6)", zIndex:20 }}>
+                  <div style={{ textAlign:"center" }}>
+                    <div style={{ fontSize:48 }}>😱🐡</div>
+                    <div style={{ fontSize:28, fontWeight:800, color:"#ef4444" }}>EATEN!</div>
+                    <div style={{ fontSize:16, marginTop:4, color:"#fbbf24" }}>Score: {fishScore} | ⭐ {fishStarsEarned} Stars</div>
                   </div>
                 </div>
               )}
             </div>
-            {/* D-pad */}
-            <div style={{ display:"flex", justifyContent:"center", marginTop:12, gap:4 }}>
-              <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
-                <GameBtn color="#0369a1" onClick={() => setFishPos(p => ({...p, y:Math.max(5,p.y-10)}))}>⬆️</GameBtn>
-                <div style={{ display:"flex", gap:4 }}>
-                  <GameBtn color="#0369a1" onClick={() => setFishPos(p => ({...p, x:Math.max(5,p.x-10)}))}>⬅️</GameBtn>
-                  <GameBtn color="#0369a1" onClick={() => setFishPos(p => ({...p, x:Math.min(95,p.x+10)}))}>➡️</GameBtn>
-                </div>
-                <GameBtn color="#0369a1" onClick={() => setFishPos(p => ({...p, y:Math.min(90,p.y+10)}))}>⬇️</GameBtn>
+            {/* Touch hint */}
+            <div style={{ textAlign:"center", color:"rgba(255,255,255,0.5)", fontSize:11, marginTop:4 }}>
+              Tap or drag to swim! Eat smaller fish (EAT label) — avoid bigger fish (DANGER label)!
+            </div>
+            {/* D-pad controls */}
+            <div style={{ display:"flex", justifyContent:"center", marginTop:8 }}>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:6, width:210 }}>
+                <div />
+                <button onClick={() => setFishPos(p => ({...p, y:Math.max(5,p.y-8)}))}
+                  style={{ minHeight:60, minWidth:60, fontSize:24, background:"#0369a1",
+                    border:"2px solid #22d3ee", borderRadius:12, color:"#fff", cursor:"pointer" }}>⬆️</button>
+                <div />
+                <button onClick={() => setFishPos(p => ({...p, x:Math.max(5,p.x-8)}))}
+                  style={{ minHeight:60, minWidth:60, fontSize:24, background:"#0369a1",
+                    border:"2px solid #22d3ee", borderRadius:12, color:"#fff", cursor:"pointer" }}>⬅️</button>
+                <div style={{ minHeight:60, minWidth:60, display:"flex", alignItems:"center", justifyContent:"center",
+                  fontSize:22, color:"rgba(255,255,255,0.3)" }}>🐠</div>
+                <button onClick={() => setFishPos(p => ({...p, x:Math.min(95,p.x+8)}))}
+                  style={{ minHeight:60, minWidth:60, fontSize:24, background:"#0369a1",
+                    border:"2px solid #22d3ee", borderRadius:12, color:"#fff", cursor:"pointer" }}>➡️</button>
+                <div />
+                <button onClick={() => setFishPos(p => ({...p, y:Math.min(90,p.y+8)}))}
+                  style={{ minHeight:60, minWidth:60, fontSize:24, background:"#0369a1",
+                    border:"2px solid #22d3ee", borderRadius:12, color:"#fff", cursor:"pointer" }}>⬇️</button>
+                <div />
               </div>
             </div>
-            {(fishSize >= 10 || fishGameOver) && (
+            {/* Collect stars */}
+            {fishDone && (
               <div style={{ textAlign:"center", marginTop:12 }}>
-                <GameBtn color="#22c55e" onClick={() => { awardStars(fishStars); transitionTo("mini_games"); }}>Collect Stars!</GameBtn>
+                <GameBtn color="#22c55e" onClick={() => {
+                  awardStars(fishStarsEarned);
+                  if (fbSet && profile?.name) fbSet(`gameHistory/${profile.name}/${Date.now()}`, { game:'fish', score:fishScore, stars:fishStarsEarned, timestamp:new Date().toISOString(), profile:profile.name });
+                  transitionTo("mini_games");
+                }} style={{ minHeight:80, fontSize:20 }}>
+                  Collect ⭐ {fishStarsEarned} Stars!
+                </GameBtn>
+                <GameBtn color="#3b82f6" onClick={() => {
+                  setFishSize(3); setFishPos({x:50,y:50}); setFishEnemies([]); setFishScore(0);
+                  setFishActive(true); setFishGameOver(false); setFishMathBubble(null);
+                }} style={{ marginTop:8, minHeight:60, fontSize:18 }}>
+                  Play Again 🔄
+                </GameBtn>
               </div>
             )}
           </div>
@@ -1976,52 +2409,65 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
 
   // ─── POTION BREWING ───────────────────────────────────────
   if (screen === "potion") {
+    const potionStarsEarned = potionScore >= 5 ? 3 : potionScore >= 3 ? 2 : 1;
     return (
       <>
         <style>{KEYFRAMES_CSS}</style>
         <div style={containerStyle}>
-          <div style={{ minHeight:500, background:"linear-gradient(180deg, #1e1040, #2d1b69, #1e1040)", padding:20 }}>
+          <div style={{ minHeight:500, background:"linear-gradient(180deg, #2d1b4e, #1e1040, #2d1b4e)", padding:20 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
               <GameBtn color="#475569" onClick={() => transitionTo("mini_games")}>← Back</GameBtn>
-              <div style={{ color:"#fbbf24", fontWeight:700 }}>Round {potionRound}/5 | Score: {potionScore}</div>
+              <div style={{ color:"#fbbf24", fontWeight:700, fontSize:16 }}>Round {potionRound}/5 | Score: {potionScore}</div>
             </div>
             <div style={{ textAlign:"center", marginBottom:16 }}>
-              <div style={{ fontSize:60, animation:"ll-pulse 1.5s ease-in-out infinite" }}>🧪</div>
+              <div style={{ fontSize:60, animation: potionResult === "correct" ? "ll-jump 0.5s ease-out" : potionResult === "wrong" ? "ll-shake 0.5s" : "ll-pulse 1.5s ease-in-out infinite",
+                filter: potionResult === "correct" ? "drop-shadow(0 0 20px gold)" : "none" }}>🧪</div>
               <div style={{ fontSize:18, fontWeight:700, color:"#c084fc", marginTop:4 }}>Pick the STRONGER potion!</div>
-              <div style={{ fontSize:12, color:"rgba(255,255,255,0.5)" }}>(Higher answer = stronger)</div>
+              <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)" }}>(Higher answer = stronger)</div>
+              {potionResult === "correct" && <div style={{ fontSize:16, color:"#fbbf24", fontWeight:700, marginTop:4, animation:"ll-float-up 1s ease-out" }}>POWERFUL BREW!</div>}
+              {potionResult === "wrong" && <div style={{ fontSize:16, color:"rgba(255,255,255,0.5)", marginTop:4 }}>Weak potion...</div>}
             </div>
-            {!potionComplete && potionLeft && potionRight && (
+            {!potionComplete && potionProblems && (
               <div style={{ display:"flex", gap:16, justifyContent:"center", marginTop:20 }}>
-                {[{side:"left",p:potionLeft},{side:"right",p:potionRight}].map(({side,p}) => (
+                {[{side:"left",p:potionProblems.left,color:"#a855f7"},{side:"right",p:potionProblems.right,color:"#22c55e"}].map(({side,p,color}) => (
                   <div key={side} onClick={() => {
                     if (potionChosen) return;
                     setPotionChosen(side);
-                    const correct = side === "left" ? potionLeft.answer >= potionRight.answer : potionRight.answer >= potionLeft.answer;
+                    const leftAns = potionProblems.left.answer;
+                    const rightAns = potionProblems.right.answer;
+                    const correct = side === "left" ? leftAns >= rightAns : rightAns >= leftAns;
                     setPotionResult(correct ? "correct" : "wrong");
-                    if (correct) setPotionScore(s => s+1);
+                    if (correct) setPotionScore(s => s + 1);
+                    else setPotionScore(s => s); // no punishment for kids
                     setTimeout(() => {
                       if (potionRound >= 5) { setPotionComplete(true); return; }
-                      const l=genMathProblem(kidDifficulty.math), r=genMathProblem(kidDifficulty.math);
-                      setPotionLeft({...l,color:"#a855f7"}); setPotionRight({...r,color:"#22c55e"});
-                      setPotionRound(rnd => rnd+1); setPotionChosen(null); setPotionResult(null);
+                      const l = generateMathProblem(mathDifficulty), r = generateMathProblem(mathDifficulty);
+                      setPotionProblems({ left: l, right: r });
+                      setPotionRound(rnd => rnd + 1); setPotionChosen(null); setPotionResult(null);
                     }, 1500);
-                  }} style={{ background: potionChosen === side ? (potionResult === "correct" ? "#22c55e33" : "#ef444433") : `${p.color}22`,
-                    border: `3px solid ${potionChosen === side ? (potionResult === "correct" ? "#22c55e" : "#ef4444") : p.color}`,
-                    borderRadius:20, padding:"24px 20px", minWidth:130, textAlign:"center", cursor: potionChosen ? "default" : "pointer" }}>
-                    <div style={{ fontSize:36 }}>🧪</div>
-                    <div style={{ fontSize:22, fontWeight:800, color:"#fff", marginTop:8 }}>{p.text}</div>
-                    {potionChosen && <div style={{ fontSize:16, color:"#fbbf24", marginTop:4 }}>= {p.answer}</div>}
+                  }} style={{
+                    background: potionChosen === side ? (potionResult === "correct" ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.15)") : `${color}22`,
+                    border: `3px solid ${potionChosen === side ? (potionResult === "correct" ? "#22c55e" : "#ef4444") : color}`,
+                    borderRadius:20, padding:"24px 16px", flex:1, maxWidth:200, textAlign:"center",
+                    cursor: potionChosen ? "default" : "pointer", minHeight:140 }}>
+                    <div style={{ fontSize:40 }}>🧪</div>
+                    <div style={{ fontSize:24, fontWeight:800, color:"#fff", marginTop:8 }}>{p.question}</div>
+                    {potionChosen && <div style={{ fontSize:18, color:"#fbbf24", marginTop:8, fontWeight:700 }}>= {p.answer}</div>}
                   </div>
                 ))}
               </div>
             )}
             {potionComplete && (
               <div style={{ textAlign:"center", marginTop:20 }}>
-                <div style={{ fontSize:28, fontWeight:800, color:"#fbbf24" }}>✨ Brewing Complete!</div>
+                <div style={{ fontSize:28, fontWeight:800, color:"#fbbf24" }}>Brewing Complete!</div>
                 <div style={{ fontSize:18, color:"#fff", marginTop:8 }}>{potionScore}/5 powerful potions brewed!</div>
-                <div style={{ fontSize:14, color:"#c084fc", marginTop:4 }}>⭐ {potionScore + (potionScore === 5 ? 2 : 0)} stars earned!</div>
-                <GameBtn color="#22c55e" onClick={() => { awardStars(potionScore + (potionScore === 5 ? 2 : 0)); transitionTo("mini_games"); }}>
-                  Collect Stars!
+                <div style={{ fontSize:40, marginTop:8 }}>{"⭐".repeat(potionStarsEarned)}</div>
+                <GameBtn color="#22c55e" onClick={() => {
+                  awardStars(potionStarsEarned);
+                  if (fbSet && profile?.name) fbSet(`gameHistory/${profile.name}/${Date.now()}`, { game:'potion', score:potionScore*50, stars:potionStarsEarned, timestamp:new Date().toISOString(), profile:profile.name });
+                  transitionTo("mini_games");
+                }} style={{ marginTop:12, minHeight:80, fontSize:20 }}>
+                  Collect ⭐ {potionStarsEarned} Stars!
                 </GameBtn>
               </div>
             )}
@@ -2033,26 +2479,17 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
 
   // ─── READING GAME ─────────────────────────────────────────
   if (screen === "reading") {
-    // Load story from Groq on first render
-    if (storyLoading && !storyData) {
-      const prompt = isLucaMode
-        ? `Write a very simple 4-sentence story for a 6 year old named ${playerName}. Use simple words. Leave 3 blanks marked as [BLANK]. Return JSON: {"story":"The [BLANK] ran...","blanks":[{"correct":"cat","wrong":["dog","hat"]}]}`
-        : `Write a 5-sentence adventure story for an 8 year old named ${playerName}. Leave 4 blanks. Return JSON: {"story":"...","blanks":[{"correct":"...","wrong":["...",".."]}]}`;
-      groqFetch(GROQ_KEY_GAME, [{role:"system",content:"Return ONLY valid JSON."},{role:"user",content:prompt}])
-        .then(r => {
-          if (r.ok) {
-            const d = parseGroqJSON(r.data);
-            if (d?.story && d?.blanks) { setStoryData(d); setStoryLoading(false); return; }
-          }
-          // Fallback story
-          setStoryData({ story: `Once upon a time, ${playerName} found a [BLANK] in the forest. It was very [BLANK]. ${playerName} decided to [BLANK] it home.`,
-            blanks: [{correct:"treasure",wrong:["rock","bug"]},{correct:"shiny",wrong:["scary","boring"]},{correct:"bring",wrong:["throw","eat"]}] });
-          setStoryLoading(false);
-        });
-    }
-    const parts = storyData ? storyData.story.split("[BLANK]") : [];
-    const currentBlank = storyData?.blanks?.[storyBlankIdx];
-    const allFilled = storyData && storyBlankIdx >= (storyData.blanks?.length || 0);
+    const story = readingStory;
+    const sentIdx = readingSentenceIdx;
+    const currentSentence = story?.sentences?.[sentIdx] || "";
+    const currentBlank = story?.blanks?.[sentIdx];
+    const isComplete = readingComplete;
+    // Shuffle options once per sentence (use a stable sort based on sentence index)
+    const shuffledOptions = currentBlank ? [...currentBlank.options].sort((a, b) => {
+      const ha = (sentIdx * 97 + a.charCodeAt(0)) % 3;
+      const hb = (sentIdx * 97 + b.charCodeAt(0)) % 3;
+      return ha - hb;
+    }) : [];
 
     return (
       <>
@@ -2060,54 +2497,97 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
         <div style={containerStyle}>
           <div style={{ minHeight:500, background:"linear-gradient(180deg, #064e3b, #065f46, #047857)", padding:20 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-              <GameBtn color="#475569" onClick={() => { setStoryLoading(false); transitionTo("mini_games"); }}>← Back</GameBtn>
-              <div style={{ color:"#fbbf24", fontWeight:700 }}>📖 Story Time | Score: {storyScore}</div>
+              <GameBtn color="#475569" onClick={() => transitionTo("mini_games")}>← Back</GameBtn>
+              <div style={{ color:"#fbbf24", fontWeight:700, fontSize:16 }}>📖 {readingScore}/{story?.blanks?.length || 0} correct</div>
             </div>
-            {storyLoading && <div style={{ textAlign:"center", color:"#fff", fontSize:18, marginTop:40 }}>📖 Writing your story...</div>}
-            {storyData && (
-              <div style={{ background:"rgba(255,255,255,0.1)", borderRadius:16, padding:20, marginTop:12 }}>
-                <div style={{ fontSize: isLucaMode ? 20 : 16, color:"#fff", lineHeight:2 }}>
-                  {parts.map((part, i) => (
-                    <span key={i}>
-                      {part}
-                      {i < parts.length - 1 && (
-                        i < storyBlankIdx
-                          ? <span style={{ color:"#22c55e", fontWeight:700, textDecoration:"underline" }}> {storyData.blanks[i].correct} </span>
-                          : <span style={{ background:"#fbbf24", color:"#000", padding:"2px 12px", borderRadius:6, fontWeight:700 }}> _____ </span>
-                      )}
-                    </span>
-                  ))}
+            {story && (
+              <>
+                {/* Story title */}
+                <div style={{ textAlign:"center", marginBottom:16 }}>
+                  <div style={{ fontSize:22, fontWeight:800, color:"#fbbf24" }}>{story.title}</div>
+                  <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)" }}>Sentence {Math.min(sentIdx + 1, story.sentences.length)} of {story.sentences.length}</div>
                 </div>
-                {isLucaMode && storyData && (
-                  <button onClick={() => speakText(storyData.story.replace(/\[BLANK\]/g, "blank"))}
-                    style={{ marginTop:8, background:"none", border:"none", fontSize:24, cursor:"pointer" }}>🔊</button>
+                {/* Previous sentences */}
+                <div style={{ background:"rgba(255,255,255,0.1)", borderRadius:16, padding:16, marginBottom:12 }}>
+                  {story.sentences.map((sent, i) => {
+                    if (i > sentIdx) return null;
+                    const blank = story.blanks[i];
+                    const filled = i < sentIdx;
+                    const isCurrent = i === sentIdx && !isComplete;
+                    return (
+                      <div key={i} style={{ fontSize: isLucaMode ? 20 : 17, color:"#fff", lineHeight:1.8, marginBottom:6,
+                        opacity: filled ? 0.7 : 1 }}>
+                        {filled
+                          ? sent.replace("___", blank.answer)
+                          : isCurrent
+                            ? sent.replace("___", " _____ ")
+                            : isComplete ? sent.replace("___", blank.answer) : null
+                        }
+                        {filled && <span style={{ color:"#22c55e", marginLeft:4 }}>✓</span>}
+                      </div>
+                    );
+                  })}
+                  {/* Read aloud button for Luca */}
+                  {isLucaMode && (
+                    <button onClick={() => speakText(currentSentence.replace("___", "blank"))}
+                      style={{ marginTop:8, background:"rgba(255,255,255,0.15)", border:"2px solid rgba(255,255,255,0.3)",
+                        borderRadius:12, padding:"8px 16px", fontSize:18, cursor:"pointer", color:"#fff" }}>
+                      🔊 Read Aloud
+                    </button>
+                  )}
+                </div>
+                {/* Answer buttons */}
+                {currentBlank && !isComplete && (
+                  <div style={{ display:"flex", flexDirection:"column", gap:10, marginTop:16 }}>
+                    <div style={{ textAlign:"center", fontSize:15, color:"rgba(255,255,255,0.7)", marginBottom:4 }}>
+                      Pick the word that fits:
+                    </div>
+                    {shuffledOptions.map((word, i) => (
+                      <button key={`${sentIdx}-${i}`} onClick={() => {
+                        if (word === currentBlank.answer) {
+                          setReadingScore(s => s + 1);
+                          setReadingWrong(false);
+                          if (isLucaMode) speakText(word);
+                          if (sentIdx + 1 >= story.sentences.length) {
+                            setReadingComplete(true);
+                            if (isLucaMode) setTimeout(() => speakText("Story complete! Great job!"), 500);
+                          } else {
+                            setReadingSentenceIdx(idx => idx + 1);
+                            if (isLucaMode) setTimeout(() => speakText(story.sentences[sentIdx + 1].replace("___", "blank")), 300);
+                          }
+                        } else {
+                          setReadingWrong(true);
+                          if (isLucaMode) speakText("Try again!");
+                        }
+                      }} style={{
+                        minHeight:60, fontSize: isLucaMode ? 20 : 18, fontWeight:700,
+                        background: readingWrong && word !== currentBlank.answer ? "rgba(255,255,255,0.05)" : "rgba(99,102,241,0.3)",
+                        color:"#fff", border:"2px solid rgba(99,102,241,0.5)", borderRadius:14,
+                        cursor:"pointer", padding:"12px 20px", textAlign:"center",
+                        animation: readingWrong ? "ll-shake 0.3s" : "none"
+                      }}>
+                        {word}
+                      </button>
+                    ))}
+                    {readingWrong && <div style={{ textAlign:"center", color:"#fbbf24", fontSize:14 }}>Not quite - try again! No penalty.</div>}
+                  </div>
                 )}
-              </div>
-            )}
-            {currentBlank && !allFilled && (
-              <div style={{ display:"flex", gap:10, justifyContent:"center", marginTop:20, flexWrap:"wrap" }}>
-                {[currentBlank.correct, ...currentBlank.wrong].sort(() => Math.random()-0.5).map((word, i) => (
-                  <GameBtn key={i} color={word === currentBlank.correct ? "#22c55e" : "#6366f1"}
-                    onClick={() => {
-                      if (word === currentBlank.correct) {
-                        setStoryScore(s => s+1);
-                        setStoryBlankIdx(idx => idx+1);
-                        if (isLucaMode) speakText(word);
-                      }
-                    }}>
-                    {word}
-                  </GameBtn>
-                ))}
-              </div>
-            )}
-            {allFilled && (
-              <div style={{ textAlign:"center", marginTop:20 }}>
-                <div style={{ fontSize:28, fontWeight:800, color:"#fbbf24" }}>📖 Story Complete!</div>
-                <div style={{ fontSize:16, color:"#fff", marginTop:8 }}>You got {storyScore} words right!</div>
-                <GameBtn color="#22c55e" onClick={() => { awardStars(storyScore + (storyScore === (storyData?.blanks?.length||0) ? 2 : 0)); transitionTo("mini_games"); }}>
-                  Collect ⭐ {storyScore + (storyScore === (storyData?.blanks?.length||0) ? 2 : 0)} Stars!
-                </GameBtn>
-              </div>
+                {/* Complete */}
+                {isComplete && (
+                  <div style={{ textAlign:"center", marginTop:20 }}>
+                    <div style={{ fontSize:28, fontWeight:800, color:"#fbbf24" }}>📖 Story Complete!</div>
+                    <div style={{ fontSize:40, marginTop:8 }}>⭐⭐⭐</div>
+                    <div style={{ fontSize:16, color:"#fff", marginTop:8 }}>{readingScore} words correct!</div>
+                    <GameBtn color="#22c55e" onClick={() => {
+                      awardStars(3);
+                      if (fbSet && profile?.name) fbSet(`gameHistory/${profile.name}/${Date.now()}`, { game:'reading', score:readingScore*100, stars:3, timestamp:new Date().toISOString(), profile:profile.name });
+                      transitionTo("mini_games");
+                    }} style={{ marginTop:12, minHeight:80, fontSize:20 }}>
+                      Collect ⭐ 3 Stars!
+                    </GameBtn>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -2120,33 +2600,22 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
     const maxRounds = 10;
     const coopDone = coopRound >= maxRounds;
     if (!coopProblemLeft && !coopDone) {
-      const hard = { addition: true, subtraction: true, multiplication: true, division: false };
-      const easy = { addition: true, subtraction: false, multiplication: false, division: false };
-      setCoopProblemLeft(genMathProblem(hard));
-      setCoopProblemRight(genMathProblem(easy));
+      setCoopProblemLeft(generateMathProblem('hard'));
+      setCoopProblemRight(generateMathProblem('easy'));
       setCoopRoundWinner(null);
     }
-    const handleCoopAnswer = (side) => {
+    const handleCoopAnswer = (side, correct) => {
+      if (!correct) return; // wrong answer, do nothing (let them try again)
       if (coopVersus) {
-        // Versus: first to answer wins the round
-        if (side === "left") {
-          setCoopScoreLeft(s => s + 2);
-          setCoopScoreRight(s => s + 1); // consolation
-          setCoopRoundWinner("left");
-        } else {
-          setCoopScoreRight(s => s + 2);
-          setCoopScoreLeft(s => s + 1);
-          setCoopRoundWinner("right");
-        }
+        if (side === "left") { setCoopScoreLeft(s => s + 2); setCoopScoreRight(s => s + 1); setCoopRoundWinner("left"); }
+        else { setCoopScoreRight(s => s + 2); setCoopScoreLeft(s => s + 1); setCoopRoundWinner("right"); }
       } else {
-        // Co-op: both get points
         if (side === "left") setCoopScoreLeft(s => s + 2);
         else setCoopScoreRight(s => s + 2);
       }
-      setCoopAnswerLeft(""); setCoopAnswerRight("");
       setTimeout(() => {
         setCoopRound(r => r + 1); setCoopProblemLeft(null); setCoopProblemRight(null); setCoopRoundWinner(null);
-      }, coopVersus ? 800 : 200);
+      }, coopVersus ? 800 : 400);
     };
     const vsWinner = coopScoreLeft > coopScoreRight ? "Yana" : coopScoreRight > coopScoreLeft ? "Luca" : "TIE";
     return (
@@ -2172,32 +2641,42 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
               )}
               {coopRoundWinner && coopVersus && (
                 <div style={{ fontSize:16, color: coopRoundWinner === "left" ? "#c084fc" : "#22d3ee", fontWeight:700, marginTop:4, animation:"ll-pulse 0.5s ease" }}>
-                  {coopRoundWinner === "left" ? "Yana wins this round! ⭐" : "Luca wins this round! ⭐"} {coopRoundWinner === "left" ? "" : " 😂"}
+                  {coopRoundWinner === "left" ? "Yana wins this round!" : "Luca wins this round!"}
                 </div>
               )}
             </div>
             {!coopDone && (
               <div style={{ display:"grid", gridTemplateColumns:"1fr 4px 1fr", gap:0 }}>
-                <div style={{ padding:12, textAlign:"center" }}>
+                {/* Yana side (hard) */}
+                <div style={{ padding:8, textAlign:"center" }}>
                   <div style={{ fontSize:14, fontWeight:700, color:"#c084fc", marginBottom:8 }}>Yana ⭐{coopScoreLeft}</div>
                   {coopProblemLeft && !coopRoundWinner && (
                     <div>
-                      <div style={{ fontSize:22, fontWeight:800, color:"#fff", marginBottom:8 }}>{coopProblemLeft.text} = ?</div>
-                      <input value={coopAnswerLeft} onChange={e => setCoopAnswerLeft(e.target.value.replace(/[^0-9-]/g,""))}
-                        onKeyDown={e => { if (e.key === "Enter" && coopAnswerLeft && parseInt(coopAnswerLeft) === coopProblemLeft.answer) handleCoopAnswer("left"); }}
-                        style={{ background:"#1e293b", color:"#fff", border:"2px solid #c084fc", borderRadius:12, padding:"12px", fontSize:22, width:90, textAlign:"center" }} />
+                      <div style={{ fontSize:20, fontWeight:800, color:"#fff", marginBottom:8 }}>{coopProblemLeft.question} = ?</div>
+                      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                        {coopProblemLeft.choices.map((c, i) => (
+                          <button key={i} onClick={() => handleCoopAnswer("left", c === coopProblemLeft.answer)}
+                            style={{ minHeight:48, fontSize:18, fontWeight:700, background:"rgba(192,132,252,0.3)",
+                              color:"#fff", border:"2px solid #c084fc", borderRadius:10, cursor:"pointer" }}>{c}</button>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
                 <div style={{ background: coopVersus ? "#ef4444" : "#fbbf24", borderRadius:2 }} />
-                <div style={{ padding:12, textAlign:"center" }}>
+                {/* Luca side (easy) */}
+                <div style={{ padding:8, textAlign:"center" }}>
                   <div style={{ fontSize:14, fontWeight:700, color:"#22d3ee", marginBottom:8 }}>Luca ⭐{coopScoreRight}</div>
                   {coopProblemRight && !coopRoundWinner && (
                     <div>
-                      <div style={{ fontSize:22, fontWeight:800, color:"#fff", marginBottom:8 }}>{coopProblemRight.text} = ?</div>
-                      <input value={coopAnswerRight} onChange={e => setCoopAnswerRight(e.target.value.replace(/[^0-9-]/g,""))}
-                        onKeyDown={e => { if (e.key === "Enter" && coopAnswerRight && parseInt(coopAnswerRight) === coopProblemRight.answer) handleCoopAnswer("right"); }}
-                        style={{ background:"#1e293b", color:"#fff", border:"2px solid #22d3ee", borderRadius:12, padding:"12px", fontSize:22, width:90, textAlign:"center" }} />
+                      <div style={{ fontSize:20, fontWeight:800, color:"#fff", marginBottom:8 }}>{coopProblemRight.question} = ?</div>
+                      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                        {coopProblemRight.choices.map((c, i) => (
+                          <button key={i} onClick={() => handleCoopAnswer("right", c === coopProblemRight.answer)}
+                            style={{ minHeight:48, fontSize:18, fontWeight:700, background:"rgba(34,211,238,0.3)",
+                              color:"#fff", border:"2px solid #22d3ee", borderRadius:10, cursor:"pointer" }}>{c}</button>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -2210,7 +2689,7 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
                     <div style={{ fontSize:32, fontWeight:900, color:"#fbbf24" }}>🏆 {vsWinner === "TIE" ? "IT'S A TIE!" : `${vsWinner.toUpperCase()} WINS!`}</div>
                     <div style={{ fontSize:16, color:"#fff", marginTop:8 }}>Yana: {coopScoreLeft} | Luca: {coopScoreRight}</div>
                     <div style={{ display:"flex", gap:8, justifyContent:"center", marginTop:16 }}>
-                      <GameBtn color="#ef4444" onClick={() => { setCoopScoreLeft(0); setCoopScoreRight(0); setCoopRound(0); setCoopProblemLeft(null); setCoopProblemRight(null); }}>
+                      <GameBtn color="#ef4444" onClick={() => { setCoopScoreLeft(0); setCoopScoreRight(0); setCoopRound(0); setCoopProblemLeft(null); setCoopProblemRight(null); setCoopRoundWinner(null); }}>
                         🔥 REMATCH!
                       </GameBtn>
                       <GameBtn color="#475569" onClick={() => transitionTo("mini_games")}>Done</GameBtn>

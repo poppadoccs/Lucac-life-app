@@ -231,6 +231,7 @@ export default function App() {
   const [eventStyles, setEventStyles] = useState({});
   const [addingEvents, setAddingEvents] = useState([{ title:"", time:"12:00 PM", who:"", notes:"", repeat:"none", repeatEnd:"", repeatCount:0, duration:60 }]);
   const [editingStyle, setEditingStyle] = useState(null); // {dateKey, idx}
+  const [eventPrivate, setEventPrivate] = useState(false); // Private event toggle (admin only)
 
   // Routines & Goals
   const [routines, setRoutines] = useState([]);
@@ -282,7 +283,7 @@ export default function App() {
   const [pinEdit, setPinEdit] = useState("");
   const [newMemberName, setNewMemberName] = useState("");
   const [newMemberEmoji, setNewMemberEmoji] = useState("😊");
-  const [newMemberType, setNewMemberType] = useState("family");
+  const [newMemberType, setNewMemberType] = useState("parent");
   const [contactDad, setContactDad] = useState("");
   const [contactMom, setContactMom] = useState("");
   const [alertMinutes, setAlertMinutes] = useState(15);
@@ -359,6 +360,31 @@ export default function App() {
 
   const isAdmin = currentProfile?.type === "admin";
   const isKid = currentProfile?.type === "kid";
+  const isParent = currentProfile?.type === "parent" || currentProfile?.type === "family";
+  const currentRole = isAdmin ? "admin" : isKid ? "kid" : isParent ? "parent" : "guest";
+
+  // ═══ ROLE-BASED EVENT FILTERING ═══
+  // Filters events based on current user's role:
+  //   admin  → sees everything
+  //   parent → sees non-private events + own events
+  //   kid    → sees non-private events (read-only)
+  //   guest  → sees non-private events (read-only)
+  function filterEventsForRole(eventsObj, profile) {
+    if (!eventsObj || !profile) return {};
+    const role = profile.type === "admin" ? "admin"
+      : (profile.type === "parent" || profile.type === "family") ? "parent"
+      : profile.type === "kid" ? "kid" : "guest";
+    if (role === "admin") return eventsObj;
+    const filtered = {};
+    Object.entries(eventsObj).forEach(([dk, dayEvs]) => {
+      const visible = (Array.isArray(dayEvs) ? dayEvs : []).filter(ev => {
+        if (ev.private) return ev.creator === profile.name;
+        return true;
+      });
+      if (visible.length > 0) filtered[dk] = visible;
+    });
+    return filtered;
+  }
 
   // Firebase sync with localStorage cache fallback
   const FB_KEYS = ["events","eventStyles","routines","routineStyles","goals","goalStyles",
@@ -508,6 +534,9 @@ export default function App() {
     return result;
   })();
 
+  // Role-filtered view of displayEvents — this is what gets rendered
+  const visibleEvents = filterEventsForRole(displayEvents, currentProfile);
+
   function saveEvents() {
     if (!selectedDay) return;
     const valid = addingEvents.filter(e => e.title.trim());
@@ -516,6 +545,8 @@ export default function App() {
     const baseDk = dateKey(calYear, calMonth, selectedDay);
     valid.forEach(ev => {
       const eventData = { title: ev.title, time: ev.time, who: ev.who, notes: ev.notes, duration: ev.duration || 60 };
+      if (eventPrivate && isAdmin) { eventData.private = true; eventData.creator = currentProfile?.name || "Admin"; }
+      if (!eventPrivate && currentProfile?.name) { eventData.creator = currentProfile.name; }
       if (ev.repeat && ev.repeat !== "none") {
         eventData.repeat = ev.repeat;
         if (ev.repeatEnd) eventData.repeatEnd = ev.repeatEnd;
@@ -529,6 +560,7 @@ export default function App() {
     });
     fbSet("events", updated);
     setAddingEvents([{ title:"", time:"12:00 PM", who:"", notes:"", repeat:"none", repeatEnd:"", repeatCount:0, duration:60 }]);
+    setEventPrivate(false);
     setSelectedDay(null);
   }
 
@@ -651,7 +683,10 @@ export default function App() {
       const keyword = deleteMatch[2].trim();
       const matches = searchEvents(keyword);
       if (matches.length === 0) {
-        showToast(`I couldn't find anything called "${keyword}"`, "error");
+        // Show upcoming events as context
+        const upcoming = Object.entries(events || {}).flatMap(([dk, evs]) => (evs||[]).map(ev => ({dk, title: ev.title}))).slice(0, 3);
+        const hint = upcoming.length ? ` Your events include: ${upcoming.map(e => e.title).join(", ")}` : "";
+        showToast(`Couldn't find "${keyword}".${hint}`, "error", 5000);
       } else if (matches.length === 1) {
         setQuickAddDeleteMatches({ keyword, matches, single: true });
       } else {
@@ -978,11 +1013,12 @@ export default function App() {
   }, [exchangeStart]);
 
   const kidProfiles = (profiles||[]).filter(p => p.type === "kid");
+  // Also expose isParent in the kid view so parent profiles see Kids tab correctly
   const familyNames = (profiles||[]).map(p => p.name);
 
   // Profile pin login
   function handleProfileSelect(profile) {
-    if (profile.type === "admin") {
+    if (profile.pin && profile.pin.length >= 4) {
       setPinTarget(profile);
       setScreen("pin");
     } else {
@@ -1046,7 +1082,7 @@ export default function App() {
               onMouseOut={e => e.currentTarget.style.transform="scale(1)"}>
               <div style={{ fontSize:40, marginBottom:8 }}>{p.emoji}</div>
               <div style={{ color:p.color||V.textPrimary, fontWeight:700, fontSize:15 }}>{p.name}</div>
-              <div style={{ color:V.textDim, fontSize:11, marginTop:2 }}>{p.type === "admin" ? "🔑 Admin" : p.type === "kid" ? "⭐ Kid" : "👤 Family"}</div>
+              <div style={{ color:V.textDim, fontSize:11, marginTop:2 }}>{p.type === "admin" ? "👑 Admin" : p.type === "parent" || p.type === "family" ? "👨‍👩‍👧 Parent" : p.type === "kid" ? "🧒 Kid" : "👤 Guest"}</div>
             </button>
           ))}
         </div>
@@ -1140,7 +1176,7 @@ export default function App() {
               {/* Today's events for this kid */}
               {(() => {
                 const dk = todayKey();
-                const myEvents = (displayEvents[dk]||[]).filter(ev => !ev.who || ev.who === currentProfile.name);
+                const myEvents = (visibleEvents[dk]||[]).filter(ev => !ev.who || ev.who === currentProfile.name);
                 return myEvents.length > 0 && (
                   <div style={cardStyle}>
                     <div style={{fontWeight:700,color:V.accent,marginBottom:8}}>📅 Today</div>
@@ -1206,15 +1242,17 @@ export default function App() {
     );
   }
 
-  // Main app tabs
+  // Main app tabs — filtered by role
   const allTabs = [
-    { id:"home", label:"Home", icon:"🏠", guest:true },
-    { id:"food", label:"Food", icon:"🍽️", guest:true },
-    { id:"kids", label:"Kids", icon:"⭐", guest:true },
-    { id:"family", label:"Family", icon:"🤝", guest:false },
-    { id:"settings", label:"Settings", icon:"⚙️", guest:false },
+    { id:"home", label:"Home", icon:"🏠", roles:["admin","parent","kid","guest"] },
+    { id:"food", label:"Food", icon:"🍽️", roles:["admin","parent"] },
+    { id:"kids", label:"Kids", icon:"⭐", roles:["admin","parent","kid"] },
+    { id:"family", label:"Family", icon:"🤝", roles:["admin","parent"] },
+    { id:"settings", label:"Settings", icon:"⚙️", roles:["admin","parent"] },
   ];
-  const tabs = guestMode ? allTabs.filter(t => t.guest) : allTabs;
+  const tabs = guestMode
+    ? allTabs.filter(t => t.roles.includes("guest"))
+    : allTabs.filter(t => t.roles.includes(currentRole));
 
   // ---- HOME TAB — DISPATCHER ----
   function renderHome() {
@@ -1258,7 +1296,8 @@ export default function App() {
 
     return (
       <div style={{ padding:12 }}>
-        {/* ═══ AI QUICK ADD + VOICE ═══ */}
+        {/* ═══ AI QUICK ADD + VOICE (admin/parent only) ═══ */}
+        {(isAdmin || isParent) && (
         <div style={{ display:"flex", gap:6, marginBottom:12 }}>
           <button onClick={() => isRecording ? stopVoiceInput() : startVoiceInput(text => setQuickAddInput(text))}
             style={{ width:44, height:44, borderRadius:"50%", border:"none", cursor:"pointer", fontSize:18,
@@ -1275,6 +1314,13 @@ export default function App() {
             {quickAddLoading ? "..." : "✨"}
           </button>
         </div>
+        )}
+        {/* Loading indicator */}
+        {quickAddLoading && (
+          <div style={{ textAlign:"center", padding:"8px 0", color:V.textMuted, fontSize:13, fontStyle:"italic" }}>
+            Jr. is thinking<span style={{ display:"inline-block", animation:"pulse 1.5s infinite" }}>...</span>
+          </div>
+        )}
 
         {/* AI Quick Add Preview */}
         {quickAddPreview && (
@@ -1412,7 +1458,7 @@ export default function App() {
             {cells.map((d, i) => {
               if (!d) return <div key={i} style={{ background: V.bgApp, minHeight: 85 }} />;
               const dk2 = dateKey(calYear, calMonth, d);
-              const dayEvents = displayEvents[dk2] || [];
+              const dayEvents = visibleEvents[dk2] || [];
               const isTodayCell = isToday(d);
               const selected = selectedDay === d;
               const isWeekend = (i % 7 === 0) || (i % 7 === 6);
@@ -1433,6 +1479,14 @@ export default function App() {
                         display: "inline-flex", alignItems: "center", justifyContent: "center",
                         fontWeight: 800, fontSize: 13, boxShadow: `0 0 8px ${V.accentGlowStrong}` }}>{d}</span>
                     ) : <span>{d}</span>}
+                    {/* Custody badge — text label for colorblind safety */}
+                    {(() => {
+                      const dayOfWeek = DAYS[new Date(calYear, calMonth, d).getDay()];
+                      const custodyVal = (custodySchedule||{})[dayOfWeek];
+                      if (custodyVal === "Dad") return <span style={{ fontSize:8, fontWeight:700, background:"#fef3c7", color:"#92400e", borderRadius:3, padding:"0 3px", lineHeight:"14px" }}>Dad</span>;
+                      if (custodyVal === "Mom") return <span style={{ fontSize:8, fontWeight:700, background:"#f3e8ff", color:"#6b21a8", borderRadius:3, padding:"0 3px", lineHeight:"14px" }}>Mom</span>;
+                      return null;
+                    })()}
                   </div>
                   <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2, overflow: "hidden" }}>
                     {dayEvents.slice(0,3).map((ev, idx) => {
@@ -1704,13 +1758,13 @@ export default function App() {
           </div>
 
           <div style={{ padding: V.sp5 }}>
-            {(displayEvents[dk]||[]).length > 0 && (
+            {(visibleEvents[dk]||[]).length > 0 && (
               <div style={{ marginBottom: V.sp4 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: V.textDim, textTransform: "uppercase",
                   letterSpacing: 1, marginBottom: V.sp2 }}>
-                  Events ({(displayEvents[dk]||[]).length})
+                  Events ({(visibleEvents[dk]||[]).length})
                 </div>
-                {(displayEvents[dk]||[]).map((ev, idx) => {
+                {(visibleEvents[dk]||[]).map((ev, idx) => {
                   const s = getEventStyle(dk, idx, ev);
                   const pColor = ev.who ? getPersonColor(ev.who) : V.info;
                   const dur = ev.duration || 60;
@@ -1725,6 +1779,7 @@ export default function App() {
                           color: s?.color || V.textPrimary, fontSize: s?.size || 15, fontWeight: s?.bold ? 700 : 600,
                         }}>
                           {ev.repeat && <span style={{ marginRight:4 }}>🔁</span>}
+                          {ev.private && <span style={{ marginRight:4 }}>🔒</span>}
                           {ev.title}
                         </div>
                         <div style={{ display: "flex", gap: V.sp1, alignItems: "center" }}>
@@ -1765,7 +1820,7 @@ export default function App() {
                         <input type="range" min={30} max={480} step={15} value={dur}
                           onChange={e => updateEventDuration(dk, idx, Number(e.target.value), ev)}
                           style={{ flex:1, accentColor: V.accent, height:4 }} />
-                        <span style={{ fontSize:11, color:V.textMuted, fontWeight:600, minWidth:42 }}>{dur >= 60 ? `${Math.floor(dur/60)}h${dur%60 ? dur%60+"m":""}` : `${dur}m`}</span>
+                        <span style={{ fontSize:11, color:V.textMuted, fontWeight:600, minWidth:42 }}>{dur >= 60 ? `${Math.floor(dur/60)}h${dur%60 ? " "+dur%60+"m":""}` : `${dur}m`}</span>
                       </div>
                     </div>
                   );
@@ -1773,12 +1828,14 @@ export default function App() {
               </div>
             )}
 
-            {(displayEvents[dk]||[]).length === 0 && (
+            {(visibleEvents[dk]||[]).length === 0 && (
               <div style={{ textAlign: "center", padding: `${V.sp5}px 0 ${V.sp4}px`, color: V.textDim, fontSize: 13 }}>
-                No events yet — add one below
+                {(isAdmin || isParent) ? "No events yet — add one below" : "No events on this day"}
               </div>
             )}
 
+            {/* Add Event section — only for admin and parent */}
+            {(isAdmin || isParent) && (
             <div style={{ borderTop: `1px solid ${V.borderDefault}`, paddingTop: V.sp4 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: V.textDim, textTransform: "uppercase",
                 letterSpacing: 1, marginBottom: V.sp3 }}>
@@ -1836,6 +1893,14 @@ export default function App() {
                       </div>
                     </div>
                   )}
+                  {/* Private event toggle — admin only */}
+                  {isAdmin && i === 0 && (
+                    <label style={{ display:"flex", alignItems:"center", gap:8, marginTop:V.sp2, cursor:"pointer", fontSize:13, color:V.textSecondary }}>
+                      <input type="checkbox" checked={eventPrivate} onChange={e => setEventPrivate(e.target.checked)}
+                        style={{ width:18, height:18, accentColor:V.accent }} />
+                      🔒 Private (only you can see this event)
+                    </label>
+                  )}
                 </div>
               ))}
               <button onClick={() => setAddingEvents(a => [...a, { title:"", time:"12:00 PM", who:"", notes:"", repeat:"none", repeatEnd:"", repeatCount:0, duration:60 }])}
@@ -1844,6 +1909,7 @@ export default function App() {
                 Save {addingEvents.filter(e=>e.title.trim()).length > 1 ? `${addingEvents.filter(e=>e.title.trim()).length} Events` : "Event"}
               </button>
             </div>
+            )}
           </div>
         </div>
       </div>
@@ -1855,7 +1921,7 @@ export default function App() {
   // ═══════════════════════════════════════════════
   function renderHomeCozyla() {
     const dk = todayKey();
-    const todayEvents = displayEvents[dk] || [];
+    const todayEvents = visibleEvents[dk] || [];
     const nowHour = today.getHours();
     const greeting = nowHour < 12 ? "Good morning" : nowHour < 17 ? "Good afternoon" : "Good evening";
     const timeSlots = [
@@ -1953,10 +2019,12 @@ export default function App() {
                 </div>
               );
             })}
+            {(isAdmin || isParent) && (
             <button onClick={() => { setSelectedDay(today.getDate()); setCalMonth(today.getMonth()); setCalYear(today.getFullYear()); setAddingEvents([{ title:"", time:"12:00 PM", who:"", notes:"", repeat:"none", repeatEnd:"", repeatCount:0, duration:60 }]); }}
               style={{ ...btnPrimary, width: "100%", borderRadius: 14, background: V.accent, marginTop: 4 }}>
               + Add Event
             </button>
+            )}
           </div>
 
           {/* Bottom two widgets */}
@@ -2023,7 +2091,8 @@ export default function App() {
           </div>
         </div>
 
-        {/* ═══ AI QUICK ADD + VOICE (Cozyla) ═══ */}
+        {/* ═══ AI QUICK ADD + VOICE (Cozyla) — admin/parent only ═══ */}
+        {(isAdmin || isParent) && (
         <div style={{ padding: "0 14px 8px" }}>
           <div style={{ display:"flex", gap:6, marginBottom:10 }}>
             <button onClick={() => isRecording ? stopVoiceInput() : startVoiceInput(text => setQuickAddInput(text))}
@@ -2069,6 +2138,7 @@ export default function App() {
             </div>
           )}
         </div>
+        )}
 
         {/* ═══ BIRTHDAY COUNTDOWNS (Cozyla) ═══ */}
         <div style={{ padding: "0 14px" }}>
@@ -2114,7 +2184,7 @@ export default function App() {
 
     // Stats for widget cards
     const dk = todayKey();
-    const todayEventCount = (displayEvents[dk] || []).length;
+    const todayEventCount = (visibleEvents[dk] || []).length;
     // Count events this week
     const weekStart = new Date(today);
     weekStart.setDate(today.getDate() - today.getDay());
@@ -2123,7 +2193,7 @@ export default function App() {
       const d = new Date(weekStart);
       d.setDate(weekStart.getDate() + i);
       const wk = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
-      weekEventCount += (displayEvents[wk] || []).length;
+      weekEventCount += (visibleEvents[wk] || []).length;
     }
     const routinesDone = (routines||[]).filter(r=>r.done).length;
     const routinesTotal = (routines||[]).length;
@@ -2161,9 +2231,9 @@ export default function App() {
                 {miniCells.map((d, i) => {
                   if (!d) return <div key={i} />;
                   const dk2 = dateKey(calYear, calMonth, d);
-                  const hasEv = (displayEvents[dk2]||[]).length > 0;
+                  const hasEv = (visibleEvents[dk2]||[]).length > 0;
                   return (
-                    <div key={i} onClick={e => { e.stopPropagation(); setSelectedDay(d); setAddingEvents([{title:"",time:"12:00 PM",who:"",notes:""}]); }}
+                    <div key={i} onClick={e => { e.stopPropagation(); setSelectedDay(d); setAddingEvents([{title:"",time:"12:00 PM",who:"",notes:"",repeat:"none",repeatEnd:"",repeatCount:0,duration:60}]); }}
                       style={{
                         textAlign: "center", fontSize: 10, padding: "3px 0", borderRadius: "50%",
                         fontWeight: isTodayD(d) ? 800 : hasEv ? 700 : 400,
@@ -2296,7 +2366,8 @@ export default function App() {
           ))}
         </div>
 
-        {/* ═══ AI QUICK ADD + VOICE (FamilyWall) ═══ */}
+        {/* ═══ AI QUICK ADD + VOICE (FamilyWall) — admin/parent only ═══ */}
+        {(isAdmin || isParent) && (<>
         <div style={{ display:"flex", gap:6, marginTop:12, marginBottom:10 }}>
           <button onClick={() => isRecording ? stopVoiceInput() : startVoiceInput(text => setQuickAddInput(text))}
             style={{ width:44, height:44, borderRadius:"50%", border:"none", cursor:"pointer", fontSize:18,
@@ -2341,6 +2412,7 @@ export default function App() {
             </div>
           </div>
         )}
+        </>)}
 
         {/* ═══ BIRTHDAY COUNTDOWNS (FamilyWall) ═══ */}
         {(() => {
@@ -2517,7 +2589,7 @@ export default function App() {
     );
     return (
       <div style={{ padding:12 }}>
-        {isAdmin && (
+        {(isAdmin || isParent) && (
           <button onClick={()=>setShowGame(true)} style={{...btnPrimary, width:"100%", marginBottom:12, padding:14, fontSize:15}}>
             🎮 LUCAC Legends
           </button>
@@ -2597,7 +2669,9 @@ export default function App() {
     return (
       <div style={{padding:12}}>
         <div style={{display:"flex",gap:8,marginBottom:12,overflowX:"auto"}}>
-          {["schedule","myrules","theirrules","shared","log","budget"].map(t=>(
+          {["schedule","myrules","theirrules","shared",
+            ...(isAdmin ? ["log","budget"] : [])
+          ].map(t=>(
             <button key={t} onClick={()=>setFamilySubTab(t)}
               style={{...familySubTab===t?btnPrimary:btnSecondary,whiteSpace:"nowrap",padding:"6px 12px",fontSize:12}}>
               {t==="schedule"?"📅 Schedule":t==="myrules"?"👑 My Rules":t==="theirrules"?"💜 Their Rules":t==="shared"?"🤝 Shared":t==="log"?"📋 Log":"💰 Budget"}
@@ -2737,7 +2811,9 @@ export default function App() {
           </div>
         )}
         <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-          {["profiles","theme","widgets","contacts","alerts"].map(t=>(
+          {["profiles","theme",
+            ...(isAdmin ? ["widgets","contacts","alerts"] : [])
+          ].map(t=>(
             <button key={t} onClick={()=>setSettingsSubTab(t)}
               style={{...settingsSubTab===t?btnPrimary:btnSecondary,padding:"6px 12px",fontSize:12}}>
               {t==="profiles"?"👤 Profiles":t==="theme"?"🎨 Theme":t==="widgets"?"📦 Widgets":t==="contacts"?"📞 Contacts":"🔔 Alerts"}
@@ -2791,7 +2867,10 @@ export default function App() {
                     <span style={{fontSize:22}}>{p.emoji}</span>
                     <div style={{flex:1}}>
                       <div style={{fontWeight:600,color:p.color||V.textPrimary,fontSize:14}}>{p.name}</div>
-                      <div style={{fontSize:11,color:V.textDim}}>{p.type}{p.birthday ? ` · 🎂 ${p.birthday}` : ""}</div>
+                      <div style={{fontSize:11,color:V.textDim}}>
+                        {p.type === "admin" ? "👑 Admin" : p.type === "parent" || p.type === "family" ? "👨‍👩‍👧 Parent" : p.type === "kid" ? "🧒 Kid" : "👤 Guest"}
+                        {p.birthday ? ` · 🎂 ${p.birthday}` : ""}
+                      </div>
                     </div>
                     <input type="color" value={p.color||"#f59e0b"} onChange={e=>{
                       const updated=(profiles||[]).map(pp=>pp.id===p.id?{...pp,color:e.target.value}:pp);
@@ -2799,7 +2878,29 @@ export default function App() {
                     }} style={{width:28,height:28,border:"none",borderRadius:4,cursor:"pointer",background:"none"}} />
                   </div>
                   {isAdmin && (
-                    <div style={{display:"flex",gap:6,marginTop:6,marginLeft:30}}>
+                    <div style={{display:"flex",gap:6,marginTop:6,marginLeft:30,flexWrap:"wrap"}}>
+                      {/* Role selector (admin only) */}
+                      <select value={p.type || "kid"} onChange={e=>{
+                        const updated=(profiles||[]).map(pp=>pp.id===p.id?{...pp,type:e.target.value}:pp);
+                        fbSet("profiles",updated); showSave(`${p.name} is now ${e.target.value}`);
+                      }} style={{...inputStyle,width:"auto",flex:"0 0 auto",padding:"4px 8px",fontSize:12}}>
+                        <option value="admin">👑 Admin</option>
+                        <option value="parent">👨‍👩‍👧 Parent</option>
+                        <option value="kid">🧒 Kid</option>
+                        <option value="guest">👤 Guest</option>
+                      </select>
+                      {/* PIN for this profile */}
+                      {(p.type === "admin" || p.type === "parent" || p.type === "family") && (
+                        <input type="text" placeholder="PIN" defaultValue={p.pin||""} maxLength={6}
+                          onBlur={e=>{
+                            const pin = e.target.value.trim();
+                            if (pin !== (p.pin||"")) {
+                              const updated=(profiles||[]).map(pp=>pp.id===p.id?{...pp,pin}:pp);
+                              fbSet("profiles",updated); showSave("PIN updated");
+                            }
+                          }}
+                          style={{...inputStyle,width:70,flex:"0 0 auto",padding:"4px 8px",fontSize:12}} />
+                      )}
                       <select value={p.birthday ? p.birthday.split("-")[0] : ""} onChange={e=>{
                         const mm=e.target.value; const dd=p.birthday?p.birthday.split("-")[1]:"01";
                         const updated=(profiles||[]).map(pp=>pp.id===p.id?{...pp,birthday:mm?mm+"-"+dd:""}:pp);
@@ -2841,8 +2942,9 @@ export default function App() {
                     <input value={newMemberEmoji} onChange={e=>setNewMemberEmoji(e.target.value)} placeholder="😊" style={{...inputStyle,width:60}} />
                   </div>
                   <select value={newMemberType} onChange={e=>setNewMemberType(e.target.value)} style={{...inputStyle,marginBottom:6}}>
-                    <option value="family">Family (adult)</option>
-                    <option value="kid">Kid</option>
+                    <option value="parent">👨‍👩‍👧 Parent</option>
+                    <option value="kid">🧒 Kid</option>
+                    <option value="guest">👤 Guest</option>
                   </select>
                   <button onClick={()=>{
                     if(!newMemberName.trim())return;
@@ -3064,7 +3166,8 @@ export default function App() {
           routines={routines} goals={goals} foodLog={foodLog} shoppingList={shoppingList}
           budgetData={budgetData} custodySchedule={custodySchedule} fbSet={fbSet}
           GROQ_KEY={GROQ_KEY} TAVILY_KEY={TAVILY_KEY} showToast={showToast}
-          familyNames={familyNames} dateKey={dateKey} todayStr={todayStr} />
+          familyNames={familyNames} dateKey={dateKey} todayStr={todayStr}
+          kidsData={kidsData} isAdmin={isAdmin} currentRole={currentRole} />
       )}
 
       {/* Guest Mode PIN exit */}

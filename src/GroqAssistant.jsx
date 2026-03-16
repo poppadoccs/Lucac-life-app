@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { groqFetch, parseGroqJSON, createSpeechRecognition } from "./utils";
 
-// ═══ bby sonnet Jr. — Floating Personal Assistant (v2 Full Rewrite) ═══
+// ═══ bby sonnet Jr. — Floating Personal Assistant (v3 Enhanced) ═══
 
 const PERSONALITIES = {
   helpful: { label: "Helpful", icon: "H", desc: "professional, clear, thorough" },
@@ -48,9 +48,43 @@ function renderText(text) {
   });
 }
 
+// ── Fallback help message builder (role-aware) ──
+function buildFallbackMessage(originalText, role, personality) {
+  const baseItems = [
+    { icon: "\u{1F4C5}", label: "Calendar", text: "Add, edit, or delete calendar events" },
+    { icon: "\u2B50", label: "Stars", text: "See kids' progress and stars" },
+    { icon: "\u{1F50D}", label: "Search", text: "Search the web for anything" },
+  ];
+
+  // Admin/parent get budget + food
+  if (role === "admin" || role === "parent") {
+    baseItems.splice(1, 0, { icon: "\u{1F4B0}", label: "Budget", text: "Check your budget and spending" });
+    baseItems.splice(3, 0, { icon: "\u{1F34E}", label: "Food", text: "Log meals and check nutrition" });
+  }
+
+  // Kids get simpler list
+  if (role === "kid") {
+    return `Hmm, I'm not sure what "${originalText}" means! Here's what I can help with:\n\n` +
+      `\u2B50 Check your stars and tasks\n` +
+      `\u{1F3AE} Talk about Lucac Legends\n` +
+      `\u{1F4DA} Help with homework\n` +
+      `\u{1F50D} Search for cool stuff\n\n` +
+      `Try again?`;
+  }
+
+  const prefix = personality === "sassy"
+    ? `I heard you say "${originalText}" and honestly? No clue what to do with that.`
+    : personality === "kids"
+      ? `Hmm I don't understand "${originalText}" yet!`
+      : `I heard you say "${originalText}" \u2014 I'm not sure what to do with that.`;
+
+  const itemLines = baseItems.map(i => `${i.icon} ${i.text}`).join("\n");
+  return `${prefix} Here's what I can help with:\n\n${itemLines}\n\nTry again?`;
+}
+
 export default function GroqAssistant({
   V, currentProfile, profiles, events, routines, goals, foodLog,
-  shoppingList, budgetData, custodySchedule, fbSet, GROQ_KEY, TAVILY_KEY,
+  shoppingList, budgetData, custodySchedule, kidsData, fbSet, GROQ_KEY, TAVILY_KEY,
   showToast, familyNames, dateKey: dk, todayStr,
 }) {
   const [open, setOpen] = useState(false);
@@ -71,6 +105,10 @@ export default function GroqAssistant({
   const recognitionRef = useRef(null);
   const recTimeoutRef = useRef(null);
   const inputRef = useRef(null);
+
+  // ── Current user role (for role-aware responses) ──
+  const userRole = currentProfile?.type || "guest";
+  const userName = currentProfile?.name || "Unknown";
 
   // ── Load history from Firebase/localStorage on mount ──
   useEffect(() => {
@@ -112,7 +150,7 @@ export default function GroqAssistant({
   }, [routines, goals]);
 
   // ══════════════════════════════════════════════════
-  // 1. FULL APP CONTEXT BUILDER
+  // 1. FULL APP CONTEXT BUILDER (refreshed before every Groq call)
   // ══════════════════════════════════════════════════
   function buildAppContext() {
     const lines = [];
@@ -141,24 +179,26 @@ export default function GroqAssistant({
       }
     } catch { /* skip */ }
 
-    // Budget
-    try {
-      const txns = budgetData?.transactions || [];
-      const weekDates = getWeekDates(todayStr);
-      const weekTxns = txns.filter(t => weekDates.includes(t.date));
-      const totalWeek = weekTxns.reduce((s, t) => s + Number(t.amount || 0), 0);
-      const totalMonth = txns.filter(t => t.date && t.date.slice(0, 7) === todayStr.slice(0, 7))
-        .reduce((s, t) => s + Number(t.amount || 0), 0);
-      // Category breakdown for month
-      const catTotals = {};
-      txns.filter(t => t.date && t.date.slice(0, 7) === todayStr.slice(0, 7)).forEach(t => {
-        const cat = t.category || "Other";
-        catTotals[cat] = (catTotals[cat] || 0) + Number(t.amount || 0);
-      });
-      const biggest = Object.entries(catTotals).sort((a, b) => b[1] - a[1]).slice(0, 3);
-      const biggestStr = biggest.map(([c, v]) => `${c} ${formatCurrency(v)}`).join(", ");
-      lines.push(`Budget: Spent ${formatCurrency(totalWeek)} this week, ${formatCurrency(totalMonth)} this month.${biggestStr ? " Top: " + biggestStr + "." : ""}`);
-    } catch { lines.push("Budget: unable to load."); }
+    // Budget (only for admin/parent)
+    if (userRole === "admin" || userRole === "parent") {
+      try {
+        const txns = budgetData?.transactions || [];
+        const weekDates = getWeekDates(todayStr);
+        const weekTxns = txns.filter(t => weekDates.includes(t.date));
+        const totalWeek = weekTxns.reduce((s, t) => s + Number(t.amount || 0), 0);
+        const totalMonth = txns.filter(t => t.date && t.date.slice(0, 7) === todayStr.slice(0, 7))
+          .reduce((s, t) => s + Number(t.amount || 0), 0);
+        // Category breakdown for month
+        const catTotals = {};
+        txns.filter(t => t.date && t.date.slice(0, 7) === todayStr.slice(0, 7)).forEach(t => {
+          const cat = t.category || "Other";
+          catTotals[cat] = (catTotals[cat] || 0) + Number(t.amount || 0);
+        });
+        const biggest = Object.entries(catTotals).sort((a, b) => b[1] - a[1]).slice(0, 3);
+        const biggestStr = biggest.map(([c, v]) => `${c} ${formatCurrency(v)}`).join(", ");
+        lines.push(`Budget: Spent ${formatCurrency(totalWeek)} this week, ${formatCurrency(totalMonth)} this month.${biggestStr ? " Top: " + biggestStr + "." : ""}`);
+      } catch { lines.push("Budget: unable to load."); }
+    }
 
     // Routines
     try {
@@ -180,11 +220,42 @@ export default function GroqAssistant({
       lines.push("Family members: " + (names || "not set"));
     } catch { /* skip */ }
 
-    // Shopping list
+    // Kids stars and tasks (from kidsData prop)
     try {
-      const items = (shoppingList || []).map(s => typeof s === "string" ? s : s.item || s.text || "").filter(Boolean);
-      lines.push("Shopping list: " + (items.length > 0 ? items.slice(0, 15).join(", ") : "empty"));
-    } catch { lines.push("Shopping list: unable to load."); }
+      const kidProfiles = (profiles || []).filter(p => p.type === "kid");
+      if (kidProfiles.length > 0) {
+        const kidsInfo = kidProfiles.map(kp => {
+          const kidName = kp.name;
+          const stars = kp.stars || 0;
+          // Check kidsData for task info
+          const kidTasks = kidsData && kidsData[kidName] ? kidsData[kidName] : null;
+          let taskInfo = "";
+          if (kidTasks && Array.isArray(kidTasks.tasks)) {
+            const doneTasks = kidTasks.tasks.filter(t => t.done).length;
+            const taskNames = kidTasks.tasks.slice(0, 5).map(t => t.text + (t.done ? " [DONE]" : "")).join(", ");
+            taskInfo = ` | Tasks: ${doneTasks}/${kidTasks.tasks.length} done (${taskNames})`;
+          } else if (kidTasks && typeof kidTasks === "object") {
+            // Try to extract tasks from object format
+            const taskEntries = Object.values(kidTasks).filter(v => v && typeof v === "object" && v.text);
+            if (taskEntries.length > 0) {
+              const doneTasks = taskEntries.filter(t => t.done).length;
+              const taskNames = taskEntries.slice(0, 5).map(t => t.text + (t.done ? " [DONE]" : "")).join(", ");
+              taskInfo = ` | Tasks: ${doneTasks}/${taskEntries.length} done (${taskNames})`;
+            }
+          }
+          return `${kidName}: ${stars} stars${taskInfo}`;
+        });
+        lines.push("Kids: " + kidsInfo.join("; "));
+      }
+    } catch { /* skip */ }
+
+    // Shopping list (only for admin/parent)
+    if (userRole === "admin" || userRole === "parent") {
+      try {
+        const items = (shoppingList || []).map(s => typeof s === "string" ? s : s.item || s.text || "").filter(Boolean);
+        lines.push("Shopping list: " + (items.length > 0 ? items.slice(0, 15).join(", ") : "empty"));
+      } catch { lines.push("Shopping list: unable to load."); }
+    }
 
     // Food log today
     try {
@@ -197,17 +268,19 @@ export default function GroqAssistant({
       }
     } catch { /* skip */ }
 
-    // Custody
-    try {
-      if (custodySchedule) {
-        const weekDates = getWeekDates(todayStr);
-        const custInfo = weekDates.map(wd => {
-          const val = custodySchedule[wd];
-          return val ? `${new Date(wd + "T00:00:00").toLocaleDateString("en-US", { weekday: "short" })}: ${val}` : null;
-        }).filter(Boolean);
-        if (custInfo.length > 0) lines.push("Custody this week: " + custInfo.join(", "));
-      }
-    } catch { /* skip */ }
+    // Custody (only for admin)
+    if (userRole === "admin") {
+      try {
+        if (custodySchedule) {
+          const weekDates = getWeekDates(todayStr);
+          const custInfo = weekDates.map(wd => {
+            const val = custodySchedule[wd];
+            return val ? `${new Date(wd + "T00:00:00").toLocaleDateString("en-US", { weekday: "short" })}: ${val}` : null;
+          }).filter(Boolean);
+          if (custInfo.length > 0) lines.push("Custody this week: " + custInfo.join(", "));
+        }
+      } catch { /* skip */ }
+    }
 
     // All events (for search/delete) — provide a summary of ALL upcoming
     try {
@@ -224,11 +297,15 @@ export default function GroqAssistant({
       }
     } catch { /* skip */ }
 
+    // Current user info
+    lines.push(`Current user: ${userName} (role: ${userRole})`);
+    lines.push(`Today: ${todayStr}`);
+
     return lines.join("\n");
   }
 
   // ══════════════════════════════════════════════════
-  // 2. SYSTEM PROMPT BUILDER
+  // 2. SYSTEM PROMPT BUILDER (with role awareness)
   // ══════════════════════════════════════════════════
   function buildSystemPrompt() {
     const personalityDesc = PERSONALITIES[personality]?.desc || PERSONALITIES.sassy.desc;
@@ -240,15 +317,34 @@ export default function GroqAssistant({
         ? `If you can't understand, respond like: "Hmm I don't understand that yet! Try asking differently"`
         : `If you can't understand, respond helpfully like: "I wasn't able to find that. Could you try rephrasing?"`;
 
+    // Role-based instructions
+    let roleInstructions = "";
+    switch (userRole) {
+      case "kid":
+        roleInstructions = `\n\nROLE: The user is a CHILD named ${userName}. Use simple, friendly language. Only discuss their own games, stars, tasks, and homework. Do NOT reveal budget, spending, custody, exchange log, or other adult information. Keep things fun and encouraging!`;
+        break;
+      case "parent":
+        roleInstructions = `\n\nROLE: The user is a PARENT named ${userName}. They can see calendar, routines, goals, and kids info. Do NOT reveal private events created by the admin, budget details, or exchange log information. Be helpful but respect privacy boundaries.`;
+        break;
+      case "guest":
+        roleInstructions = `\n\nROLE: The user is a GUEST. Only help with general questions, web searches, and publicly visible calendar events. Do NOT reveal budget, custody, family details, or private information.`;
+        break;
+      case "admin":
+      default:
+        roleInstructions = `\n\nROLE: The user is the ADMIN (${userName}). Full access to all features and data. They can add, edit, delete anything.`;
+        break;
+    }
+
     return `You are bby sonnet Jr., a personal assistant for the LUCAC family app. Today is ${todayStr}. You must be ${personalityDesc} in tone. Always respond naturally in conversation.
 
 ${errorInstructions}
+${roleInstructions}
 
-IMPORTANT — You have FULL access to the app's current state below. Use it to answer ALL questions accurately. Never say "I don't have access" — you DO.
+IMPORTANT \u2014 You have FULL access to the app's current state below. Use it to answer ALL questions accurately. Never say "I don't have access" \u2014 you DO.
 
-═══ CURRENT APP STATE ═══
+\u2550\u2550\u2550 CURRENT APP STATE \u2550\u2550\u2550
 ${appContext}
-═══ END APP STATE ═══
+\u2550\u2550\u2550 END APP STATE \u2550\u2550\u2550
 
 You can execute actions by including a JSON block wrapped in <action>...</action> tags in your response. You may include MULTIPLE action tags.
 
@@ -264,15 +360,18 @@ Available actions:
 - {"type":"search","query":"..."} (web search for weather, news, prices, restaurants, anything external)
 
 RULES:
-1. When the user asks about calendar/events/schedule — ALWAYS check the app state above and give a specific answer.
-2. When asked to delete/edit — search for the event in app state, confirm what you found, then include the action tag.
-3. When asked about budget/spending — calculate from the transactions in app state.
-4. When asked about tasks/goals/routines — reference the app state.
-5. For weather, news, prices, "search for X", "what is X" — include a search action.
-6. For food logging — include addFood action with estimated macros.
-7. For reminders — add as a goal with addGoal action.
+1. When the user asks about calendar/events/schedule \u2014 ALWAYS check the app state above and give a specific answer.
+2. When asked to delete/edit \u2014 search for the event in app state, confirm what you found, then include the action tag.
+3. When asked about budget/spending \u2014 calculate from the transactions in app state.
+4. When asked about tasks/goals/routines \u2014 reference the app state.
+5. For weather, news, prices, "search for X", "what is X" \u2014 include a search action.
+6. For food logging \u2014 include addFood action with estimated macros.
+7. For reminders \u2014 add as a goal with addGoal action.
 8. ALWAYS describe what you're about to do BEFORE the action tag so the user sees a preview.
-9. Never include raw JSON in your visible response — keep action tags for the system only.`;
+9. Never include raw JSON in your visible response \u2014 keep action tags for the system only.
+10. When asked "what tasks does [kid] have?" \u2014 look at the Kids section of app state for their stars and tasks.
+11. EVERY message MUST get a response. If confused, list what you CAN help with.
+12. Keep responses concise (2-3 sentences max for simple questions). Be warm but efficient.`;
   }
 
   // ══════════════════════════════════════════════════
@@ -318,6 +417,19 @@ RULES:
   // 5. ACTION EXECUTOR (runs after user confirms)
   // ══════════════════════════════════════════════════
   async function executeAction(action) {
+    // Role-based gating: kids and guests cannot perform mutating actions
+    if (userRole === "kid" || userRole === "guest") {
+      if (["deleteEvent", "editEvent", "addBudget"].includes(action.type)) {
+        return `Sorry, ${userName} \u2014 you don't have permission to do that. Ask an admin for help!`;
+      }
+    }
+    if (userRole === "guest") {
+      // Guests can only do searches
+      if (action.type !== "search") {
+        return "Guests can only search the web. Please sign in for full access!";
+      }
+    }
+
     try {
       switch (action.type) {
         case "addEvent": {
@@ -532,7 +644,7 @@ RULES:
   }
 
   // ══════════════════════════════════════════════════
-  // 9. MAIN SEND MESSAGE
+  // 9. MAIN SEND MESSAGE (every input MUST get a visible response)
   // ══════════════════════════════════════════════════
   async function sendMessage(userText) {
     const text = (userText || input).trim();
@@ -546,7 +658,18 @@ RULES:
     setMessages(newMsgs);
     setLoading(true);
 
+    // Safety net: track whether we produced a response
+    let respondedSuccessfully = false;
+
     try {
+      // Check if GROQ_KEY is available
+      if (!GROQ_KEY) {
+        const errMsg = { role: "assistant", content: "I need an API key to work! Ask the admin to set up VITE_GROQ_KEY.", ts: Date.now() };
+        setMessages(prev => [...prev, errMsg]);
+        setLoading(false);
+        return;
+      }
+
       // Detect if web search is likely needed
       const needsSearch = /weather|news|price|restaurant|store hours|what is|who is|how to|current|latest|today's|search for|look up|find me|recipe/i.test(text);
       let searchContext = "";
@@ -556,7 +679,7 @@ RULES:
         const results = await tavilySearch(text);
         setSearching(false);
         if (results) {
-          searchContext = `\n\n═══ WEB SEARCH RESULTS for "${text}" ═══\n${results}\n═══ END SEARCH ═══\nUse these results to give a helpful answer.`;
+          searchContext = `\n\n\u2550\u2550\u2550 WEB SEARCH RESULTS for "${text}" \u2550\u2550\u2550\n${results}\n\u2550\u2550\u2550 END SEARCH \u2550\u2550\u2550\nUse these results to give a helpful answer.`;
         }
       }
 
@@ -602,6 +725,7 @@ RULES:
               const cleanFollowUp = cleanActionTags(followUp.data);
               const jrMsg = { role: "assistant", content: cleanFollowUp, ts: Date.now() };
               setMessages(prev => [...prev, jrMsg]);
+              respondedSuccessfully = true;
               setLoading(false);
               return;
             }
@@ -646,6 +770,7 @@ RULES:
               const jrMsg = { role: "assistant", content: displayText || `I found ${matches.length} events matching "${deleteAction.keyword}". Which one do you want to delete?`, ts: Date.now() };
               setMessages(prev => [...prev, jrMsg]);
               setDeleteOptions(matches);
+              respondedSuccessfully = true;
               setLoading(false);
               return;
             }
@@ -657,6 +782,7 @@ RULES:
                   : `I couldn't find any events matching "${deleteAction.keyword}". Could you try a different keyword?`;
               const jrMsg = { role: "assistant", content: personalityError, ts: Date.now() };
               setMessages(prev => [...prev, jrMsg]);
+              respondedSuccessfully = true;
               setLoading(false);
               return;
             }
@@ -667,23 +793,40 @@ RULES:
           const jrMsg = { role: "assistant", content: previewText, ts: Date.now(), isPreview: true };
           setMessages(prev => [...prev, jrMsg]);
           setPendingAction({ actions: mutatingActions, descriptions });
+          respondedSuccessfully = true;
           setLoading(false);
           return;
         }
 
         // No actions — just a conversational response
-        const jrMsg = { role: "assistant", content: displayText || responseText, ts: Date.now() };
-        setMessages(prev => [...prev, jrMsg]);
+        if (displayText || responseText) {
+          const jrMsg = { role: "assistant", content: displayText || responseText, ts: Date.now() };
+          setMessages(prev => [...prev, jrMsg]);
+          respondedSuccessfully = true;
+        }
 
       } else {
-        // Error from Groq
-        const personalityError = personality === "sassy"
-          ? `Look, something went sideways with my brain. ${result.error || "Try again?"}`
-          : personality === "kids"
-            ? `Oops! My brain got confused. Try asking again!`
-            : `I ran into an issue: ${result.error || "Please try again."}`;
-        const errMsg = { role: "assistant", content: personalityError, ts: Date.now() };
-        setMessages(prev => [...prev, errMsg]);
+        // Error from Groq — check if timeout
+        const isTimeout = (result.error || "").toLowerCase().includes("too long") || (result.error || "").toLowerCase().includes("abort");
+        if (isTimeout) {
+          const timeoutMsg = personality === "sassy"
+            ? "Jr. got confused trying to think about that. Say it differently?"
+            : personality === "kids"
+              ? "Oops, my brain got tired! Try again?"
+              : "Jr. got confused. Try saying it differently?";
+          const errMsg = { role: "assistant", content: timeoutMsg, ts: Date.now() };
+          setMessages(prev => [...prev, errMsg]);
+          respondedSuccessfully = true;
+        } else {
+          const personalityError = personality === "sassy"
+            ? `Look, something went sideways with my brain. ${result.error || "Try again?"}`
+            : personality === "kids"
+              ? `Oops! My brain got confused. Try asking again!`
+              : `I ran into an issue: ${result.error || "Please try again."}`;
+          const errMsg = { role: "assistant", content: personalityError, ts: Date.now() };
+          setMessages(prev => [...prev, errMsg]);
+          respondedSuccessfully = true;
+        }
       }
     } catch (e) {
       const personalityError = personality === "sassy"
@@ -693,7 +836,16 @@ RULES:
           : `An unexpected error occurred: ${e.message}. Please try again.`;
       const errMsg = { role: "assistant", content: personalityError, ts: Date.now() };
       setMessages(prev => [...prev, errMsg]);
+      respondedSuccessfully = true;
     }
+
+    // SAFETY NET: If somehow no response was generated, show fallback
+    if (!respondedSuccessfully) {
+      const fallback = buildFallbackMessage(text, userRole, personality);
+      const fallbackMsg = { role: "assistant", content: fallback, ts: Date.now() };
+      setMessages(prev => [...prev, fallbackMsg]);
+    }
+
     setSearching(false);
     setLoading(false);
   }
@@ -765,6 +917,25 @@ RULES:
   const dangerColor = V?.danger || "#dc2626";
   const successColor = V?.success || "#22c55e";
 
+  // ── Role-aware quick suggestions ──
+  const quickSuggestions = userRole === "kid"
+    ? [
+        "How many stars do I have?",
+        "What are my tasks?",
+        "Tell me something cool!",
+      ]
+    : userRole === "guest"
+      ? [
+          "What's happening this week?",
+          "What's the weather?",
+          "Search for something",
+        ]
+      : [
+          "What's happening this week?",
+          "How much did I spend?",
+          "What's the weather?",
+        ];
+
   // ══════════════════════════════════════════════════
   // RENDER
   // ══════════════════════════════════════════════════
@@ -831,8 +1002,13 @@ RULES:
               100% { transform: rotate(360deg); }
             }
             @keyframes jrDots {
-              0%, 80%, 100% { opacity: 0.3; }
-              40% { opacity: 1; }
+              0%, 20% { content: '.'; }
+              40% { content: '..'; }
+              60%, 100% { content: '...'; }
+            }
+            @keyframes jrThinkPulse {
+              0%, 100% { opacity: 0.4; }
+              50% { opacity: 1; }
             }
           `}</style>
 
@@ -862,6 +1038,19 @@ RULES:
                   }}
                 >
                   {mood.text} {mood.emoji}
+                </span>
+                {/* Role badge */}
+                <span
+                  style={{
+                    fontSize: 10,
+                    color: userRole === "admin" ? goldAccent : userRole === "kid" ? successColor : mutedColor,
+                    background: cardAlt,
+                    padding: "2px 6px",
+                    borderRadius: 8,
+                    fontWeight: 600,
+                  }}
+                >
+                  {userRole === "admin" ? "Admin" : userRole === "kid" ? "Kid" : userRole === "parent" ? "Parent" : "Guest"}
                 </span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -964,17 +1153,23 @@ RULES:
                 }}
               >
                 <div style={{ fontSize: 32, marginBottom: 8 }}>{"\u{1F451}"}</div>
-                <div style={{ fontWeight: 600 }}>Hey! I'm bby sonnet Jr.</div>
-                <div>Ask me anything or tell me to do stuff.</div>
+                <div style={{ fontWeight: 600 }}>
+                  Hey{userName !== "Unknown" ? ` ${userName}` : ""}! I'm bby sonnet Jr.
+                </div>
+                <div>
+                  {userRole === "kid"
+                    ? "Ask me about your stars, tasks, or anything fun!"
+                    : "Ask me anything or tell me to do stuff."
+                  }
+                </div>
                 <div style={{ fontSize: 11, marginTop: 8, color: V?.textDim || "#9ca3af" }}>
-                  Try: "What's on my calendar this week?" or "Add dentist tomorrow at 3pm"
+                  {userRole === "kid"
+                    ? "Try: \"How many stars do I have?\" or \"What are my tasks?\""
+                    : "Try: \"What's on my calendar this week?\" or \"Add dentist tomorrow at 3pm\""
+                  }
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", marginTop: 12 }}>
-                  {[
-                    "What's happening this week?",
-                    "How much did I spend?",
-                    "What's the weather?",
-                  ].map((q, i) => (
+                  {quickSuggestions.map((q, i) => (
                     <button
                       key={i}
                       onClick={() => sendMessage(q)}
@@ -1064,7 +1259,7 @@ RULES:
                       cursor: "pointer",
                     }}
                   >
-                    Yes, do it
+                    {"\u2705"} Yes, do it
                   </button>
                   <button
                     onClick={cancelPendingAction}
@@ -1081,7 +1276,7 @@ RULES:
                       cursor: "pointer",
                     }}
                   >
-                    Cancel
+                    {"\u274C"} Cancel
                   </button>
                 </div>
               </div>
@@ -1145,7 +1340,7 @@ RULES:
               </div>
             )}
 
-            {/* ── Loading / Searching indicators ── */}
+            {/* ── Loading / Searching indicators (animated dots) ── */}
             {(loading || searching) && (
               <div style={{ display: "flex", justifyContent: "flex-start" }}>
                 <div
@@ -1173,7 +1368,14 @@ RULES:
                       animation: "jrSpin 0.8s linear infinite",
                     }}
                   />
-                  {searching ? "Searching the web..." : "Jr. is thinking..."}
+                  <span>
+                    {searching ? "Searching the web" : "Jr. is thinking"}
+                    <span style={{ display: "inline-block" }}>
+                      <span style={{ animation: "jrThinkPulse 1.4s ease-in-out infinite", animationDelay: "0s" }}>.</span>
+                      <span style={{ animation: "jrThinkPulse 1.4s ease-in-out infinite", animationDelay: "0.2s" }}>.</span>
+                      <span style={{ animation: "jrThinkPulse 1.4s ease-in-out infinite", animationDelay: "0.4s" }}>.</span>
+                    </span>
+                  </span>
                 </div>
               </div>
             )}
@@ -1221,7 +1423,7 @@ RULES:
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-              placeholder="Ask Jr. anything..."
+              placeholder={userRole === "kid" ? "Ask Jr. about your stars..." : "Ask Jr. anything..."}
               style={{
                 flex: 1,
                 height: 44,
