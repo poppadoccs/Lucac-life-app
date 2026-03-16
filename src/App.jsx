@@ -544,9 +544,8 @@ export default function App() {
     const updated = { ...(events || {}) };
     const baseDk = dateKey(calYear, calMonth, selectedDay);
     valid.forEach(ev => {
-      const eventData = { title: ev.title, time: ev.time, who: ev.who, notes: ev.notes, duration: ev.duration || 60 };
-      if (eventPrivate && isAdmin) { eventData.private = true; eventData.creator = currentProfile?.name || "Admin"; }
-      if (!eventPrivate && currentProfile?.name) { eventData.creator = currentProfile.name; }
+      const eventData = { title: ev.title, time: ev.time, who: ev.who, notes: ev.notes, duration: ev.duration || 60, creator: currentProfile?.name || "Unknown" };
+      if (eventPrivate && isAdmin) { eventData.private = true; }
       if (ev.repeat && ev.repeat !== "none") {
         eventData.repeat = ev.repeat;
         if (ev.repeatEnd) eventData.repeatEnd = ev.repeatEnd;
@@ -678,9 +677,13 @@ export default function App() {
     const input = quickAddInput.trim();
 
     // ── DELETE: show matching events as cards ──
-    const deleteMatch = input.match(/^(delete|remove|cancel)\s+(?:my\s+|all\s+)?(.+?)(?:\s+events?)?$/i);
+    const deleteMatch = input.match(/^(delete|remove|cancel)\s+(.+)$/i);
     if (deleteMatch) {
       const keyword = deleteMatch[2].trim();
+      if (!events || Object.keys(events).length === 0) {
+        showToast("No events found. Try adding some first!", "info");
+        setQuickAddLoading(false); setQuickAddInput(""); return;
+      }
       const matches = searchEvents(keyword);
       if (matches.length === 0) {
         // Show upcoming events as context
@@ -764,7 +767,7 @@ export default function App() {
     let totalCreated = 0;
     quickAddPreview.events.forEach(ev => {
       const baseDk = ev.date; // "YYYY-MM-DD"
-      const eventData = { title: ev.title, time: ev.time || "12:00 PM", who: ev.who || "", notes: ev.notes || "", duration: ev.duration || 60 };
+      const eventData = { title: ev.title, time: ev.time || "12:00 PM", who: ev.who || "", notes: ev.notes || "", duration: ev.duration || 60, creator: currentProfile?.name || "Unknown" };
       if (ev.repeat && ev.repeat !== "none") {
         eventData.repeat = ev.repeat;
         if (ev.repeatCount) eventData.repeatCount = ev.repeatCount;
@@ -1106,22 +1109,10 @@ export default function App() {
         <div style={{ fontSize:40, marginBottom:12 }}>{pinTarget?.emoji}</div>
         <div style={{ fontSize:20, fontWeight:700, color:V.accent, marginBottom:4 }}>{pinTarget?.name}</div>
         <div style={{ fontSize:13, color:V.textDim, marginBottom:24 }}>Enter your PIN</div>
-        <div style={{ display:"flex", gap:8, marginBottom:16 }}>
-          {[0,1,2,3,4,5].map(i => (
-            <div key={i} style={{ width:14, height:14, borderRadius:"50%", background: i < pinInput.length ? V.accent : V.borderSubtle }} />
-          ))}
-        </div>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:12, marginBottom:16 }}>
-          {[1,2,3,4,5,6,7,8,9,"",0,"⌫"].map((n,i) => (
-            <button key={i} onClick={() => {
-              if (n === "⌫") setPinInput(p => p.slice(0,-1));
-              else if (n !== "") setPinInput(p => p.length < 6 ? p + n : p);
-            }} style={{ width:64, height:64, borderRadius:12, background:V.bgCard, border:`1px solid ${V.borderSubtle}`,
-              color:V.textPrimary, fontSize:22, cursor: n==="" ? "default" : "pointer", fontWeight:600, boxShadow:V.shadowCard }}>
-              {n}
-            </button>
-          ))}
-        </div>
+        <input type="password" value={pinInput} onChange={e => setPinInput(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && handlePinSubmit()}
+          placeholder="PIN" maxLength={15} autoFocus
+          style={{ ...inputStyle, textAlign:"center", fontSize:24, letterSpacing:4, width:240, marginBottom:16 }} />
         {pinError && <div style={{ color:V.danger, marginBottom:12 }}>{pinError}</div>}
         <button onClick={handlePinSubmit} style={{ ...btnPrimary, width:180, padding:"12px" }}>Unlock</button>
         <button onClick={() => { setScreen("profiles"); setPinInput(""); setPinError(""); }}
@@ -1174,7 +1165,7 @@ export default function App() {
                 <button onClick={()=>window.location.href=`tel:${contactDad}`}
                   style={{...btnPrimary,width:"100%",padding:14,marginBottom:8,fontSize:16}}>📞 Call Dada</button>
               )}
-              <button onClick={()=>setShowGame(true)}
+              <button onClick={()=>{setShowGame(true);setTab("kids");}}
                 style={{ background:"#0f766e", color:"#fff", border:"none", borderRadius:V.r2,
                   padding:14, width:"100%", marginBottom:12, fontSize:16, cursor:"pointer", fontWeight:700 }}>
                 🎮 Play LUCAC Legends

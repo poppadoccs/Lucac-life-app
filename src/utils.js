@@ -114,8 +114,8 @@ export function createSpeechRecognition() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) return null;
   const recognition = new SR();
-  recognition.continuous = true;
-  recognition.interimResults = true;
+  recognition.continuous = false;
+  recognition.interimResults = false;
   recognition.lang = "en-US";
   recognition.maxAlternatives = 1;
   return recognition;
