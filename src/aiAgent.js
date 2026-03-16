@@ -165,15 +165,16 @@ const TOOLS = [
   {
     type: "function",
     function: {
-      name: "rewrite_message_tone",
-      description: "Rewrite a message in a calmer, more respectful tone. Use for co-parenting communication help.",
+      name: "emotional_support",
+      description: "Provide emotional support, encouragement, or help with feelings. Use when the user expresses emotions like sadness, anger, frustration, excitement, happiness, anxiety, or asks for motivation, comfort, or someone to talk to.",
       parameters: {
         type: "object",
         properties: {
-          originalMessage: { type: "string", description: "The message to rewrite" },
-          targetTone: { type: "string", enum: ["calm","neutral","friendly","formal"], description: "Desired tone" }
+          emotion: { type: "string", description: "The emotion detected: sad, angry, frustrated, happy, excited, anxious, overwhelmed, lonely, proud, scared" },
+          context: { type: "string", description: "What the user said or what's going on" },
+          isChild: { type: "boolean", description: "True if a kid profile is active (simpler language, more warmth)" }
         },
-        required: ["originalMessage"]
+        required: ["emotion", "context"]
       }
     }
   },
@@ -292,7 +293,7 @@ You help a co-parenting family manage their calendar, tasks, budget, nutrition, 
 3. For READ actions (get calendar, get budget, get kids status): call the tool and summarize results naturally.
 4. If ambiguous, use ask_clarification with tappable option suggestions.
 5. Convert relative dates: "tomorrow" = ${tomorrow}, "next week" starts ${nextWeek}. TODAY = ${dateStr}.
-6. For co-parenting tone help: ALWAYS use rewrite_message_tone. Never refuse to help with communication.
+6. For emotional support: use emotional_support tool. Be warm and real. Never dismiss feelings.
 7. If you can't do something: say what you CAN do. Never silently fail.
 8. For web searches: use web_search tool. Summarize results in 2-3 sentences.`;
 }
@@ -392,13 +393,16 @@ async function executeReadTool(funcName, args, appState, apiKey) {
     case 'ask_clarification': {
       return JSON.stringify({ type: 'clarification', question: args.question, options: args.options || [] });
     }
-    case 'rewrite_message_tone': {
-      const rewriteResp = await callGroqWithRetry(apiKey, [
-        { role: 'system', content: `Rewrite this message in a ${args.targetTone || 'calm'} and respectful tone. Focus on the children's needs. Keep it concise. Return ONLY the rewritten message.` },
-        { role: 'user', content: args.originalMessage }
-      ], null, { temperature: 0.5 });
-      const rewritten = rewriteResp.choices?.[0]?.message?.content || "Couldn't rewrite the message.";
-      return `**Original:** "${args.originalMessage}"\n\n**Rewritten (${args.targetTone || 'calm'}):** "${rewritten}"`;
+    case 'emotional_support': {
+      const isKid = args.isChild || false;
+      const kidPrompt = isKid
+        ? "You are a kind, warm friend talking to a child (age 6-8). Use simple words. Be encouraging and gentle. Use emoji. Make them feel safe and heard. Never dismiss their feelings. Keep it to 2-3 short sentences."
+        : "You are a supportive friend. Be warm, real, and honest — not fake-positive. Acknowledge what they're feeling first, then help them see a path forward. If they're happy, celebrate with them. If they're sad, sit with them in it before offering hope. Keep it to 3-4 sentences. Be conversational, not clinical.";
+      const supportResp = await callGroqWithRetry(apiKey, [
+        { role: 'system', content: kidPrompt },
+        { role: 'user', content: `I'm feeling ${args.emotion}. ${args.context}` }
+      ], null, { temperature: 0.8 });
+      return supportResp.choices?.[0]?.message?.content || "I'm here for you. Tell me more about what's going on.";
     }
     case 'generate_daily_briefing': {
       return appState.getDailyBriefingData(args.forPerson);
@@ -511,6 +515,8 @@ function getActionPreviewLabel(action) {
       return `⭐ Assign to ${args.kidName}: "${args.task}" (${args.stars || 5} stars)`;
     case 'log_food':
       return `🍽️ Log: ${args.quantity || ''} ${args.food}${args.meal ? ' (' + args.meal + ')' : ''}`;
+    case 'emotional_support':
+      return `💛 Talking about: ${args.emotion}`;
     default:
       return `${fn}: ${JSON.stringify(args)}`;
   }
