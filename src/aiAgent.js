@@ -318,6 +318,7 @@ async function callGroqWithRetry(apiKey, messages, tools, options = {}) {
         body.tool_choice = 'auto';
       }
 
+      console.log('[aiAgent] Calling Groq:', messages.length, 'msgs,', tools?.length || 0, 'tools, attempt', attempt);
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -329,17 +330,16 @@ async function callGroqWithRetry(apiKey, messages, tools, options = {}) {
       });
 
       clearTimeout(timeout);
+      console.log('[aiAgent] Groq status:', response.status);
 
       if (response.ok) {
         const data = await response.json();
-        if (typeof window !== 'undefined' && window.location?.hostname === 'localhost') {
-          console.log('[aiAgent] Groq response:', data.choices?.[0]?.message?.tool_calls ? 'TOOL_CALLS' : 'TEXT', data.choices?.[0]?.finish_reason);
-        }
+        console.log('[aiAgent] Response type:', data.choices?.[0]?.message?.tool_calls ? 'TOOL_CALLS(' + data.choices[0].message.tool_calls.length + ')' : 'TEXT', '| finish:', data.choices?.[0]?.finish_reason);
         return data;
       }
 
       const errorBody = await response.text().catch(() => '');
-      console.error(`[aiAgent] Groq API error ${response.status}:`, errorBody.slice(0, 300));
+      console.error('[aiAgent] Groq error', response.status, ':', errorBody.slice(0, 500));
 
       if ((response.status === 429 || response.status >= 500) && attempt < maxRetries) {
         await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
@@ -419,8 +419,26 @@ async function executeReadTool(funcName, args, appState, apiKey) {
   }
 }
 
+// ═══ SIMPLE CONNECTION TEST ═══
+async function testGroqConnection(apiKey) {
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: 'Say hello in one word.' }], max_tokens: 10, temperature: 0 })
+    });
+    const data = await response.json();
+    console.log('[testGroq] Status:', response.status, 'Response:', JSON.stringify(data).slice(0, 200));
+    return { ok: response.ok, status: response.status, data };
+  } catch (error) {
+    console.error('[testGroq] Error:', error);
+    return { ok: false, error: error.message };
+  }
+}
+
 // ═══ THE AGENT LOOP — the entire brain ═══
 async function runAgentLoop(apiKey, userMessage, appState, conversationHistory = []) {
+  console.log('[aiAgent] Starting loop:', userMessage?.slice(0, 50), '| key:', !!apiKey);
   const systemPrompt = buildSystemPrompt(appState);
   const messages = [
     { role: 'system', content: systemPrompt },
@@ -522,4 +540,4 @@ function getActionPreviewLabel(action) {
   }
 }
 
-export { runAgentLoop, getActionPreviewLabel };
+export { runAgentLoop, getActionPreviewLabel, testGroqConnection };

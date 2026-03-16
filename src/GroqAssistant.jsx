@@ -467,9 +467,17 @@ export default function GroqAssistant({
       }
 
     } catch (error) {
+      console.error("[Jr] Agent error:", error);
+      const errMsg = error?.message || "";
+      let userMsg = "I hit a snag. Try again? 🔄";
+      if (errMsg.includes("429")) userMsg = "I'm being rate-limited — wait a few seconds and try again.";
+      else if (errMsg.includes("401")) userMsg = "API key issue — check VITE_GROQ_KEY in settings.";
+      else if (errMsg.includes("AbortError") || errMsg.includes("abort")) userMsg = "Request timed out. Try a shorter question.";
+      else if (errMsg.includes("Failed to fetch") || errMsg.includes("NetworkError")) userMsg = "Can't reach AI — check your internet connection.";
+      else if (errMsg) userMsg = `AI error: ${errMsg.slice(0, 100)}`;
       setMessages(prev => [...prev, {
         role: "assistant",
-        content: "I hit a snag. Try again? \u{1F504}",
+        content: userMsg,
         ts: Date.now(),
       }]);
     }

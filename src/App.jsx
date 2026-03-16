@@ -8,7 +8,7 @@ import FoodTab from "./FoodTab";
 import BudgetTab from "./BudgetTab";
 import HomeworkHelper from "./HomeworkHelper";
 import GroqAssistant from "./GroqAssistant";
-import { runAgentLoop, getActionPreviewLabel } from "./aiAgent";
+import { runAgentLoop, getActionPreviewLabel, testGroqConnection } from "./aiAgent";
 
 // ═══ SENTRY ERROR MONITORING ═══
 Sentry.init({
@@ -35,6 +35,7 @@ const db = getDatabase(firebaseApp);
 
 const GROQ_KEY = import.meta.env.VITE_GROQ_KEY;
 const TAVILY_KEY = import.meta.env.VITE_TAVILY_KEY;
+if (typeof window !== 'undefined') console.log('[App] GROQ_KEY present:', !!GROQ_KEY, 'length:', GROQ_KEY?.length);
 
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -3897,6 +3898,17 @@ export default function App() {
               <span>1 min</span><span>30 min</span><span>1 hour</span><span>2 hours</span>
             </div>
             <button onClick={()=>{fbSet("alertMinutes",alertMinutes);showSave("Alert saved!");}} style={{...btnPrimary,width:"100%"}}>💾 Save</button>
+            {/* AI Connection Test */}
+            <div style={{marginTop:16,paddingTop:12,borderTop:`1px solid ${V.borderDefault}`}}>
+              <div style={{fontSize:12,color:V.textDim,marginBottom:6}}>AI Diagnostics</div>
+              <button onClick={async()=>{
+                showToast("Testing Groq connection...","info");
+                const r = await testGroqConnection(GROQ_KEY);
+                if(r.ok) showToast("Groq connected! Model works.","success");
+                else showToast(`Groq failed: ${r.status || r.error}`,"error");
+              }} style={{...btnSecondary,width:"100%",marginBottom:6}}>Test AI Connection</button>
+              <div style={{fontSize:10,color:V.textDim}}>Key: {GROQ_KEY ? `${GROQ_KEY.slice(0,8)}... (${GROQ_KEY.length} chars)` : "MISSING"}</div>
+            </div>
           </div>
         )}
       </div>
