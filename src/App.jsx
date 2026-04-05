@@ -1193,7 +1193,6 @@ export default function App() {
     const kidTabs = [
       { id:"home", label:"Home", icon:"🏠" },
       { id:"kids", label:"My Stuff", icon:"⭐" },
-      { id:"food", label:"Food", icon:"🍽️" },
     ];
     return (
       <div style={appStyle}>
@@ -1309,11 +1308,6 @@ export default function App() {
                 </div>
               )}
             </div>
-          )}
-          {tab === "food" && (
-            <FoodTab V={V} currentProfile={currentProfile} foodLog={foodLog} myFoods={myFoods}
-              nutritionGoals={nutritionGoals} fbSet={fbSet} GROQ_KEY={GROQ_KEY} showToast={showToast} profiles={profiles}
-              shoppingList={shoppingList} weightLog={weightLog} isRecording={isRecording} startVoiceInput={startVoiceInput} stopVoiceInput={stopVoiceInput} />
           )}
         </div>
 

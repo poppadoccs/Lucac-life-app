@@ -2,6 +2,20 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Rules
+- Before writing ANY code, read the Lessons Learned section first
+- Always validate and coerce data types after parsing external API responses
+- Every time a bug is found and fixed, add a Lessons Learned entry using this format:
+
+### YYYY-MM-DD: Short title
+- WHAT WENT WRONG: describe the bug
+- ROOT CAUSE: why it happened
+- FIX: what solved it
+- RULE FOR NEXT TIME: the permanent rule to prevent it from ever happening again
+
+- Read ALL Lessons Learned entries before starting any task
+- These rules apply to EVERY project in this repo, not just Groq
+
 ## Critical Rules
 
 - **Edit `src/App.jsx`, `src/LucacLegends.jsx`, and any `src/*.jsx` component files** — NEVER touch `package.json`, `vite.config.js`, `index.html`, or `src/main.jsx`
@@ -135,3 +149,17 @@ Single-page React 18 app built with Vite. 8 source files in `src/`:
 - Configure MCP API keys: Sentry, Vercel, Zapier, Reddit, WhatsApp
 - Add adaptive calorie suggestions (after 14 days of weight + food data)
 - Performance: code-split with dynamic `import()` to get under 500KB warning
+
+## Lessons Learned
+
+### 2026-03-16: Groq tool argument types
+- **WHAT WENT WRONG**: Groq returns `"false"` (string) instead of `false` (boolean), `"60"` (string) instead of `60` (number)
+- **ROOT CAUSE**: Groq's function calling serializes all argument values as strings regardless of the declared type in the schema
+- **FIX**: Added type coercion after `JSON.parse` — convert string booleans and string numbers to real types
+- **RULE FOR NEXT TIME**: Always coerce tool call arguments after parsing — never trust that an LLM API returns correct JSON types
+
+### 2026-03-16: Tool schema validation
+- **WHAT WENT WRONG**: Two tools missing `required:[]` arrays broke ALL 16 tools
+- **ROOT CAUSE**: Groq validates every schema before processing — one bad schema rejects the entire request
+- **FIX**: Added `required:[]` to every tool definition
+- **RULE FOR NEXT TIME**: Every tool definition MUST have `parameters.type`, `parameters.properties`, and `parameters.required` (even if empty array)

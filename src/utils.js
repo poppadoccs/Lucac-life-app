@@ -2,9 +2,19 @@
 // Used by App.jsx and all component files
 
 // --- Groq API wrapper with timeout + error handling ---
+// Rate limit tracker — shared across all Groq calls
+const _rateLimitState = { retryAfter: 0 };
+
 export async function groqFetch(apiKey, messages, opts = {}) {
-  const { maxTokens = 800, timeout = 10000, model = "llama-3.3-70b-versatile" } = opts;
+  const { maxTokens = 800, timeout = 10000, model = "llama-3.1-8b-instant" } = opts;
   if (!apiKey) return { ok: false, data: null, error: "No API key" };
+
+  // Check if we're still in a rate limit cooldown
+  const now = Date.now();
+  if (_rateLimitState.retryAfter > now) {
+    const waitSecs = Math.ceil((_rateLimitState.retryAfter - now) / 1000);
+    return { ok: false, data: null, error: `AI is resting — try again in ${waitSecs}s` };
+  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
@@ -17,6 +27,20 @@ export async function groqFetch(apiKey, messages, opts = {}) {
       signal: controller.signal,
     });
     clearTimeout(timer);
+
+    // Handle rate limiting
+    if (resp.status === 429) {
+      const retryHeader = resp.headers.get("retry-after");
+      const waitMs = retryHeader ? parseInt(retryHeader) * 1000 : 60000;
+      _rateLimitState.retryAfter = Date.now() + waitMs;
+      const waitSecs = Math.ceil(waitMs / 1000);
+      return { ok: false, data: null, error: `AI is resting — try again in ${waitSecs}s` };
+    }
+
+    if (!resp.ok) {
+      return { ok: false, data: null, error: "AI had a hiccup — try again" };
+    }
+
     const data = await resp.json();
     const content = data.choices?.[0]?.message?.content || "";
     return { ok: true, data: content, error: null };
@@ -27,6 +51,14 @@ export async function groqFetch(apiKey, messages, opts = {}) {
     }
     return { ok: false, data: null, error: "AI is thinking... try again in a sec" };
   }
+}
+
+// Export rate limit state so aiAgent can check it too
+export function isRateLimited() {
+  return _rateLimitState.retryAfter > Date.now();
+}
+export function setRateLimited(ms) {
+  _rateLimitState.retryAfter = Date.now() + ms;
 }
 
 // --- Parse JSON from Groq response (strips markdown fences) ---

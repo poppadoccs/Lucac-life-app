@@ -1,5 +1,9 @@
 // src/aiAgent.js — The Lucac Life AI Agent Engine
 // Replaces ALL regex-based parsing with Groq native function calling
+import { isRateLimited, setRateLimited } from './utils.js';
+
+const MODEL_HEAVY = 'llama-3.3-70b-versatile'; // tool calling, complex reasoning
+const MODEL_LIGHT = 'llama-3.1-8b-instant';    // simple text, connection tests
 
 // ═══ TOOL DEFINITIONS (Groq function calling schema) ═══
 const TOOLS = [
@@ -302,7 +306,15 @@ You help a co-parenting family manage their calendar, tasks, budget, nutrition, 
 
 // ═══ GROQ API CALL WITH RETRY ═══
 async function callGroqWithRetry(apiKey, messages, tools, options = {}) {
-  const { maxRetries = 2, temperature = 0.3 } = options;
+  const { maxRetries = 2, temperature = 0.3, model } = options;
+
+  // Check shared rate limit state before even trying
+  if (isRateLimited()) {
+    throw new Error('AI is resting — try again in a moment');
+  }
+
+  // Pick model: explicit override > tools need heavy > default light
+  const useModel = model || (tools && tools.length > 0 ? MODEL_HEAVY : MODEL_LIGHT);
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const controller = new AbortController();
@@ -310,7 +322,7 @@ async function callGroqWithRetry(apiKey, messages, tools, options = {}) {
 
     try {
       const body = {
-        model: 'llama-3.3-70b-versatile',
+        model: useModel,
         messages,
         temperature,
         max_tokens: 1024
@@ -320,7 +332,7 @@ async function callGroqWithRetry(apiKey, messages, tools, options = {}) {
         body.tool_choice = 'auto';
       }
 
-      console.log('[aiAgent] Calling Groq:', messages.length, 'msgs,', tools?.length || 0, 'tools, attempt', attempt);
+      console.log('[aiAgent] Calling Groq:', useModel, messages.length, 'msgs,', tools?.length || 0, 'tools, attempt', attempt);
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -343,7 +355,20 @@ async function callGroqWithRetry(apiKey, messages, tools, options = {}) {
       const errorBody = await response.text().catch(() => '');
       console.error('[aiAgent] Groq error', response.status, ':', errorBody.slice(0, 500));
 
-      if ((response.status === 429 || response.status >= 500) && attempt < maxRetries) {
+      // Sync rate limit state so groqFetch callers also back off
+      if (response.status === 429) {
+        const retryHeader = response.headers.get('retry-after');
+        const waitMs = retryHeader ? parseInt(retryHeader) * 1000 : 60000;
+        setRateLimited(waitMs);
+
+        if (attempt < maxRetries) {
+          await new Promise(r => setTimeout(r, Math.min(waitMs, 5000)));
+          continue;
+        }
+        throw new Error(`AI is resting — try again in ${Math.ceil(waitMs / 1000)}s`);
+      }
+
+      if (response.status >= 500 && attempt < maxRetries) {
         await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
         continue;
       }
@@ -423,12 +448,19 @@ async function executeReadTool(funcName, args, appState, apiKey) {
 
 // ═══ SIMPLE CONNECTION TEST ═══
 async function testGroqConnection(apiKey) {
+  if (isRateLimited()) {
+    return { ok: false, error: 'Rate limited — try again shortly' };
+  }
   try {
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'user', content: 'Say hello in one word.' }], max_tokens: 10, temperature: 0 })
+      body: JSON.stringify({ model: MODEL_LIGHT, messages: [{ role: 'user', content: 'Say hello in one word.' }], max_tokens: 10, temperature: 0 })
     });
+    if (response.status === 429) {
+      const retryHeader = response.headers.get('retry-after');
+      setRateLimited(retryHeader ? parseInt(retryHeader) * 1000 : 60000);
+    }
     const data = await response.json();
     console.log('[testGroq] Status:', response.status, 'Response:', JSON.stringify(data).slice(0, 200));
     return { ok: response.ok, status: response.status, data };
@@ -457,6 +489,12 @@ function coerceToolArgs(functionName, args) {
 // ═══ THE AGENT LOOP — the entire brain ═══
 async function runAgentLoop(apiKey, userMessage, appState, conversationHistory = []) {
   console.log('[aiAgent] Starting loop:', userMessage?.slice(0, 50), '| key:', !!apiKey);
+
+  // Bail early if rate limited — no point burning retries
+  if (isRateLimited()) {
+    return { type: 'text', content: "AI is resting from too many requests — try again in a moment! 💤", actions: [], conversationHistory };
+  }
+
   const systemPrompt = buildSystemPrompt(appState);
   const messages = [
     { role: 'system', content: systemPrompt },
