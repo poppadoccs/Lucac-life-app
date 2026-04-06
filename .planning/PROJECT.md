@@ -27,6 +27,11 @@ The kids' experience must be magical — games they love, homework help that act
 - ✓ Offline resilience with localStorage cache — existing (v25+)
 - ✓ Groq rate limit handling + model selection — existing (this session)
 - ✓ Food tab hidden from kid profiles — existing (this session)
+- ✓ LucacLegends.jsx split into thin navigation shell + 6 game files — Phase 1 (FOUND-01)
+- ✓ Alex's private events hidden from Danyells' view (isPrivate + creator field) — Phase 1 (FOUND-03 / SEC-02)
+- ✓ Role-based Firebase write guard (canWrite) blocking non-admin writes to sensitive paths — Phase 1 (FOUND-04 / SEC-01)
+- ✓ AI assistant available to all profiles with role-scoped tool access (ROLE_TOOLS) — Phase 1 (AI-02)
+- ✓ Shared TTS helper (speakText) with natural voice selection, cancel-before-speak, stop handle — Phase 1 (FOUND-06 / CLEAN-02)
 
 ### Active
 
@@ -36,10 +41,8 @@ The kids' experience must be magical — games they love, homework help that act
 - [ ] Danyells gets Daily Spark widget (self-growth questions + jokes + facts)
 - [ ] Danyells can delete her own events
 - [ ] Danyells has full customization options (minus admin features)
-- [ ] Alex's private events hidden from Danyells' view
 - [ ] Kids get personal goals and routines on their home screen
 - [ ] Kids' home shows family calendar instead of Alex's personal events
-- [ ] Split LucacLegends into separate game files (FishGame, RacingGame, BoardGame, ReadingGame)
 - [ ] Fish game difficulty scaling (bigger fish, levels, boss fish)
 - [ ] Racing game full upgrade (customization, obstacles, power-ups, multiple tracks)
 - [ ] Potion game remade as family board game (Monopoly-style, cross-device via Firebase)
@@ -83,9 +86,10 @@ The kids' experience must be magical — games they love, homework help that act
 |----------|-----------|---------|
 | Keep Groq as primary AI | Already integrated, fast, free tier sufficient after rate limit fix | -- Pending |
 | Coarse phases (3-5) | Matches round-based plan from previous session, faster iteration | -- Pending |
-| Split games before upgrading | 4 CCs can't edit same file — split enables parallel game work | -- Pending |
+| Split games before upgrading | 4 CCs can't edit same file — split enables parallel game work | ✓ Phase 1 — shell 155 lines, 6 game files |
 | Fix before feature | Groq + Homework Helper fixes before new features (Daily Spark, games) | -- Pending |
 | Danyells' approval matters | If she's impressed, the app succeeds. Her requests get priority. | -- Pending |
+| Game balance belongs to the split | Rebalancing belongs with the split commit, not a later phase, because the split exposed latent difficulty that was masked by bugs (racing speed, fish aggression) | ✓ Phase 1 — two rounds of fixes landed post-checkpoint |
 
 ## Evolution
 
@@ -105,4 +109,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-05 after initialization*
+*Last updated: 2026-04-06 after Phase 01 (Foundation) completion*
