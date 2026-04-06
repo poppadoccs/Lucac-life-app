@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { groqFetch, createSpeechRecognition, triggerConfetti } from "./utils";
+import { groqFetch, createSpeechRecognition, triggerConfetti, speakText } from "./utils";
 
 const SUBJECTS = [
   { key: "math", label: "Math", icon: "\u{1F522}" },
@@ -42,15 +42,6 @@ function shouldCelebrate(text, age) {
     return /great|awesome|correct|right|amazing|fantastic|wonderful|good job|well done|perfect|excellent|bravo/.test(lower);
   }
   return /correct|well done|excellent|perfect/.test(lower);
-}
-
-function speakText(text) {
-  if (!window.speechSynthesis) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 0.85;
-  utterance.pitch = 1.1;
-  window.speechSynthesis.speak(utterance);
 }
 
 export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY, showToast }) {

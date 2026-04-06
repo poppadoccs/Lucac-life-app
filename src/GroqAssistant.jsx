@@ -666,19 +666,27 @@ export default function GroqAssistant({
                 >
                   {mood.text} {mood.emoji}
                 </span>
-                {/* Role badge */}
-                <span
-                  style={{
-                    fontSize: 10,
-                    color: userRole === "admin" ? goldAccent : userRole === "kid" ? successColor : mutedColor,
-                    background: cardAlt,
-                    padding: "2px 6px",
-                    borderRadius: 8,
-                    fontWeight: 600,
-                  }}
-                >
-                  {userRole === "admin" ? "Admin" : userRole === "kid" ? "Kid" : userRole === "parent" ? "Parent" : "Guest"}
-                </span>
+                {/* AI-02: Role indicator badge — shows current tool tier per UI-SPEC */}
+                {(() => {
+                  const roleInfo = userRole === "admin"
+                    ? { icon: "\u{1F451}", label: "Full access" }
+                    : userRole === "parent" || userRole === "family"
+                    ? { icon: "\u{1F46A}", label: "Family access" }
+                    : userRole === "kid"
+                    ? { icon: "\u{1F9D2}", label: "Kid mode" }
+                    : { icon: "\u{1F441}", label: "View only" };
+                  return (
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, color: V?.textDim || mutedColor,
+                      background: V?.bgElevated || cardAlt,
+                      border: `1px solid ${V?.borderSubtle || borderColor}`,
+                      padding: "2px 8px", borderRadius: 10,
+                      display: "inline-flex", alignItems: "center", gap: 4,
+                    }}>
+                      {roleInfo.icon} {roleInfo.label}
+                    </span>
+                  );
+                })()}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 {/* Start Fresh button */}
