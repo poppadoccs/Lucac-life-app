@@ -152,3 +152,45 @@ export function createSpeechRecognition() {
   recognition.maxAlternatives = 1;
   return recognition;
 }
+
+// --- TTS voice helper (FOUND-06 / CLEAN-02) ---
+// Shared speakText: natural voice selection, cancel-before-speak, stop handle
+// Per D-10: single shared function replacing duplicates in LucacLegends and HomeworkHelper
+export function speakText(text, { voicePreference = null, onStop = null } = {}) {
+  if (!window.speechSynthesis) return null;
+  window.speechSynthesis.cancel(); // Fix repeat bug (D-12)
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 0.9;
+  utterance.pitch = 1.0;
+
+  // Voice selection — pick best available natural English voice
+  const voices = window.speechSynthesis.getVoices();
+  const NATURAL_VOICES = ["samantha", "karen", "daniel", "moira", "tessa", "rishi", "google"];
+  const natural = voices.find(v =>
+    v.localService && /en/i.test(v.lang) &&
+    NATURAL_VOICES.some(n => v.name.toLowerCase().includes(n))
+  ) || voices.find(v => v.localService && /en/i.test(v.lang))
+    || voices.find(v => /en/i.test(v.lang));
+  if (natural) utterance.voice = natural;
+
+  // voicePreference slot (D-13) — ready for future voice picker, no-op now
+  // if (voicePreference) { const match = voices.find(...); if (match) utterance.voice = match; }
+
+  if (onStop) utterance.onend = onStop;
+  window.speechSynthesis.speak(utterance);
+
+  // Return stop handle for stop buttons (D-12)
+  return () => window.speechSynthesis.cancel();
+}
+
+// Pre-load voices on app mount (Android Chrome returns [] synchronously on first call)
+export function getVoicesReady() {
+  if (!window.speechSynthesis) return;
+  // Trigger async voice loading
+  window.speechSynthesis.getVoices();
+  if (window.speechSynthesis.onvoiceschanged !== undefined) {
+    window.speechSynthesis.onvoiceschanged = () => {
+      window.speechSynthesis.getVoices(); // cache the loaded list
+    };
+  }
+}
