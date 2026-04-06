@@ -34,10 +34,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans:** 1/4 plans executed
 
 Plans:
-- [ ] 01-01-PLAN.md — Shared utilities: speakText TTS helper + canWrite write guard in utils.js
-- [ ] 01-02-PLAN.md — App.jsx hardening: Firebase imports, fbSet guard, event privacy model (isPrivate + creator)
+- [x] 01-01-PLAN.md — Shared utilities: speakText TTS helper + canWrite write guard in utils.js
+- [x] 01-02-PLAN.md — App.jsx hardening: Firebase imports, fbSet guard, event privacy model (isPrivate + creator)
 - [x] 01-03-PLAN.md — AI role system: per-role tool filtering in aiAgent.js + all-profile assistant + HomeworkHelper TTS cleanup
-- [ ] 01-04-PLAN.md — LucacLegends split: extract 5 game components to src/games/, rewrite shell
+- [x] 01-04-PLAN.md — LucacLegends split: extract 5 game components to src/games/, rewrite shell
 
 **UI hint**: yes
 

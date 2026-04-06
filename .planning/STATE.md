@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-04-06T03:57:49.633Z"
+stopped_at: "Checkpoint: 01-04 Task 3 human-verify — awaiting game functionality verification"
+last_updated: "2026-04-06T06:46:28.930Z"
 last_activity: 2026-04-05 — Roadmap created, all 41 pending requirements mapped to 5 phases
 progress:
   total_phases: 6
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 4
-  completed_plans: 1
+  completed_plans: 4
   percent: 0
 ---
 
@@ -53,6 +53,7 @@ Progress: [░░░░░░░░░░] 0%
 
 *Updated after each plan completion*
 | Phase 01-foundation P03 | 12 | 2 tasks | 3 files |
+| Phase 01-foundation P04 | 12 | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -67,6 +68,8 @@ Recent decisions affecting current work:
 - CLEAN-02 + FOUND-06 before GAME-05: TTS overhaul in utils.js must exist before reading game read-aloud can be fixed
 - [Phase 01-foundation]: ROLE_TOOLS uses null for admin (all tools) and explicit arrays for parent/kid/guest per D-19/D-20 — kids cannot trigger write tools
 - [Phase 01-foundation]: HomeworkHelper local speakText removed — CLEAN-02 complete, all TTS now routed through utils.js speakText
+- [Phase 01-foundation]: Shell is 156 lines (D-01 satisfied): menu screen + curriculum + addStars + transitionTo + RPGCore delegation only
+- [Phase 01-foundation]: RPGCore owns all RPG screens and mini-game delegation; mini-game files own their own state; generateMathProblem inlined per game (D-05)
 
 ### Pending Todos
 
@@ -80,6 +83,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-06T03:57:49.630Z
-Stopped at: Completed 01-03-PLAN.md
+Last session: 2026-04-06T06:46:28.927Z
+Stopped at: Checkpoint: 01-04 Task 3 human-verify — awaiting game functionality verification
 Resume file: None
