@@ -12,7 +12,8 @@ This milestone upgrades the Lucac Life App from a solid v25 base into a polished
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [x] **Phase 1: Foundation** - Split LucacLegends, harden security/roles, fix TTS — unblocks all parallel work (completed 2026-04-06)
+- [x] **Phase 1: Foundation** - Split LucacLegends, harden security/roles, fix TTS — unblocks all parallel work
+ (completed 2026-04-06)
 - [ ] **Phase 2: Kids & Homework** - Kids' home screen, Homework Helper fixes, family calendar views
 - [ ] **Phase 3: Danyells & AI** - Daily Spark, Danyells permissions, AI assistant for all profiles
 - [ ] **Phase 4: Game Upgrades** - Fish, Racing, Board Game, Reading game upgrades across split files
@@ -51,7 +52,11 @@ Plans:
   3. After two Socratic back-and-forth attempts, the Homework Helper switches to directly explaining the concept instead of continuing to prompt
   4. Yana opens a past homework session from last week and reads the full conversation history
   5. The calendar shows week, 2-week, 3-week, and monthly views, and Alex can scroll forward to plan events months in advance
-**Plans**: TBD
+**Plans:** 4 plans
+- [ ] 02-01-PLAN.md — Homework Helper teaching modes: detailMode, persistent stepByStep, frustration detection, fun-facts branch, clickable past sessions, 50-session prune
+- [ ] 02-02-PLAN.md — Calendar 3W view + future-month scroll verification + admin shared-tag picker UI on event form
+- [ ] 02-03-PLAN.md — New AvatarDrawing.jsx component (canvas + Pointer Events + devicePixelRatio, save base64 JPEG to Firebase)
+- [ ] 02-04-PLAN.md — Wave 2: filterEventsForRole family rule, kid home rebuild (events/goals/routines cards), avatar header integration, admin per-kid routine/goal editor in SettingsTab
 **UI hint**: yes
 
 ### Phase 3: Danyells & AI
