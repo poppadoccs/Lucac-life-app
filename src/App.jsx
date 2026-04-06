@@ -579,7 +579,9 @@ export default function App() {
     valid.forEach(ev => {
       const eventData = { title: ev.title, time: ev.time, who: ev.who, notes: ev.notes, duration: ev.duration || 60, creator: currentProfile?.name || "Unknown" };
       if (ev.alert && ev.alert !== "none") eventData.alert = ev.alert;
-      if (eventPrivate && isAdmin) { eventData.private = true; }
+      // Write both isPrivate (new) and private (backward compat for existing filterEventsForRole readers)
+      if (eventPrivate && isAdmin) { eventData.isPrivate = true; eventData.private = true; }
+      else { eventData.isPrivate = false; }
       if (ev.repeat && ev.repeat !== "none") {
         eventData.repeat = ev.repeat;
         if (ev.repeatEnd) eventData.repeatEnd = ev.repeatEnd;
@@ -769,10 +771,11 @@ export default function App() {
           const eventData = {
             title: args.title, time: args.time || "12:00 PM", who: args.person || "",
             duration: args.duration || 60, creator: currentProfile?.name || "Unknown",
-            repeat: args.repeat || "none"
+            repeat: args.repeat || "none",
+            isPrivate: false
           };
           if (args.alert && args.alert !== "none") eventData.alert = args.alert;
-          if (args.isPrivate && isAdmin) eventData.private = true;
+          if (args.isPrivate && isAdmin) { eventData.isPrivate = true; eventData.private = true; }
           const updated = { ...(events || {}) };
           updated[dk] = [...(updated[dk] || []), eventData];
           fbSet("events", updated);
@@ -871,7 +874,7 @@ export default function App() {
     let totalCreated = 0;
     quickAddPreview.events.forEach(ev => {
       const baseDk = ev.date; // "YYYY-MM-DD"
-      const eventData = { title: ev.title, time: ev.time || "12:00 PM", who: ev.who || "", notes: ev.notes || "", duration: ev.duration || 60, creator: currentProfile?.name || "Unknown" };
+      const eventData = { title: ev.title, time: ev.time || "12:00 PM", who: ev.who || "", notes: ev.notes || "", duration: ev.duration || 60, creator: currentProfile?.name || "Unknown", isPrivate: false };
       if (ev.repeat && ev.repeat !== "none") {
         eventData.repeat = ev.repeat;
         if (ev.repeatCount) eventData.repeatCount = ev.repeatCount;

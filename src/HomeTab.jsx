@@ -234,8 +234,17 @@ export default function HomeTab({
                           color: s?.color || V.textPrimary, fontSize: s?.size || 15, fontWeight: s?.bold ? 700 : 600,
                         }}>
                           {ev.repeat && <span style={{ marginRight:4 }}>🔁</span>}
-                          {ev.private && <span style={{ marginRight:4 }}>🔒</span>}
                           {ev.title}
+                          {(ev.isPrivate || ev.private) && isAdmin && (
+                            <span style={{
+                              fontSize: 11, fontWeight: 700, color: V.accent,
+                              background: `${V.accent}18`, padding: "2px 8px",
+                              borderRadius: 10, display: "inline-flex", alignItems: "center", gap: 4,
+                              marginLeft: 6
+                            }}>
+                              🔒 Private
+                            </span>
+                          )}
                         </div>
                         <div style={{ display: "flex", gap: V.sp1, alignItems: "center" }}>
                           <button onClick={() => setEditingStyle({ dk: ev._baseDk || dk, idx: ev._baseIdx != null ? ev._baseIdx : idx })}
