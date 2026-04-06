@@ -69,10 +69,24 @@ Requirements for this milestone. Each maps to roadmap phases.
 - [ ] **NUT-02**: Every nutrient toggleable on/off per profile
 - [ ] **NUT-03**: Voice food logging ("I ate a kiwi 86 grams" -> auto-log with macros)
 
+### Education
+
+- [ ] **EDU-01**: Learning Engine with admin-configurable curriculum (Alex sets topics, difficulty, schedule)
+- [ ] **EDU-02**: Multiplication speed games (timed challenges, leaderboard between kids)
+- [ ] **EDU-03**: Word Warrior voice reading game (read aloud, pronunciation scoring)
+- [ ] **EDU-04**: Story Quest (branching narrative where choices require reading comprehension)
+- [ ] **EDU-05**: Parent progress dashboard (track each kid's learning across all education features)
+- [ ] **EDU-06**: Auto-adjusting difficulty (adapts to each kid's performance over time)
+
 ### Budget
 
 - [ ] **BUD-01**: Research top 6 budget apps with CC agents (features, ratings, what works)
 - [ ] **BUD-02**: Implement best features from research into BudgetTab
+- [ ] **BUD-03**: Category system with visual charts (donut/bar charts per category, monthly comparisons)
+
+### Integrations
+
+- [ ] **INT-01**: Gmail integration (read/send from within the app for family coordination)
 
 ### Security
 
@@ -116,57 +130,65 @@ Deferred to future milestone. Tracked but not in current roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | TBD | Pending |
-| FOUND-02 | TBD | Pending |
-| FOUND-03 | TBD | Pending |
-| FOUND-04 | TBD | Pending |
-| FOUND-05 | TBD | Pending |
-| FOUND-06 | TBD | Pending |
-| HW-01 | TBD | Pending |
-| HW-02 | TBD | Pending |
-| HW-03 | TBD | Pending |
-| HW-04 | TBD | Pending |
-| HW-05 | TBD | Pending |
-| DAN-01 | TBD | Pending |
-| DAN-02 | TBD | Pending |
-| DAN-03 | TBD | Pending |
-| DAN-04 | TBD | Pending |
-| DAN-05 | TBD | Pending |
-| KIDS-01 | TBD | Pending |
-| KIDS-02 | TBD | Pending |
-| KIDS-03 | TBD | Pending |
-| KIDS-04 | TBD | Pending |
-| GAME-01 | TBD | Pending |
-| GAME-02 | TBD | Pending |
-| GAME-03 | TBD | Pending |
-| GAME-04 | TBD | Pending |
-| GAME-05 | TBD | Pending |
-| GAME-06 | TBD | Pending |
-| CAL-01 | TBD | Pending |
-| CAL-02 | TBD | Pending |
-| AI-01 | TBD | Complete |
-| AI-02 | TBD | Pending |
+| FOUND-01 | Phase 1 | Pending |
+| FOUND-02 | Phase 1 | Pending |
+| FOUND-03 | Phase 1 | Pending |
+| FOUND-04 | Phase 1 | Pending |
+| FOUND-05 | Phase 1 | Pending |
+| FOUND-06 | Phase 1 | Pending |
+| HW-01 | Phase 2 | Pending |
+| HW-02 | Phase 2 | Pending |
+| HW-03 | Phase 2 | Pending |
+| HW-04 | Phase 2 | Pending |
+| HW-05 | Phase 2 | Pending |
+| DAN-01 | Phase 3 | Pending |
+| DAN-02 | Phase 3 | Pending |
+| DAN-03 | Phase 3 | Pending |
+| DAN-04 | Phase 3 | Pending |
+| DAN-05 | Phase 3 | Pending |
+| KIDS-01 | Phase 2 | Pending |
+| KIDS-02 | Phase 2 | Pending |
+| KIDS-03 | Phase 2 | Pending |
+| KIDS-04 | Phase 2 | Pending |
+| GAME-01 | Phase 4 | Pending |
+| GAME-02 | Phase 4 | Pending |
+| GAME-03 | Phase 4 | Pending |
+| GAME-04 | Phase 4 | Pending |
+| GAME-05 | Phase 4 | Pending |
+| GAME-06 | Phase 4 | Pending |
+| CAL-01 | Phase 2 | Pending |
+| CAL-02 | Phase 2 | Pending |
+| AI-01 | -- | Complete |
+| AI-02 | Phase 1 | Pending |
 | AI-03 | -- | Complete |
-| AI-04 | TBD | Pending |
-| AI-05 | TBD | Pending |
-| AI-06 | TBD | Pending |
-| AI-07 | TBD | Pending |
-| NUT-01 | TBD | Pending |
-| NUT-02 | TBD | Pending |
-| NUT-03 | TBD | Pending |
-| BUD-01 | TBD | Pending |
-| BUD-02 | TBD | Pending |
-| SEC-01 | TBD | Pending |
-| SEC-02 | TBD | Pending |
+| AI-04 | Phase 5 | Pending |
+| AI-05 | Phase 5 | Pending |
+| AI-06 | Phase 5 | Pending |
+| AI-07 | Phase 3 | Pending |
+| NUT-01 | Phase 5 | Pending |
+| NUT-02 | Phase 5 | Pending |
+| NUT-03 | Phase 5 | Pending |
+| BUD-01 | Phase 5 | Pending |
+| BUD-02 | Phase 5 | Pending |
+| SEC-01 | Phase 1 | Pending |
+| SEC-02 | Phase 1 | Pending |
 | CLEAN-01 | -- | Complete |
-| CLEAN-02 | TBD | Pending |
+| CLEAN-02 | Phase 1 | Pending |
+| EDU-01 | Phase 6 | Pending |
+| EDU-02 | Phase 6 | Pending |
+| EDU-03 | Phase 6 | Pending |
+| EDU-04 | Phase 6 | Pending |
+| EDU-05 | Phase 6 | Pending |
+| EDU-06 | Phase 6 | Pending |
+| BUD-03 | Phase 5 | Pending |
+| INT-01 | Phase 6 | Pending |
 
 **Coverage:**
-- v1 requirements: 44 total
+- v1 requirements: 52 total
 - Complete: 3 (AI-03, CLEAN-01, AI-01)
-- Mapped to phases: 0 (pending roadmap)
-- Remaining: 41
+- Mapped to phases: 49 (all pending requirements mapped)
+- Remaining: 49
 
 ---
 *Requirements defined: 2026-04-05*
-*Last updated: 2026-04-05 after adding missing requirements from review*
+*Last updated: 2026-04-05 after locking final requirement list (52 total)*

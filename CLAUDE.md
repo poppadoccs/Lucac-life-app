@@ -163,3 +163,134 @@ Single-page React 18 app built with Vite. 8 source files in `src/`:
 - **ROOT CAUSE**: Groq validates every schema before processing — one bad schema rejects the entire request
 - **FIX**: Added `required:[]` to every tool definition
 - **RULE FOR NEXT TIME**: Every tool definition MUST have `parameters.type`, `parameters.properties`, and `parameters.required` (even if empty array)
+
+<!-- GSD:project-start source:PROJECT.md -->
+## Project
+
+**Lucac Life App**
+
+A family life management app for a co-parenting household — calendar, AI assistant, nutrition tracking, budget, homework help, and games for the kids. Built as a mobile-first React SPA, used daily by Alex (admin/dad), Danyells (co-parent), Yana (8), and Luca (6). Live at lucac-life-app.vercel.app.
+
+**Core Value:** The kids' experience must be magical — games they love, homework help that actually helps, and a home screen that feels like theirs. If the kids don't want to open the app, nothing else matters.
+
+### Constraints
+
+- **Colorblind**: Never use color alone for UI — always labels, icons, or patterns alongside (Alex is deutan colorblind)
+- **Mobile-first**: All buttons >= 44px tap targets. Kids use tablets with touch.
+- **Free tier APIs**: Groq free tier has rate limits. Build with rate limit awareness.
+- **No new dependencies**: Keep bundle under control. CSS-only solutions preferred.
+- **LucacLegends.jsx**: Currently self-contained — needs splitting BEFORE parallel game upgrades
+- **File conflicts**: App.jsx is the bottleneck. Minimize concurrent edits to it.
+<!-- GSD:project-end -->
+
+<!-- GSD:stack-start source:research/STACK.md -->
+## Technology Stack
+
+## Existing Stack (Do Not Change)
+| Technology | Version | Role |
+|------------|---------|------|
+| React | 18.2.0 | UI framework |
+| Vite | 4.4.0 | Build tool |
+| Firebase | 10.7.0 | Realtime Database + persistence |
+| Groq API | (REST) | AI completions — llama-3.1-8b-instant default |
+| Web Speech API | (browser native) | Voice input (already in utils.js) |
+| SpeechSynthesis API | (browser native) | Read-aloud (existing but broken) |
+## Recommended Stack — New Capabilities
+### 1. Canvas Finger Drawing (Avatar System)
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| HTML5 Canvas API | Browser native | Drawing surface | Already supported everywhere; zero bundle cost |
+| Pointer Events API | Browser native | Touch + mouse + stylus input | Single unified API for all input types — replaces Touch Events |
+| `canvas.toDataURL()` | Browser native | Export drawing as base64 string | Stores in Firebase as a string value |
+### 2. Text-to-Speech (Read-Aloud, Non-Robotic)
+- ElevenLabs, AWS Polly, Google Cloud TTS — all require paid API keys, network calls, and violate the "no new paid APIs" constraint
+- ResponsiveVoice.js — was free-to-use but is now commercial and adds ~200KB
+- Web Audio API synthesis from scratch — extremely complex, not appropriate here
+### 3. Groq-Powered Story Generation for Kids
+| Model | Best For | Context | Speed |
+|-------|----------|---------|-------|
+| `llama-3.1-8b-instant` | Quick tasks, parsing, Q&A | 128k | Fastest |
+| `llama-3.3-70b-versatile` | Creative writing, stories, nuanced output | 128k | Fast |
+| `llama3-8b-8192` | Legacy fallback | 8k | Fast |
+### 4. Cross-Device Real-Time Board Game via Firebase
+- Spark plan: 1 GB storage, 10 GB/month transfer, 100 simultaneous connections
+- A 4-player board game with ~100 moves each generates roughly 10 KB of data — well within limits
+- `onValue` listeners count toward simultaneous connections — 4 players = 4 connections, far below limit
+- Firebase Firestore — more complex pricing, transactions work differently, overkill for this use case. Realtime Database is already wired in
+- socket.io — requires a server, not compatible with Vercel static hosting without a separate backend
+- Partykit / Liveblocks — paid services with free tier limits that add npm dependencies
+- Firebase Cloud Functions — no backend needed; client-side transactions are sufficient for turn enforcement in a family game
+## Summary: No New npm Packages Required
+| Capability | Solution | New Package? |
+|------------|----------|--------------|
+| Canvas finger drawing | HTML5 Canvas + Pointer Events API | None |
+| Crisp retina canvas | `devicePixelRatio` + `ctx.scale()` | None |
+| Save avatar to Firebase | `canvas.toDataURL("image/jpeg", 0.5)` | None |
+| Better TTS voice | `getBestVoice()` helper in utils.js | None |
+| No repeat speech bug | `synth.cancel()` before each utterance | None |
+| Kids story generation | `groqFetch()` with 70b model + 20s timeout | None |
+| Story caching | `cacheSet/cacheGet` (existing) | None |
+| Cross-device board game | Firebase `onValue` + `runTransaction` | None |
+| Player presence | Firebase `onDisconnect` | None |
+## Files to Modify / Create
+| File | Change |
+|------|--------|
+| `src/utils.js` | Add `getBestVoice()`, `speak()`, `getVoicesReady()` helpers |
+| `src/LucacLegends.jsx` | Split into game files BEFORE modifying (per PROJECT.md decision) |
+| `src/AvatarDrawing.jsx` | New component — canvas finger draw, save to Firebase |
+| `src/BoardGame.jsx` | New component — Monopoly-style, Firebase cross-device |
+| `src/FishGame.jsx` | Split from LucacLegends.jsx |
+| `src/RacingGame.jsx` | Split from LucacLegends.jsx |
+| `src/ReadingGame.jsx` | New — Groq story gen + SpeechSynthesis read-aloud |
+## Alternatives Considered
+| Category | Recommended | Alternative | Why Not |
+|----------|-------------|-------------|---------|
+| Touch drawing | Pointer Events API (native) | react-sketch-canvas, Fabric.js | Adds npm dependency; overkill for avatar drawing |
+| TTS quality | SpeechSynthesis voice selection | ElevenLabs, AWS Polly | Paid APIs violate free-tier constraint |
+| TTS quality | SpeechSynthesis voice selection | ResponsiveVoice.js | Now commercial; adds 200KB |
+| Story gen AI | Groq (existing) | OpenAI GPT-4o | Already paid; Groq is free for this use case |
+| Board game sync | Firebase Realtime DB (existing) | Socket.io | Requires server — Vercel is static hosting |
+| Board game sync | Firebase Realtime DB | Firestore | Already use Realtime DB; Firestore pricing more complex |
+| Board game sync | Firebase Realtime DB | Liveblocks/Partykit | New paid dependency |
+## Sources
+- MDN Pointer Events API: https://developer.mozilla.org/en-US/docs/Web/API/Pointer_events (HIGH confidence)
+- MDN Canvas Optimizing (devicePixelRatio): https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API/Tutorial/Optimizing_canvas (HIGH confidence)
+- MDN HTMLCanvasElement.toDataURL: https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/toDataURL (HIGH confidence)
+- MDN SpeechSynthesisVoice: https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesisVoice (HIGH confidence — localService property documented)
+- MDN SpeechSynthesisUtterance: https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesisUtterance (HIGH confidence)
+- Firebase SDK version: package.json `firebase: ^10.7.0` (HIGH confidence — verified in codebase)
+- Groq model selection: training data knowledge of Groq model catalog (MEDIUM confidence — verify model names in Groq console before shipping)
+- Groq timeout recommendation: derived from existing `groqFetch` implementation in `src/utils.js` (HIGH confidence)
+<!-- GSD:stack-end -->
+
+<!-- GSD:conventions-start source:CONVENTIONS.md -->
+## Conventions
+
+Conventions not yet established. Will populate as patterns emerge during development.
+<!-- GSD:conventions-end -->
+
+<!-- GSD:architecture-start source:ARCHITECTURE.md -->
+## Architecture
+
+Architecture not yet mapped. Follow existing patterns found in the codebase.
+<!-- GSD:architecture-end -->
+
+<!-- GSD:workflow-start source:GSD defaults -->
+## GSD Workflow Enforcement
+
+Before using Edit, Write, or other file-changing tools, start work through a GSD command so planning artifacts and execution context stay in sync.
+
+Use these entry points:
+- `/gsd:quick` for small fixes, doc updates, and ad-hoc tasks
+- `/gsd:debug` for investigation and bug fixing
+- `/gsd:execute-phase` for planned phase work
+
+Do not make direct repo edits outside a GSD workflow unless the user explicitly asks to bypass it.
+<!-- GSD:workflow-end -->
+
+<!-- GSD:profile-start -->
+## Developer Profile
+
+> Profile not yet configured. Run `/gsd:profile-user` to generate your developer profile.
+> This section is managed by `generate-claude-profile` -- do not edit manually.
+<!-- GSD:profile-end -->
