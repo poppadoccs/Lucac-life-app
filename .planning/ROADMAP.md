@@ -31,12 +31,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Events created by Alex that are marked private do not appear in Danyells' or kids' calendar views
   4. The read-aloud voice in any game uses a natural-sounding voice (not V1 Siri), does not repeat itself, and has a working stop button
   5. The Groq assistant appears and responds for all profiles (not just admin), with role-appropriate tool access
-**Plans:** 2/4 plans executed
+**Plans:** 1/4 plans executed
 
 Plans:
-- [x] 01-01-PLAN.md — Shared utilities: speakText TTS helper + canWrite write guard in utils.js
-- [x] 01-02-PLAN.md — App.jsx hardening: Firebase imports, fbSet guard, event privacy model (isPrivate + creator)
-- [ ] 01-03-PLAN.md — AI role system: per-role tool filtering in aiAgent.js + all-profile assistant + HomeworkHelper TTS cleanup
+- [ ] 01-01-PLAN.md — Shared utilities: speakText TTS helper + canWrite write guard in utils.js
+- [ ] 01-02-PLAN.md — App.jsx hardening: Firebase imports, fbSet guard, event privacy model (isPrivate + creator)
+- [x] 01-03-PLAN.md — AI role system: per-role tool filtering in aiAgent.js + all-profile assistant + HomeworkHelper TTS cleanup
 - [ ] 01-04-PLAN.md — LucacLegends split: extract 5 game components to src/games/, rewrite shell
 
 **UI hint**: yes
@@ -112,7 +112,7 @@ Phases execute in numeric order: 1 → 2/3/4 (parallel) → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 2/4 | In Progress|  |
+| 1. Foundation | 1/4 | In Progress|  |
 | 2. Kids & Homework | 0/TBD | Not started | - |
 | 3. Danyells & AI | 0/TBD | Not started | - |
 | 4. Game Upgrades | 0/TBD | Not started | - |

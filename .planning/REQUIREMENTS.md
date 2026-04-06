@@ -56,7 +56,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 ### AI Assistant
 
 - [x] **AI-01**: Groq personality modes cleaned up (remove sassy/helpful/woke up presets, fresh neutral start)
-- [ ] **AI-02**: Groq assistant available on all profiles (not just admin) with role-appropriate responses
+- [x] **AI-02**: Groq assistant available on all profiles (not just admin) with role-appropriate responses
 - [x] **AI-03**: Groq infinite spinner fixed (rate limit handling + model selection) — DONE this session
 - [ ] **AI-04**: OpenRouter fallback layer (auto-switches when Groq rate limits)
 - [ ] **AI-05**: Ollama local layer (unlimited AI on Alex's PC, zero rate limits)
@@ -96,7 +96,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 ### Cleanup
 
 - [x] **CLEAN-01**: Remove Food tab from kid profiles — DONE this session
-- [ ] **CLEAN-02**: Voice/TTS system overhaul (better voice selection, stop button, no repeats — broader than GAME-05)
+- [x] **CLEAN-02**: Voice/TTS system overhaul (better voice selection, stop button, no repeats — broader than GAME-05)
 
 ## v2 Requirements
 
@@ -159,7 +159,7 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | CAL-01 | Phase 2 | Pending |
 | CAL-02 | Phase 2 | Pending |
 | AI-01 | -- | Complete |
-| AI-02 | Phase 1 | Pending |
+| AI-02 | Phase 1 | Complete |
 | AI-03 | -- | Complete |
 | AI-04 | Phase 5 | Pending |
 | AI-05 | Phase 5 | Pending |
@@ -173,7 +173,7 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | SEC-01 | Phase 1 | Complete |
 | SEC-02 | Phase 1 | Complete |
 | CLEAN-01 | -- | Complete |
-| CLEAN-02 | Phase 1 | Pending |
+| CLEAN-02 | Phase 1 | Complete |
 | EDU-01 | Phase 6 | Pending |
 | EDU-02 | Phase 6 | Pending |
 | EDU-03 | Phase 6 | Pending |
