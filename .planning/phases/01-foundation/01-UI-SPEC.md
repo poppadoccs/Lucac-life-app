@@ -79,14 +79,14 @@ and weights are declared inline — no typographic utility classes.
 
 | Role | Size | Weight | Line Height | V.* color token |
 |------|------|--------|-------------|-----------------|
+| Badge / Label | 11px | 700 | 1.4 | `V.textPrimary` |
 | Body | 14px | 400 | 1.5 | `V.textSecondary` |
-| Label / UI element | 13px | 600 | 1.4 | `V.textPrimary` |
 | Heading / section title | 16px | 700 | 1.3 | `V.textPrimary` |
-| Display / feature title | 20px | 800 | 1.2 | `V.accent` |
+| Display / feature title | 20px | 700 | 1.2 | `V.accent` |
 
 **Phase 1 new UI elements:**
 
-- Stop button label: 13px, weight 600 (label role) — matches existing button sizing in codebase (App.jsx line 1131)
+- Stop button label: 14px, weight 700 (heading/button role) — matches existing button sizing in codebase (App.jsx line 1131)
 - Permission-denied toast message: 14px, weight 400 (body role)
 - Private event badge text: 11px, weight 700 — matches existing badge pattern (App.jsx line 1205: `fontSize:11, fontWeight:700`)
 - AI assistant role indicator (shown when assistant renders for non-admin): 11px, weight 700 — matches existing status badge pattern
@@ -142,17 +142,17 @@ Appears in: HomeworkHelper read-aloud, ReadingGame read-aloud.
 ```
 Anatomy:
   [icon] [label]
-  🔊 "Stop"  →  when speaking (accent background)
-  🔈 "Read"  →  when idle (secondary button style)
+  🔊 "Stop reading"  →  when speaking (accent background)
+  🔈 "Read aloud"    →  when idle (secondary button style)
 
 Style (active/speaking):
   background: V.accent
   color: #fff
   border: none
   borderRadius: V.r2
-  padding: "10px 16px"
+  padding: "8px 16px"
   fontWeight: 700
-  fontSize: 13
+  fontSize: 14
   minHeight: 44px
   cursor: pointer
 
@@ -161,8 +161,9 @@ Style (idle):
   color: V.textSecondary
   border: `1px solid ${V.borderSubtle}`
   borderRadius: V.r2
-  padding: "10px 16px"
-  fontSize: 13
+  padding: "8px 16px"
+  fontSize: 14
+  fontWeight: 400
   minHeight: 44px
   cursor: pointer
 ```
@@ -341,3 +342,10 @@ is non-negotiable per CLAUDE.md.
 | AI role indicator copy | CONTEXT.md D-19 (three explicit role arrays), CLAUDE.md (profile type labels) |
 | No new packages | CLAUDE.md ("No new dependencies") |
 | No destructive confirms in Phase 1 | RESEARCH.md ("Phase 1 is a pure refactoring and hardening phase with zero new user-facing features") |
+
+## Revision History
+
+| Date | Change |
+|------|--------|
+| 2026-04-05 | Initial draft |
+| 2026-04-05 | Fix: type scale reduced to 4 sizes (dropped 13px, Label consolidated to 11px); weights reduced to 2 (400 + 700, merged 600 and 800 into 700); stop button padding corrected from 10px to 8px (V.sp2) in both style blocks |
