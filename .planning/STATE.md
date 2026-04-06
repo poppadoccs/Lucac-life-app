@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: Phase 1 context gathered
-last_updated: "2026-04-06T01:37:33.280Z"
+stopped_at: Completed 01-03-PLAN.md
+last_updated: "2026-04-06T03:57:49.633Z"
 last_activity: 2026-04-05 — Roadmap created, all 41 pending requirements mapped to 5 phases
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 4
+  completed_plans: 1
   percent: 0
 ---
 
@@ -52,6 +52,7 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: --
 
 *Updated after each plan completion*
+| Phase 01-foundation P03 | 12 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -64,6 +65,8 @@ Recent decisions affecting current work:
 - FOUND-03 + SEC-02 before DAN-03/DAN-04: createdBy field and event visibility must exist before Danyells' delete/hide permissions can work
 - FOUND-05 before GAME-03: Firebase update + runTransaction imports required for board game turn enforcement
 - CLEAN-02 + FOUND-06 before GAME-05: TTS overhaul in utils.js must exist before reading game read-aloud can be fixed
+- [Phase 01-foundation]: ROLE_TOOLS uses null for admin (all tools) and explicit arrays for parent/kid/guest per D-19/D-20 — kids cannot trigger write tools
+- [Phase 01-foundation]: HomeworkHelper local speakText removed — CLEAN-02 complete, all TTS now routed through utils.js speakText
 
 ### Pending Todos
 
@@ -77,6 +80,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-06T01:37:33.277Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-foundation/01-CONTEXT.md
+Last session: 2026-04-06T03:57:49.630Z
+Stopped at: Completed 01-03-PLAN.md
+Resume file: None
