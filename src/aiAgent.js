@@ -268,6 +268,27 @@ const WRITE_ACTIONS = new Set([
   'add_expense', 'add_shopping_item', 'add_task_for_kid', 'log_food'
 ]);
 
+// ═══ PER-ROLE TOOL ACCESS (AI-02 / D-19) ═══
+// Explicit allowlists per role — D-20: no vague "kids don't get admin stuff"
+const ROLE_TOOLS = {
+  admin: null, // null = all tools (no filtering)
+  parent: [
+    "get_calendar_events", "create_calendar_event", "delete_event", "edit_event",
+    "get_budget_summary", "add_expense",
+    "add_shopping_item",
+    "ask_clarification", "emotional_support", "web_search",
+    "generate_daily_briefing", "update_daily_spotlight",
+    "log_food",
+  ],
+  kid: [
+    "emotional_support",
+    "get_kids_status",
+    "ask_clarification",
+    "web_search",
+  ],
+  guest: [],
+};
+
 // ═══ SYSTEM PROMPT BUILDER ═══
 function buildSystemPrompt(appState) {
   const today = new Date();
@@ -300,7 +321,16 @@ You help a co-parenting family manage their calendar, tasks, budget, nutrition, 
 5. Convert relative dates: "tomorrow" = ${tomorrow}, "next week" starts ${nextWeek}. TODAY = ${dateStr}.
 6. For emotional support: use emotional_support tool. Be warm and real. Never dismiss feelings.
 7. If you can't do something: say what you CAN do. Never silently fail.
-8. For web searches: use web_search tool. Summarize results in 2-3 sentences.`;
+8. For web searches: use web_search tool. Summarize results in 2-3 sentences.
+
+## Your Access Level
+- Role: ${appState.userRole}
+- ${({
+    admin: "You have full access to all app features and tools.",
+    parent: "You can manage the calendar, budget, shopping list, and food log. You cannot manage profiles or app settings.",
+    kid: "You can help with emotions, check your stars and tasks, and search for fun facts. Keep responses fun and age-appropriate (ages 6-8). Use emoji freely.",
+    guest: "You can only chat. No tools are available.",
+  })[appState.userRole] || "You can only chat. No tools are available."}`;
 }
 
 // ═══ GROQ API CALL WITH RETRY ═══
@@ -505,10 +535,17 @@ async function runAgentLoop(apiKey, userMessage, appState, conversationHistory =
   let iterations = 0;
   const actions = [];
 
+  // AI-02: Filter tools by user role
+  const userRole = appState.userRole || "guest";
+  const allowedToolNames = ROLE_TOOLS[userRole];
+  const filteredTools = allowedToolNames === null
+    ? TOOLS
+    : TOOLS.filter(t => (allowedToolNames || []).includes(t.function.name));
+
   while (iterations < MAX_ITERATIONS) {
     iterations++;
 
-    const response = await callGroqWithRetry(apiKey, messages, TOOLS, {
+    const response = await callGroqWithRetry(apiKey, messages, filteredTools, {
       temperature: actions.length > 0 ? 0.2 : 0.4
     });
 
