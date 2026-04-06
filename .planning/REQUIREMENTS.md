@@ -11,9 +11,9 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 - [ ] **FOUND-01**: LucacLegends.jsx split into separate game files (FishGame, RacingGame, BoardGame, ReadingGame, LucacRPG) with thin shell component
 - [ ] **FOUND-02**: Shared game constants (colors, star values, difficulty curves) inlined per game file (per D-05 decision: no separate gameConstants.js, no extra abstractions)
-- [ ] **FOUND-03**: `createdBy` field added to all new events, backfilled on existing events where possible
+- [x] **FOUND-03**: `createdBy` field added to all new events, backfilled on existing events where possible
 - [x] **FOUND-04**: Write-side role check utility (`canWrite`) so kids/guests can't write to admin-only Firebase paths
-- [ ] **FOUND-05**: Firebase imports extended with `update` and `runTransaction` in App.jsx
+- [x] **FOUND-05**: Firebase imports extended with `update` and `runTransaction` in App.jsx
 - [x] **FOUND-06**: TTS voice helper added to utils.js (picks best available voice, cancel-before-speak, stop function)
 
 ### Homework Helper
@@ -91,7 +91,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 ### Security
 
 - [x] **SEC-01**: Role escalation prevention (non-admins cannot change their own role type)
-- [ ] **SEC-02**: Event visibility system (createdBy field + role-based read/write filtering end-to-end)
+- [x] **SEC-02**: Event visibility system (createdBy field + role-based read/write filtering end-to-end)
 
 ### Cleanup
 
@@ -132,9 +132,9 @@ Deferred to future milestone. Tracked but not in current roadmap.
 |-------------|-------|--------|
 | FOUND-01 | Phase 1 | Pending |
 | FOUND-02 | Phase 1 | Pending |
-| FOUND-03 | Phase 1 | Pending |
+| FOUND-03 | Phase 1 | Complete |
 | FOUND-04 | Phase 1 | Complete |
-| FOUND-05 | Phase 1 | Pending |
+| FOUND-05 | Phase 1 | Complete |
 | FOUND-06 | Phase 1 | Complete |
 | HW-01 | Phase 2 | Pending |
 | HW-02 | Phase 2 | Pending |
@@ -171,7 +171,7 @@ Deferred to future milestone. Tracked but not in current roadmap.
 | BUD-01 | Phase 5 | Pending |
 | BUD-02 | Phase 5 | Pending |
 | SEC-01 | Phase 1 | Complete |
-| SEC-02 | Phase 1 | Pending |
+| SEC-02 | Phase 1 | Complete |
 | CLEAN-01 | -- | Complete |
 | CLEAN-02 | Phase 1 | Pending |
 | EDU-01 | Phase 6 | Pending |

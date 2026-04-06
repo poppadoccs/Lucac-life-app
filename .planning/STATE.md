@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 1 UI-SPEC approved
-last_updated: "2026-04-06T03:48:33.099Z"
-last_activity: 2026-04-06 -- Phase 01 execution started
+stopped_at: Completed 01-foundation-02-PLAN.md
+last_updated: "2026-04-06T03:58:07.961Z"
+last_activity: 2026-04-06
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 4
-  completed_plans: 0
+  completed_plans: 2
   percent: 0
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-04-05)
 ## Current Position
 
 Phase: 01 (foundation) — EXECUTING
-Plan: 1 of 4
-Status: Executing Phase 01
-Last activity: 2026-04-06 -- Phase 01 execution started
+Plan: 2 of 4
+Status: Ready to execute
+Last activity: 2026-04-06
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -52,6 +52,7 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: --
 
 *Updated after each plan completion*
+| Phase 01-foundation P02 | 5 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -64,6 +65,8 @@ Recent decisions affecting current work:
 - FOUND-03 + SEC-02 before DAN-03/DAN-04: createdBy field and event visibility must exist before Danyells' delete/hide permissions can work
 - FOUND-05 before GAME-03: Firebase update + runTransaction imports required for board game turn enforcement
 - CLEAN-02 + FOUND-06 before GAME-05: TTS overhaul in utils.js must exist before reading game read-aloud can be fixed
+- [Phase 01-foundation]: Write both isPrivate and private fields on new events — dual-field ensures filterEventsForRole works without data migration for old Firebase events
+- [Phase 01-foundation]: canWrite guard in fbSet shows toast before returning — user always gets feedback on permission block
 
 ### Pending Todos
 
@@ -77,6 +80,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-06T02:07:02.985Z
-Stopped at: Phase 1 UI-SPEC approved
-Resume file: .planning/phases/01-foundation/01-UI-SPEC.md
+Last session: 2026-04-06T03:58:07.958Z
+Stopped at: Completed 01-foundation-02-PLAN.md
+Resume file: None
