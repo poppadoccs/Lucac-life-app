@@ -10,7 +10,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 ### Foundation
 
 - [ ] **FOUND-01**: LucacLegends.jsx split into separate game files (FishGame, RacingGame, BoardGame, ReadingGame, LucacRPG) with thin shell component
-- [ ] **FOUND-02**: Shared game constants extracted to gameConstants.js (colors, star values, difficulty curves)
+- [ ] **FOUND-02**: Shared game constants (colors, star values, difficulty curves) inlined per game file (per D-05 decision: no separate gameConstants.js, no extra abstractions)
 - [ ] **FOUND-03**: `createdBy` field added to all new events, backfilled on existing events where possible
 - [ ] **FOUND-04**: Write-side role check utility (`canWrite`) so kids/guests can't write to admin-only Firebase paths
 - [ ] **FOUND-05**: Firebase imports extended with `update` and `runTransaction` in App.jsx
