@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { speakText } from "../utils";
 import FishGame from "./FishGame";
 import RacingGame from "./RacingGame";
@@ -537,6 +537,24 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
 
   const floatIdRef = useRef(0);
 
+  // Adventure scene option shuffle — hoisted here so it obeys rules of hooks.
+  // The original had the correct answer pinned to the top button because
+  // SCENE_CHOICES lists the correct option first. Shuffling keyed to scene
+  // identity keeps the order stable while the player reads.
+  const currentSceneType = WORLDS[currentWorld]?.scenes?.[currentScene]?.type || "forest";
+  const currentChoiceSet = SCENE_CHOICES[currentSceneType]
+    ? SCENE_CHOICES[currentSceneType][currentScene % SCENE_CHOICES[currentSceneType].length]
+    : null;
+  const shuffledOptions = useMemo(() => {
+    if (!currentChoiceSet?.options) return [];
+    const copy = [...currentChoiceSet.options];
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [copy[i], copy[j]] = [copy[j], copy[i]];
+    }
+    return copy;
+  }, [currentWorld, currentScene, currentSceneType]);
+
   const playerName = profile?.name || "Hero";
   const playerEmoji = profile?.emoji || "🦸";
   const playerColor = profile?.color || "#3b82f6";
@@ -860,6 +878,7 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
     const sceneType = scene?.type || "forest";
     const choices = SCENE_CHOICES[sceneType];
     const choiceSet = choices ? choices[currentScene % choices.length] : null;
+    // shuffledOptions is computed at the top of the component (rules of hooks)
     return (
       <>
         <style>{KEYFRAMES_CSS}</style>
@@ -889,7 +908,7 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
               <div style={{ background: "rgba(0,0,0,0.4)", borderRadius: 14, padding: 14 }}>
                 <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 12, textAlign: "center" }}>{choiceSet.prompt}</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {choiceSet.options.map((opt, i) => (
+                  {shuffledOptions.map((opt, i) => (
                     <GameBtn key={i} color={["#3b82f6", "#8b5cf6", "#06b6d4"][i]} onClick={() => handleChoice(opt)}>{opt.text}</GameBtn>
                   ))}
                 </div>

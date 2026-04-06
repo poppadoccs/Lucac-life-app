@@ -74,15 +74,18 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
   const raceSpeedRef = useRef(0);
   const gasRef = useRef(false);
   const brakeRef = useRef(false);
+  // Persist across effect re-runs so the math barrier cooldown isn't
+  // reset to 0 every time `raceFrozen` flips (which would spawn a new
+  // barrier the instant the player solves one).
+  const lastBarrierTimeRef = useRef(Date.now());
+  const lastObstacleTimeRef = useRef(Date.now());
+  const lastStarTimeRef = useRef(Date.now());
 
   useEffect(() => { raceSpeedRef.current = raceSpeed; }, [raceSpeed]);
 
   // ─── Animation loop ───────────────────────────────────
   useEffect(() => {
     if (!raceActive) return;
-    let lastObstacleTime = Date.now();
-    let lastStarTime = Date.now();
-    let lastBarrierTime = 0;
     const OBSTACLE_EMOJIS = ['🪨','🌳','🚧'];
     const loop = () => {
       if (gasRef.current && !raceFrozen) {
@@ -125,19 +128,19 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
         return next;
       });
       const now = Date.now();
-      if (now - lastObstacleTime > 2000 && spd > 1) {
-        lastObstacleTime = now;
+      if (now - lastObstacleTimeRef.current > 2000 && spd > 1) {
+        lastObstacleTimeRef.current = now;
         const lane = Math.floor(Math.random() * 3);
         const emoji = OBSTACLE_EMOJIS[Math.floor(Math.random() * OBSTACLE_EMOJIS.length)];
         setRaceObstacles(obs => [...obs, { id: now, lane, y: -10, emoji }]);
       }
-      if (now - lastStarTime > 3000 && spd > 0.5) {
-        lastStarTime = now;
+      if (now - lastStarTimeRef.current > 3000 && spd > 0.5) {
+        lastStarTimeRef.current = now;
         const lane = Math.floor(Math.random() * 3);
         setRaceStarPickups(s => [...s, { id: now, lane, y: -10 }]);
       }
-      if (now - lastBarrierTime > 20000 && spd > 2 && !raceMathBarrier) {
-        lastBarrierTime = now;
+      if (now - lastBarrierTimeRef.current > 20000 && spd > 2 && !raceMathBarrier) {
+        lastBarrierTimeRef.current = now;
         const prob = generateMathProblem(mathDifficulty);
         setRaceMathBarrier(prob);
         setRaceFrozen(true);

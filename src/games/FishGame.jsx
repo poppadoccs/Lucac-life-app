@@ -85,7 +85,9 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
       setFishEnemies(enemies => {
         if (enemies.length >= 10) return enemies;
         const playerSz = fishSizeRef.current;
-        const sizeBase = Math.random() < 0.6
+        // 70% chance of spawning a smaller (edible) fish — gives the player
+        // more breathing room than the previous 60/40 split.
+        const sizeBase = Math.random() < 0.7
           ? Math.max(1, playerSz - 1 - Math.random() * 3)
           : playerSz + 1 + Math.random() * 3;
         const size = Math.max(1, Math.min(12, sizeBase));
@@ -102,7 +104,9 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
         }];
       });
     };
-    spawn();
+    // Don't eager-spawn on mount — React 18 strict mode fires the effect twice
+    // in dev which would put 2 enemies on screen before the player can react.
+    // First enemy now arrives at 1.5s, giving a brief grace period.
     const iv = setInterval(spawn, 1500);
     return () => clearInterval(iv);
   }, [fishActive, fishGameOver]);
