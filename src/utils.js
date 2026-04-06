@@ -194,3 +194,98 @@ export function getVoicesReady() {
     };
   }
 }
+
+// --- Role-based write guard (FOUND-04 / SEC-01) ---
+// Guards sensitive Firebase paths. Called by fbSet before set().
+// Per D-06: guard sensitive paths only, not every path.
+const ADMIN_ONLY_PATHS = [
+  "profiles",
+  "contacts",
+  "alertMinutes",
+  "themeName",
+  "widgetPrefs",
+  "custodyPattern",
+  "custodyOverrides",
+  "callButtons",
+  "quoteMode",
+  "customQuotePrompt",
+  "themeOverrides",
+  "calendarSize",
+  "spotlightResponse",
+];
+
+const PARENT_WRITE_PATHS = [
+  "events",
+  "eventStyles",
+  "custodySchedule",
+  "ruleProposals",
+  "jrHistory",
+  "shoppingList",
+  "budgetData",
+  "foodLog",
+  "myFoods",
+  "nutritionGoals",
+  "trackedMacros",
+  "weightLog",
+  "myRules",
+  "theirRules",
+  "sharedRules",
+  "exchangeLog",
+  "routines",
+  "routineStyles",
+  "goals",
+  "goalStyles",
+  "chores",
+];
+
+const KID_WRITE_PATHS = [
+  "kidsData",
+  "homeworkSessions",
+  "jrHistory",
+];
+
+export function canWrite(profile, path) {
+  if (!profile) return false;
+  const role = profile.type === "admin" ? "admin"
+    : (profile.type === "parent" || profile.type === "family") ? "parent"
+    : profile.type === "kid" ? "kid" : "guest";
+
+  // Admin can write to anything
+  if (role === "admin") return true;
+
+  // Extract top-level path segment: "kidsData/Luca/points" -> "kidsData"
+  const topPath = path.split("/")[0];
+
+  // Block admin-only paths for everyone except admin
+  if (ADMIN_ONLY_PATHS.includes(topPath)) return false;
+
+  if (role === "parent") {
+    // Parents can write to parent paths AND kid paths
+    return PARENT_WRITE_PATHS.includes(topPath) || KID_WRITE_PATHS.includes(topPath);
+  }
+
+  if (role === "kid") {
+    if (!KID_WRITE_PATHS.includes(topPath)) return false;
+    // Kids can only write to their OWN subtree within kidsData
+    if (topPath === "kidsData") {
+      const nameSegment = path.split("/")[1];
+      // Allow "kidsData" (full object) only if no name segment — but in practice
+      // kids should always write "kidsData/TheirName/..."
+      return !nameSegment || nameSegment === profile.name;
+    }
+    // homeworkSessions: kids can write their own sessions
+    if (topPath === "homeworkSessions") {
+      const nameSegment = path.split("/")[1];
+      return !nameSegment || nameSegment === profile.name;
+    }
+    // jrHistory: kids can write their own chat history
+    if (topPath === "jrHistory") {
+      const nameSegment = path.split("/")[1];
+      return !nameSegment || nameSegment === profile.name;
+    }
+    return true;
+  }
+
+  // Guest cannot write anything
+  return false;
+}
