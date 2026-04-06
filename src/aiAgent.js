@@ -177,7 +177,6 @@ const TOOLS = [
         properties: {
           emotion: { type: "string", description: "The emotion detected: sad, angry, frustrated, happy, excited, anxious, overwhelmed, lonely, proud, scared" },
           context: { type: "string", description: "What the user said or what's going on" },
-          isChild: { type: "boolean", description: "True if a kid profile is active (simpler language, more warmth)" }
         },
         required: ["emotion", "context"]
       }
@@ -421,7 +420,7 @@ async function executeReadTool(funcName, args, appState, apiKey) {
       return JSON.stringify({ type: 'clarification', question: args.question, options: args.options || [] });
     }
     case 'emotional_support': {
-      const isKid = args.isChild || false;
+      const isKid = appState?.userRole === 'kid';
       const kidPrompt = isKid
         ? "You are a kind, warm friend talking to a child (age 6-8). Use simple words. Be encouraging and gentle. Use emoji. Make them feel safe and heard. Never dismiss their feelings. Keep it to 2-3 short sentences."
         : "You are a supportive friend. Be warm, real, and honest — not fake-positive. Acknowledge what they're feeling first, then help them see a path forward. If they're happy, celebrate with them. If they're sad, sit with them in it before offering hope. Keep it to 3-4 sentences. Be conversational, not clinical.";
