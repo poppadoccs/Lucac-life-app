@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, set, onValue } from "firebase/database";
+import { getDatabase, ref, set, onValue, update, runTransaction } from "firebase/database";
 import * as Sentry from "@sentry/react";
 import LucacLegends from "./LucacLegends";
-import { groqFetch, parseGroqJSON, cacheGet, cacheSet, SWATCH_COLORS, triggerConfetti, createSpeechRecognition } from "./utils";
+import { groqFetch, parseGroqJSON, cacheGet, cacheSet, SWATCH_COLORS, triggerConfetti, createSpeechRecognition, canWrite } from "./utils";
 import { DAYS, MONTHS, dateKey, parseTime } from "./shared";
 import { getWidgetPref as _getWidgetPref, setWidgetPref as _setWidgetPref } from "./WidgetSystem";
 import FoodTab from "./FoodTab";
@@ -286,7 +286,13 @@ export default function App() {
     const filtered = {};
     Object.entries(eventsObj).forEach(([dk, dayEvs]) => {
       const visible = (Array.isArray(dayEvs) ? dayEvs : []).filter(ev => {
-        if (ev.private) return ev.creator === profile.name;
+        // SEC-02: isPrivate field (D-14) with backward-compatible fallback to ev.private
+        // D-16: missing creator defaults to "admin", missing isPrivate defaults to false
+        const isPrivateEvent = ev.isPrivate ?? ev.private ?? false;
+        if (isPrivateEvent) {
+          const eventCreator = ev.creator ?? "admin";
+          return eventCreator === profile.name;
+        }
         return true;
       });
       if (visible.length > 0) filtered[dk] = visible;
@@ -351,6 +357,11 @@ export default function App() {
   }, []);
 
   function fbSet(key, val) {
+    // SEC-01: Role-based write guard — blocks non-admins from sensitive paths
+    if (!canWrite(currentProfile, key)) {
+      showToast("You don't have permission to do that.", "error");
+      return;
+    }
     set(ref(db, key), val).catch(() => {
       // If Firebase write fails (offline), cache locally — Firebase RTDB will sync when back online
       cacheSet(key, val);
