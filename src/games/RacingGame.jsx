@@ -77,7 +77,9 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
   // Persist across effect re-runs so the math barrier cooldown isn't
   // reset to 0 every time `raceFrozen` flips (which would spawn a new
   // barrier the instant the player solves one).
-  const lastBarrierTimeRef = useRef(Date.now());
+  // Barrier ref is back-dated by 10s so the first math problem arrives
+  // ~10s into the race instead of the full 20s cooldown.
+  const lastBarrierTimeRef = useRef(Date.now() - 10000);
   const lastObstacleTimeRef = useRef(Date.now());
   const lastStarTimeRef = useRef(Date.now());
 
@@ -87,9 +89,16 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
   useEffect(() => {
     if (!raceActive) return;
     const OBSTACLE_EMOJIS = ['🪨','🌳','🚧'];
+    // Movement tuning — SPEED_MAX lowered from 10 → 6 and MOVE_MULT lowered
+    // from 2 → 0.8 so obstacles take ~500ms to cross at max speed instead of
+    // ~80ms. The old values were balanced around the broken math-barrier loop
+    // that kept resetting speed to 0.
+    const SPEED_MAX = 6;
+    const ACCEL = 0.1;
+    const MOVE_MULT = 0.8;
     const loop = () => {
       if (gasRef.current && !raceFrozen) {
-        setRaceSpeed(s => Math.min(10, s + 0.15));
+        setRaceSpeed(s => Math.min(SPEED_MAX, s + ACCEL));
       } else if (brakeRef.current) {
         setRaceSpeed(s => Math.max(0, s - 0.3));
       } else {
@@ -100,7 +109,7 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
       setRaceObstacles(obs => {
         const next = [];
         for (const o of obs) {
-          const ny = o.y + spd * 2;
+          const ny = o.y + spd * MOVE_MULT;
           if (ny > 110) continue;
           if (ny > 75 && ny < 95 && o.lane === raceLane) {
             setRaceScore(sc => Math.max(0, sc - 50));
@@ -117,7 +126,7 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
       setRaceStarPickups(stars => {
         const next = [];
         for (const s of stars) {
-          const ny = s.y + spd * 2;
+          const ny = s.y + spd * MOVE_MULT;
           if (ny > 110) continue;
           if (ny > 75 && ny < 95 && s.lane === raceLane) {
             setRaceScore(sc => sc + 25);
@@ -173,14 +182,14 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
           <GameBtn color="#475569" onClick={() => { setRaceActive(false); transitionTo("mini_games"); }}
             style={{ width:"auto", padding:"8px 14px", minHeight:44 }}>← Back</GameBtn>
           <div style={{ color:"#fbbf24", fontWeight:700, fontSize:14 }}>Score: {raceScore}</div>
-          <div style={{ color:"#fff", fontWeight:700, fontSize:14 }}>Speed: {speedInt}/10 | Hits: {raceHits}/3</div>
+          <div style={{ color:"#fff", fontWeight:700, fontSize:14 }}>Speed: {speedInt}/6 | Hits: {raceHits}/3</div>
         </div>
         {/* Speed bar */}
         <div style={{ display:"flex", alignItems:"center", gap:8, padding:"0 12px 6px" }}>
           <span style={{ color:"#94a3b8", fontSize:12, minWidth:48 }}>Speed:</span>
           <div style={{ flex:1, height:12, background:"#1e293b", borderRadius:6, overflow:"hidden" }}>
-            <div style={{ width:`${raceSpeed*10}%`, height:"100%", borderRadius:6, transition:"width 0.1s",
-              background: raceSpeed > 7 ? "linear-gradient(90deg, #f59e0b, #ef4444)" : "linear-gradient(90deg, #22c55e, #f59e0b)" }} />
+            <div style={{ width:`${(raceSpeed/6)*100}%`, height:"100%", borderRadius:6, transition:"width 0.1s",
+              background: raceSpeed > 4.5 ? "linear-gradient(90deg, #f59e0b, #ef4444)" : "linear-gradient(90deg, #22c55e, #f59e0b)" }} />
           </div>
           <span style={{ color:"#fff", fontSize:13, fontWeight:700, minWidth:20 }}>{speedInt}</span>
         </div>

@@ -59,7 +59,9 @@ function GameBtn({ children, onClick, color, disabled, big, style: extra }) {
 export default function FishGame({ profile, kidsData, fbSet, addStars, transitionTo, curriculum }) {
   const { isLucaMode, mathDifficulty } = curriculum;
 
-  const [fishSize, setFishSize] = useState(3);
+  // Start at size 5 (5 hits to die instead of 3) — gives a 6-year-old time
+  // to actually learn the controls before game over.
+  const [fishSize, setFishSize] = useState(5);
   const [fishPos, setFishPos] = useState({ x: 50, y: 50 });
   const [fishEnemies, setFishEnemies] = useState([]);
   const [fishScore, setFishScore] = useState(0);
@@ -70,9 +72,12 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
   const [fishPowerMsg, setFishPowerMsg] = useState(null);
 
   const fishPosRef = useRef({ x: 50, y: 50 });
-  const fishSizeRef = useRef(3);
+  const fishSizeRef = useRef(5);
   const fishAnimRef = useRef(null);
   const fishDragRef = useRef(false);
+  // ~1s invincibility window after taking damage so the player doesn't
+  // cascade-die from overlapping enemies.
+  const fishInvincibleUntilRef = useRef(0);
 
   useEffect(() => { fishPosRef.current = fishPos; }, [fishPos]);
   useEffect(() => { fishSizeRef.current = fishSize; }, [fishSize]);
@@ -83,11 +88,11 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
     const FISH_EMOJIS = ['🐠','🐡','🐟','🐠','🐡','🐟','🦈'];
     const spawn = () => {
       setFishEnemies(enemies => {
-        if (enemies.length >= 10) return enemies;
+        if (enemies.length >= 8) return enemies;
         const playerSz = fishSizeRef.current;
-        // 70% chance of spawning a smaller (edible) fish — gives the player
-        // more breathing room than the previous 60/40 split.
-        const sizeBase = Math.random() < 0.7
+        // 85% chance of spawning a smaller (edible) fish — designed for a
+        // 6-year-old's reaction time. Only 15% of spawns are dangerous.
+        const sizeBase = Math.random() < 0.85
           ? Math.max(1, playerSz - 1 - Math.random() * 3)
           : playerSz + 1 + Math.random() * 3;
         const size = Math.max(1, Math.min(12, sizeBase));
@@ -100,14 +105,14 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
           x: fromLeft ? -8 : 108,
           y: Math.random() * 70 + 10,
           size, emoji,
-          speed: (Math.random() * 1.0 + 0.3) * (fromLeft ? 1 : -1),
+          // Slower enemy speed: 0.2 to 0.7 per tick (previously 0.3-1.3).
+          speed: (Math.random() * 0.5 + 0.2) * (fromLeft ? 1 : -1),
         }];
       });
     };
-    // Don't eager-spawn on mount — React 18 strict mode fires the effect twice
-    // in dev which would put 2 enemies on screen before the player can react.
-    // First enemy now arrives at 1.5s, giving a brief grace period.
-    const iv = setInterval(spawn, 1500);
+    // First enemy at 2.5s (was 1.5s with eager spawn), then every 2.5s.
+    // Gives the player a real moment to orient before the action starts.
+    const iv = setInterval(spawn, 2500);
     return () => clearInterval(iv);
   }, [fishActive, fishGameOver]);
 
@@ -134,6 +139,13 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
               setTimeout(() => setFishPowerMsg(null), 600);
               continue;
             } else if (enemy.size > sz + 0.5) {
+              // Respect the invincibility window — drop through collision but
+              // don't apply damage if the player was recently hit.
+              if (Date.now() < fishInvincibleUntilRef.current) {
+                surviving.push({ ...enemy, x: movedX });
+                continue;
+              }
+              fishInvincibleUntilRef.current = Date.now() + 1000;
               setFishScore(s => Math.max(0, s - 20));
               setFishSize(s => {
                 const newSz = s - 1;
@@ -153,7 +165,9 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
     return () => clearInterval(iv);
   }, [fishActive, fishGameOver]);
 
-  // ─── Math bonus bubble every 15s ─────────────────────
+  // ─── Math bonus bubble ───────────────────────────────
+  // First bubble at 3s (was 8s — kids were dying before seeing it).
+  // Subsequent bubbles every 12s (was 15s).
   useEffect(() => {
     if (!fishActive || fishSize >= 10 || fishGameOver) return;
     const iv = setInterval(() => {
@@ -161,11 +175,11 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
         const prob = generateMathProblem(mathDifficulty);
         setFishMathBubble({ ...prob, x: Math.random() * 60 + 20, y: Math.random() * 50 + 15 });
       }
-    }, 15000);
+    }, 12000);
     const firstTimeout = setTimeout(() => {
       const prob = generateMathProblem(mathDifficulty);
       setFishMathBubble({ ...prob, x: Math.random() * 60 + 20, y: Math.random() * 50 + 15 });
-    }, 8000);
+    }, 3000);
     return () => { clearInterval(iv); clearTimeout(firstTimeout); };
   }, [fishActive, fishGameOver, mathDifficulty]);
 
@@ -376,8 +390,9 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
               Collect ⭐ {fishStarsEarned} Stars!
             </GameBtn>
             <GameBtn color="#3b82f6" onClick={() => {
-              setFishSize(3); setFishPos({x:50,y:50}); setFishEnemies([]); setFishScore(0);
+              setFishSize(5); setFishPos({x:50,y:50}); setFishEnemies([]); setFishScore(0);
               setFishActive(true); setFishGameOver(false); setFishMathBubble(null);
+              fishInvincibleUntilRef.current = 0;
             }} style={{ marginTop:8, minHeight:60, fontSize:18 }}>
               Play Again 🔄
             </GameBtn>
