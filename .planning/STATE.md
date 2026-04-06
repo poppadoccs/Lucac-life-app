@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: planning
-stopped_at: "Checkpoint: 01-04 Task 3 human-verify — awaiting game functionality verification"
-last_updated: "2026-04-06T06:46:28.930Z"
+stopped_at: Completed 01-foundation 01-04-PLAN.md — Phase 01 all 4 plans complete
+last_updated: "2026-04-06T13:12:28.762Z"
 last_activity: 2026-04-05 — Roadmap created, all 41 pending requirements mapped to 5 phases
 progress:
   total_phases: 6
@@ -54,6 +54,7 @@ Progress: [░░░░░░░░░░] 0%
 *Updated after each plan completion*
 | Phase 01-foundation P03 | 12 | 2 tasks | 3 files |
 | Phase 01-foundation P04 | 12 | 2 tasks | 7 files |
+| Phase 01-foundation P04 | 45 | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -70,6 +71,9 @@ Recent decisions affecting current work:
 - [Phase 01-foundation]: HomeworkHelper local speakText removed — CLEAN-02 complete, all TTS now routed through utils.js speakText
 - [Phase 01-foundation]: Shell is 156 lines (D-01 satisfied): menu screen + curriculum + addStars + transitionTo + RPGCore delegation only
 - [Phase 01-foundation]: RPGCore owns all RPG screens and mini-game delegation; mini-game files own their own state; generateMathProblem inlined per game (D-05)
+- [Phase 01-foundation]: Shell is 156 lines (D-01 satisfied): menu screen + curriculum + addStars + transitionTo + RPGCore delegation only
+- [Phase 01-foundation]: Racing lastBarrierTime moved to useRef — let-scoped vars reset on useEffect re-mount when raceFrozen dep changes
+- [Phase 01-foundation]: Fish rebalanced for age-6: starting size 5, danger bias 15%, 1s invincibility after hits
 
 ### Pending Todos
 
@@ -83,6 +87,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-06T06:46:28.927Z
-Stopped at: Checkpoint: 01-04 Task 3 human-verify — awaiting game functionality verification
+Last session: 2026-04-06T13:12:28.759Z
+Stopped at: Completed 01-foundation 01-04-PLAN.md — Phase 01 all 4 plans complete
 Resume file: None
