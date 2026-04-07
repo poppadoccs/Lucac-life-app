@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd:*)",
+      "WebFetch(domain:macrofactorapp.com)",
+      "WebFetch(domain:macrofactor.com)",
+      "WebFetch(domain:www.tomsguide.com)",
+      "WebFetch(domain:www.nerdfitness.com)",
+      "WebFetch(domain:www.healthline.com)",
+      "mcp__sequential-thinking__sequentialthinking",
+      "Bash(ls:*)",
+      "mcp__plugin_playwright_playwright__browser_resize",
+      "mcp__plugin_playwright_playwright__browser_navigate",
+      "mcp__plugin_playwright_playwright__browser_click",
+      "mcp__plugin_playwright_playwright__browser_take_screenshot",
+      "mcp__plugin_playwright_playwright__browser_type",
+      "mcp__plugin_playwright_playwright__browser_select_option",
+      "mcp__plugin_playwright_playwright__browser_run_code",
+      "mcp__plugin_playwright_playwright__browser_console_messages",
+      "mcp__plugin_playwright_playwright__browser_close",
+      "Bash(claude mcp:*)",
+      "Bash(npx:*)",
+      "Read(//c/Users/renea/.claude/**)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(wc:*)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs",
+      "Bash(sed -n '1458,2778p' src/App.jsx)",
+      "Read(//tmp/**)",
+      "Skill(gsd:execute-phase)",
+      "Bash(npm run:*)",
+      "Bash([ -f \"C:/Users/renea/Lucac-life-app/.planning/phases/01-foundation/01-04-SUMMARY.md\" ])",
+      "Bash(node:*)",
+      "Bash(grep -E \"\\\\.jsonl$|^d\")",
+      "mcp__claude_ai_Lucac_vault__read_note",
+      "mcp__claude_ai_Lucac_vault__write_note",
+      "mcp__claude_ai_Lucac_vault__save_moment"
+    ]
+  }
+}
