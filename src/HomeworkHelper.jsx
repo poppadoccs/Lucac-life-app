@@ -184,6 +184,28 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
     }
   }, [messages, kidName, sessionId, subject, fbSet]);
 
+  // HW-04: Auto-prune oldest sessions when count exceeds 50 per kid.
+  // Separate effect (not inlined into the save effect) so we read the
+  // freshest homeworkSessions snapshot from Firebase rather than a stale closure.
+  // Self-stabilizes: after pruning, Firebase pushes the smaller set back,
+  // this effect re-fires with count <= 50 and exits without action.
+  useEffect(() => {
+    if (!kidName || !fbSet) return;
+    const kidSessions = homeworkSessions?.[kidName];
+    if (!kidSessions) return;
+    const sessionKeys = Object.keys(kidSessions);
+    if (sessionKeys.length <= 50) return;
+    const sorted = [...sessionKeys].sort((a, b) => {
+      const aTime = kidSessions[a]?.updatedAt || 0;
+      const bTime = kidSessions[b]?.updatedAt || 0;
+      return aTime - bTime;
+    });
+    const toDelete = sorted.slice(0, sessionKeys.length - 50);
+    toDelete.forEach((oldKey) => {
+      fbSet(`homeworkSessions/${kidName}/${oldKey}`, null);
+    });
+  }, [homeworkSessions, kidName, fbSet]);
+
   // Feature 13: Auto-read latest assistant message for young kids
   useEffect(() => {
     if (!autoRead || messages.length === 0) return;
@@ -676,25 +698,61 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
             Object.entries(pastSessions)
               .sort(([a], [b]) => b.localeCompare(a))
               .slice(0, 10)
-              .map(([sid, data]) => (
-                <div
-                  key={sid}
-                  style={{
-                    padding: "6px 10px",
-                    marginBottom: 4,
-                    borderRadius: V.r2,
-                    background: V.bgCard,
-                    fontSize: 13,
-                    color: V.textSecondary,
-                  }}
-                >
-                  <span style={{ fontWeight: 600 }}>{sid.split("_")[0]}</span>
-                  {" — "}
-                  {data.subject || "General"}
-                  {" — "}
-                  {(data.messages || []).length} messages
-                </div>
-              ))
+              .map(([sid, data]) => {
+                const subjectInfo =
+                  SUBJECTS.find((s) => s.key === data.subject) || { icon: "\u{1F4DA}", label: "General" };
+                const dateStr = sid.split("_")[0];
+                const msgs = data.messages || [];
+                return (
+                  <button
+                    type="button"
+                    key={sid}
+                    onClick={() => {
+                      // HW-04: Resume — load messages into a new sessionId so the original record stays immutable
+                      if (ttsAvailable) window.speechSynthesis.cancel();
+                      setMessages(msgs);
+                      setSubject(data.subject || "math");
+                      setMsgCount(msgs.length);
+                      socraticAttemptsRef.current = 0;
+                      const d = new Date();
+                      setSessionId(
+                        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}_${d.getTime()}`
+                      );
+                      setShowPastSessions(false);
+                    }}
+                    aria-label={`Resume session from ${dateStr}, subject ${subjectInfo.label}, ${msgs.length} messages`}
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      marginBottom: 6,
+                      minHeight: 44,
+                      borderRadius: V.r2,
+                      background: V.bgCard,
+                      border: `1px solid ${V.borderSubtle}`,
+                      fontSize: 13,
+                      color: V.textSecondary,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      fontFamily: "inherit",
+                      textAlign: "left",
+                    }}
+                  >
+                    <span style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0, flexWrap: "wrap" }}>
+                      <span style={{ fontWeight: 600, color: V.textPrimary }}>{dateStr}</span>
+                      <span style={{ color: V.textMuted }}>
+                        {subjectInfo.icon} {subjectInfo.label}
+                      </span>
+                      <span style={{ color: V.textMuted, fontSize: 12 }}>{msgs.length} msgs</span>
+                    </span>
+                    <span style={{ fontWeight: 700, color: V.accent, whiteSpace: "nowrap" }}>
+                      {"\u{25B6}"} Resume
+                    </span>
+                  </button>
+                );
+              })
           ) : (
             <div style={{ fontSize: 13, color: V.textMuted }}>No past sessions found.</div>
           )}
