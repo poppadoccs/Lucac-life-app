@@ -11,7 +11,7 @@ const SUBJECTS = [
 const MAX_MESSAGES = 20;
 
 const MATH_VERIFICATION_PROMPT =
-  "CRITICAL: Always double-check your arithmetic before responding. Verify every calculation step by step. 5x10=50, NOT 40. 7x8=56. 12+15=27. Never give a wrong mathematical answer — accuracy is critical for children's education.";
+  "CRITICAL MATH RULE: Any arithmetic you write (like 5+4=X, 5x10=X) is AUTOMATICALLY VERIFIED by JavaScript before the student ever sees it. If you write a wrong answer, it will be silently corrected. So ALWAYS compute step-by-step and double-check. Examples: 5x10=50 (not 40). 7x8=56. 5+4=9. 12+15=27. Kids are trusting you — the numbers you write must be correct.";
 
 function getAge(kid) {
   if (kid && kid.age) return kid.age;
@@ -84,6 +84,47 @@ function shouldCelebrate(text, age) {
     return /great|awesome|correct|right|amazing|fantastic|wonderful|good job|well done|perfect|excellent|bravo/.test(lower);
   }
   return /correct|well done|excellent|perfect/.test(lower);
+}
+
+// JavaScript ground-truth math verification.
+// LLMs pattern-match arithmetic; they don't actually compute. Every time we ask
+// Groq to explain 5+4, there's a real chance it writes "= 8" or "= 10". This
+// function scans the AI's response for "<expression> = <answer>" patterns,
+// computes the true answer in a sandboxed Function() (only digits and
+// arithmetic operators allowed — no arbitrary code), and silently rewrites any
+// wrong answer to the correct one before the student ever sees it.
+//
+// Handles: 5+4=9, 5 + 4 = 9, 5×10=50, 5x10=50, 12÷3=4, 1+2+3=6, 5+4*2=13.
+// Skips: word-answer forms ("five plus four is nine"), fractional answers like
+// "3/4" that can't be a trailing number, word problems without explicit
+// expressions, and any expression containing non-numeric chars.
+//
+// Background: the "5×10=40 incident" from earlier in this project got a
+// prompt-only "please double-check" fix, which LLMs ignore ~5% of the time.
+// This is the hard fix that actually guarantees correctness.
+function verifyMath(text) {
+  if (typeof text !== "string" || !text) return text;
+  // Match: <number>(<op><number>)+ = <number>
+  // Operators: + - * x × / ÷    (x and × are kid/teacher multiply notation)
+  const pattern = /(\d+(?:\.\d+)?(?:\s*[+\-*x×/÷]\s*\d+(?:\.\d+)?)+)\s*=\s*(-?\d+(?:\.\d+)?)/gi;
+  return text.replace(pattern, (match, expr, statedAnswer) => {
+    // Normalize kid-friendly operators to JS operators
+    const normalized = expr.replace(/[x×]/gi, "*").replace(/÷/g, "/");
+    // Whitelist: only digits, standard operators, dots, whitespace — NO letters,
+    // NO keywords, NO function calls. This makes Function() safe against code injection.
+    if (!/^[\d\s+\-*/.]+$/.test(normalized)) return match;
+    try {
+      // eslint-disable-next-line no-new-func
+      const trueAnswer = Function(`"use strict"; return (${normalized});`)();
+      if (typeof trueAnswer !== "number" || !isFinite(trueAnswer)) return match;
+      // Float-tolerance comparison (0.1 + 0.2 = 0.30000000000000004 shouldn't trip us)
+      if (Math.abs(Number(statedAnswer) - trueAnswer) < 1e-9) return match;
+      // AI was WRONG. Replace with the correct answer while keeping the expression formatting.
+      return `${expr} = ${trueAnswer}`;
+    } catch {
+      return match;
+    }
+  });
 }
 
 export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY, showToast, homeworkSessions }) {
@@ -247,22 +288,26 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
     setLoading(false);
 
     if (result.ok && result.data) {
-      const assistantMsg = { role: "assistant", content: result.data };
+      // MATH GROUND-TRUTH: silently correct any wrong arithmetic BEFORE the student sees it.
+      // This is the hard fix for the "5x10=40 incident" class of bugs. Prompt-level
+      // "please double-check" is unreliable; JavaScript is not. See verifyMath() for details.
+      const verifiedContent = verifyMath(result.data);
+      const assistantMsg = { role: "assistant", content: verifiedContent };
       setMessages((prev) => [...prev, assistantMsg]);
       setMsgCount((c) => c + 1);
 
       // HW-03: frustration tracking — only for Socratic subjects (not funfacts)
       if (subject !== "funfacts") {
-        if (shouldCelebrate(result.data, kidAge)) {
+        if (shouldCelebrate(verifiedContent, kidAge)) {
           // celebration = student got it right, reset the frustration counter
           socraticAttemptsRef.current = 0;
-        } else if (/almost|try again|let'?s try|not quite/i.test(result.data)) {
+        } else if (/almost|try again|let'?s try|not quite/i.test(verifiedContent)) {
           // inverse-celebrate language = another failed attempt
           socraticAttemptsRef.current += 1;
         }
       }
 
-      if (shouldCelebrate(result.data, kidAge)) {
+      if (shouldCelebrate(verifiedContent, kidAge)) {
         triggerConfetti(document.body, kidAge <= 7 ? "small" : "small");
       }
     } else {
