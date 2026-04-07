@@ -36,7 +36,10 @@
       "Bash(grep -E \"\\\\.jsonl$|^d\")",
       "mcp__claude_ai_Lucac_vault__read_note",
       "mcp__claude_ai_Lucac_vault__write_note",
-      "mcp__claude_ai_Lucac_vault__save_moment"
+      "mcp__claude_ai_Lucac_vault__save_moment",
+      "mcp__claude_ai_Lucac_vault__load_soul",
+      "mcp__claude_ai_Lucac_vault__list_notes",
+      "mcp__claude_ai_Lucac_vault__be_honest"
     ]
   }
 }
