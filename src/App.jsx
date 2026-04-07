@@ -1318,7 +1318,7 @@ export default function App() {
                       </div>
                     </div>
                   )}
-                  <HomeworkHelper V={V} profiles={profiles} kidsData={kidsData} fbSet={fbSet} GROQ_KEY={GROQ_KEY} showToast={showToast} />
+                  <HomeworkHelper V={V} profiles={profiles} kidsData={kidsData} fbSet={fbSet} GROQ_KEY={GROQ_KEY} showToast={showToast} homeworkSessions={homeworkSessions} />
                 </div>
               )}
             </div>

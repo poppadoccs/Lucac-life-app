@@ -44,7 +44,7 @@ function shouldCelebrate(text, age) {
   return /correct|well done|excellent|perfect/.test(lower);
 }
 
-export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY, showToast }) {
+export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY, showToast, homeworkSessions }) {
   const [selectedKid, setSelectedKid] = useState("");
   const [subject, setSubject] = useState("math");
   const [messages, setMessages] = useState([]);
@@ -236,7 +236,7 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
   function loadPastSessions() {
     setShowPastSessions((p) => !p);
     if (!showPastSessions && kidsData && kidName) {
-      const sessions = kidsData?.homeworkSessions?.[kidName] || null;
+      const sessions = homeworkSessions?.[kidName] || null;
       setPastSessions(sessions);
     }
   }

@@ -164,6 +164,12 @@ Single-page React 18 app built with Vite. 8 source files in `src/`:
 - **FIX**: Added `required:[]` to every tool definition
 - **RULE FOR NEXT TIME**: Every tool definition MUST have `parameters.type`, `parameters.properties`, and `parameters.required` (even if empty array)
 
+### 2026-04-07: HomeworkHelper homeworkSessions prop wiring
+- **WHAT WENT WRONG**: HomeworkHelper read past sessions from `kidsData?.homeworkSessions?.[kidName]` which is always undefined. Yana and Luca's past sessions silently never displayed even though they were correctly written to Firebase under the top-level `homeworkSessions/` path.
+- **ROOT CAUSE**: Read-write path mismatch. HomeworkHelper writes sessions to Firebase at `homeworkSessions/${kidName}/${sessionId}` (top-level), and App.jsx subscribes to that same top-level key into its own `homeworkSessions` useState (App.jsx:238). But HomeworkHelper was never passed that state as a prop — it tried to read from `kidsData.homeworkSessions`, which is a different Firebase tree entirely. Writes worked, reads went to the wrong place, the bug was silent.
+- **FIX**: Added `homeworkSessions={homeworkSessions}` prop on the HomeworkHelper render in App.jsx, destructured `homeworkSessions` in HomeworkHelper's function signature, changed the read on line 239 from `kidsData?.homeworkSessions?.[kidName]` to `homeworkSessions?.[kidName]`.
+- **RULE FOR NEXT TIME**: When a child component reads back its own writes from Firebase, the *prop path* must match the *Firebase subscription path*. If the parent loads `xKey` from Firebase into its own state, the child must receive `xKey` as a prop — never assume it's nested under an unrelated prop tree like `kidsData`. Verify by tracing: where does the child WRITE? where does the parent READ that key from Firebase? does the child receive THAT exact state?
+
 <!-- GSD:project-start source:PROJECT.md -->
 ## Project
 
