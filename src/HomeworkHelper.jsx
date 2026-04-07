@@ -18,21 +18,63 @@ function getAge(kid) {
   return 8;
 }
 
-function buildSystemPrompt(name, age, subject) {
+function buildSystemPrompt(name, age, subject, modes = {}) {
+  const { detailMode = false, stepByStep = true, socraticAttempts = 0 } = modes;
   const subjectLabel = SUBJECTS.find((s) => s.key === subject)?.label || "General";
   const ageNote =
     age <= 7
       ? "Use very simple words, lots of emojis, max 2 short sentences."
-      : "Use full sentences appropriate for a grade 3-4 student. Show your work for math problems.";
+      : "Use full sentences appropriate for a grade 3-4 student.";
+  const SAFETY =
+    "SAFETY: If the child asks anything inappropriate, off-topic, or not school-related, kindly redirect them back to homework. " +
+    "Never discuss violence, adult content, or anything not age-appropriate.";
+
+  // HW-05: Fun Facts mode — celebrates everything, never corrects
+  if (subject === "funfacts") {
+    return (
+      `You are a fun facts buddy for ${name}, a ${age} year old. ` +
+      `When ${name} shares a thought, idea, or guess: celebrate it enthusiastically (use emojis and warm phrases). ` +
+      `Then share a related amazing fun fact they probably don't know. ` +
+      `Then ask an open-ended follow-up question to keep the conversation going. ` +
+      `NEVER say "almost", "try again", "not quite", "wrong", or "incorrect". There are no wrong answers in fun facts mode — only curiosity. ` +
+      `Do NOT use Socratic questioning. Do NOT make them guess answers. Just celebrate, share, and ask. ` +
+      `${ageNote} ` +
+      SAFETY
+    );
+  }
+
+  // HW-03: Frustration switch — after 2 failed Socratic attempts, drop the guidance and explain directly
+  if (socraticAttempts >= 2) {
+    return (
+      `You are a kind, patient tutor for ${name}, a ${age} year old. Subject: ${subjectLabel}. ` +
+      `${name} has been trying to figure this out and is getting stuck. Stop guiding with questions — explain the concept DIRECTLY with a clear worked example. ` +
+      `Walk through the solution step-by-step, showing exactly how to do it. ` +
+      `After you finish the explanation, kindly ask if they want another problem to try on their own. ` +
+      `Use warm, encouraging language. Never use the words "wrong" or "incorrect". ` +
+      `${ageNote} ` +
+      (subject === "math" ? MATH_VERIFICATION_PROMPT + " " : "") +
+      SAFETY
+    );
+  }
+
+  // HW-01 + HW-02: Standard tutor with detailMode and stepByStep modulation
+  const lengthGuidance = detailMode
+    ? "Give thorough, structured explanations. Use examples, analogies, and multiple approaches when they help. Be comprehensive — the student wants depth, so don't hold back on detail."
+    : "Be concise and clear. Get to the point quickly without unnecessary fluff.";
+
+  const scaffoldGuidance = stepByStep
+    ? "Walk through your reasoning step-by-step. Show each step clearly so the student can follow along."
+    : "Give direct answers without breaking things into steps. Trust the student to follow.";
+
   return (
-    `You are a kind, patient tutor for a ${age} year old named ${name}. Subject: ${subjectLabel}. ` +
-    `NEVER give the answer directly. Always guide them to figure it out. Use encouraging language. ` +
-    `If they get it right, celebrate with enthusiasm. If wrong, say 'Almost! Let's try again \u{1F4AA}' — never say 'wrong' or 'incorrect'. ` +
-    `For math, show step by step. Keep responses under 100 words. ${ageNote} ` +
+    `You are a kind, patient tutor for ${name}, a ${age} year old. Subject: ${subjectLabel}. ` +
+    `NEVER give the final answer directly on the first turn — guide them with questions to figure it out. ` +
+    `If they get it right, celebrate with enthusiasm. If they're off-track, say 'Almost! Let's try again \u{1F4AA}' — never say 'wrong' or 'incorrect'. ` +
+    `${lengthGuidance} ${scaffoldGuidance} ` +
+    `${ageNote} ` +
     `When the student asks for more detail or says they don't understand, go DEEPER — do NOT repeat your previous explanation. Reference what you already said and build on it with a new angle or analogy. NEVER repeat yourself. ` +
-    `SAFETY: If the child asks anything inappropriate, off-topic, or not school-related, kindly redirect them back to homework. ` +
-    `Never discuss violence, adult content, or anything not age-appropriate. ` +
-    MATH_VERIFICATION_PROMPT
+    (subject === "math" ? MATH_VERIFICATION_PROMPT + " " : "") +
+    SAFETY
   );
 }
 
@@ -60,10 +102,16 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
   const [showPastSessions, setShowPastSessions] = useState(false);
   const [pastSessions, setPastSessions] = useState(null);
   const [muted, setMuted] = useState(false);
+  // HW-01: detailMode toggles brief vs detailed responses (maxTokens 300 vs 1500)
+  const [detailMode, setDetailMode] = useState(false);
+  // HW-02: stepByStep toggle persisted per-kid in kidsData/{name}/hwPrefs/stepByStep
+  const [stepByStep, setStepByStep] = useState(true);
 
   const chatEndRef = useRef(null);
   const recognitionRef = useRef(null);
   const voiceTimeoutRef = useRef(null);
+  // HW-03: frustration counter (ref, not state — only read inside doAICall, never drives UI render)
+  const socraticAttemptsRef = useRef(0);
   const rateLimited = msgCount >= MAX_MESSAGES;
 
   const kidProfiles = Object.entries(profiles || {}).filter(
@@ -118,6 +166,13 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
     }
   }, [messages, loading]);
 
+  // HW-02: Load persisted stepByStep preference for the selected kid (default true)
+  useEffect(() => {
+    if (!selectedKid) return;
+    const persisted = kidsData?.[selectedKid]?.hwPrefs?.stepByStep;
+    setStepByStep(persisted !== false); // default true unless explicitly false
+  }, [selectedKid, kidsData]);
+
   // Save session to Firebase
   useEffect(() => {
     if (messages.length > 0 && kidName && fbSet) {
@@ -153,19 +208,38 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
 
   async function doAICall(newMessages) {
     setLoading(true);
-    const systemPrompt = buildSystemPrompt(kidName, kidAge, subject);
+    const systemPrompt = buildSystemPrompt(kidName, kidAge, subject, {
+      detailMode,
+      stepByStep,
+      socraticAttempts: socraticAttemptsRef.current,
+    });
     const apiMessages = [
       { role: "system", content: systemPrompt },
       ...newMessages.slice(-10).map((m) => ({ role: m.role, content: m.content })),
     ];
 
-    const result = await groqFetch(GROQ_KEY, apiMessages, { maxTokens: 300 });
+    // HW-01: detailMode bumps maxTokens 300 -> 1500 for thorough responses
+    const result = await groqFetch(GROQ_KEY, apiMessages, {
+      maxTokens: detailMode ? 1500 : 300,
+    });
     setLoading(false);
 
     if (result.ok && result.data) {
       const assistantMsg = { role: "assistant", content: result.data };
       setMessages((prev) => [...prev, assistantMsg]);
       setMsgCount((c) => c + 1);
+
+      // HW-03: frustration tracking — only for Socratic subjects (not funfacts)
+      if (subject !== "funfacts") {
+        if (shouldCelebrate(result.data, kidAge)) {
+          // celebration = student got it right, reset the frustration counter
+          socraticAttemptsRef.current = 0;
+        } else if (/almost|try again|let'?s try|not quite/i.test(result.data)) {
+          // inverse-celebrate language = another failed attempt
+          socraticAttemptsRef.current += 1;
+        }
+      }
+
       if (shouldCelebrate(result.data, kidAge)) {
         triggerConfetti(document.body, kidAge <= 7 ? "small" : "small");
       }
@@ -182,10 +256,6 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
     setInput("");
     setMsgCount((c) => c + 1);
     await doAICall(newMessages);
-  }
-
-  function handleStepByStep() {
-    sendMessage("Can you show me step by step?");
   }
 
   function toggleRecording() {
@@ -218,6 +288,8 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
     setSubject(newSubject);
     setMessages([]);
     setMsgCount(0);
+    // HW-03: subject change resets frustration counter
+    socraticAttemptsRef.current = 0;
     // New session ID for the new subject
     const d = new Date();
     setSessionId(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}_${d.getTime()}`);
@@ -229,6 +301,8 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
     setMessages([]);
     setMsgCount(0);
     setInput("");
+    // HW-03: brain break resets frustration counter
+    socraticAttemptsRef.current = 0;
     const d = new Date();
     setSessionId(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}_${d.getTime()}`);
   }
@@ -503,18 +577,54 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
       <div style={headerStyle}>
         <div style={titleRow}>
           <h2 style={titleStyle}>{"\u{1F4DA}"} Homework Helper</h2>
-          {/* Feature 13: Mute toggle */}
-          {ttsAvailable && selectedKid && (
-            <button
-              style={muteBtn}
-              onClick={() => {
-                if (!muted && ttsAvailable) window.speechSynthesis.cancel();
-                setMuted((m) => !m);
-              }}
-              aria-label={muted ? "Unmute auto-read" : "Mute auto-read"}
-            >
-              {muted ? "\u{1F507} Muted" : "\u{1F50A} Sound"}
-            </button>
+          {selectedKid && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              {/* HW-01: detailMode toggle — Brief vs Detailed responses */}
+              <button
+                style={{
+                  ...muteBtn,
+                  background: detailMode ? V.accent : V.bgCardAlt,
+                  color: detailMode ? "#fff" : V.textSecondary,
+                }}
+                onClick={() => setDetailMode((m) => !m)}
+                aria-label={detailMode ? "Switch to brief responses" : "Switch to detailed responses"}
+                aria-pressed={detailMode}
+              >
+                {detailMode ? "\u{1F4D6} Detailed" : "\u{1F4DD} Brief"}
+              </button>
+              {/* HW-02: stepByStep toggle — persists per-kid via Firebase */}
+              <button
+                style={{
+                  ...muteBtn,
+                  background: stepByStep ? V.accent : V.bgCardAlt,
+                  color: stepByStep ? "#fff" : V.textSecondary,
+                }}
+                onClick={() => {
+                  const next = !stepByStep;
+                  setStepByStep(next);
+                  if (kidName && fbSet) {
+                    fbSet(`kidsData/${kidName}/hwPrefs/stepByStep`, next);
+                  }
+                }}
+                aria-label={stepByStep ? "Switch to direct answers" : "Switch to step-by-step"}
+                aria-pressed={stepByStep}
+              >
+                {stepByStep ? "\u{1FA9C} Steps" : "\u{27A1} Direct"}
+              </button>
+              {/* Feature 13: Mute toggle */}
+              {ttsAvailable && (
+                <button
+                  style={muteBtn}
+                  onClick={() => {
+                    if (!muted && ttsAvailable) window.speechSynthesis.cancel();
+                    setMuted((m) => !m);
+                  }}
+                  aria-label={muted ? "Unmute auto-read" : "Mute auto-read"}
+                >
+                  {muted ? "\u{1F507} Muted" : "\u{1F50A} Sound"}
+                </button>
+              )}
+            </div>
           )}
         </div>
         <select
@@ -525,6 +635,8 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
             setSelectedKid(e.target.value);
             setMessages([]);
             setMsgCount(0);
+            // HW-03: kid change resets frustration counter
+            socraticAttemptsRef.current = 0;
             const d = new Date();
             setSessionId(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}_${d.getTime()}`);
           }}
@@ -643,12 +755,6 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
                 )}
               </div>
             ))}
-            {/* Step by step prompt for math */}
-            {subject === "math" && messages.length > 0 && messages[messages.length - 1].role === "assistant" && !rateLimited && (
-              <button style={stepBtn} onClick={handleStepByStep}>
-                {"\u{1F4DD}"} Show me step by step
-              </button>
-            )}
             {/* Typing indicator */}
             {loading && (
               <div style={typingIndicator}>
