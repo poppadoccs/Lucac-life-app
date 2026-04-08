@@ -66,7 +66,7 @@ function buildSystemPrompt(name, age, subject, modes = {}) {
       `If ${name} asks about a word they don't know, define it in simple terms with an example sentence. ` +
       `If ${name} asks comprehension questions about a story you already wrote, answer them gently and ask one easy follow-up question to check understanding. ` +
       `If ${name} asks you to repeat a single word many times "to learn it", politely explain that's not how reading practice works and offer to write a fun short story that uses that word a few times in context. ` +
-      `${ageNote}`
+      `${age <= 7 ? "Use very simple words and short sentences a 6-year-old can follow. Include emojis." : "Use full sentences appropriate for a grade 3-4 student."}`
     );
   }
 
@@ -82,7 +82,9 @@ function buildSystemPrompt(name, age, subject, modes = {}) {
       `You are a kind, patient tutor for ${name}, a ${age} year old. Subject: ${subjectLabel}. ` +
       `IMPORTANT: ${name} has tried to solve the current problem 2 or more times and is stuck. They are getting frustrated. ` +
       `STOP using Socratic questioning. STOP making them guess. Do NOT ask "can you try again?" or "what do you think?" or "let's count together". ` +
-      `Instead, walk through the solution to ${name}'s EXACT CURRENT QUESTION step by step, then STATE THE FINAL ANSWER EXPLICITLY in the form "<their question> = <computed answer>". The student needs to SEE the final number to learn from it — they cannot figure it out on their own right now. ` +
+      `Instead, walk through the solution to ${name}'s EXACT CURRENT QUESTION step by step, then STATE THE FINAL ANSWER EXPLICITLY. ` +
+      (subject === "math" ? `Write it as "<their question> = <computed answer>" so the student can SEE the exact number. ` : `Give a clear, direct answer in plain language so the student can see the solution. `) +
+      `They cannot figure it out on their own right now. ` +
       `FORMAT EXAMPLE ONLY — NEVER reuse these numbers. Repeat the student's exact expression from the latest turn before answering; do not substitute new numbers. Example format only: for a hypothetical "what is 12 + 12" question the response would look like: "Let's solve this together. 12 + 12 means we add 12 to itself. Counting up from 12: 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24. So 12 + 12 = 24. Want to try a similar one like 13 + 13 on your own?" That is the FORMAT. Use the student's real question and real numbers, NOT 12 + 12 (unless that is literally what they asked). ` +
       `Use warm, encouraging language. Never use the words "wrong" or "incorrect". Never say "almost" or "try again" in this mode — those phrases restart the Socratic loop and are banned here. ` +
       `${ageNote} ` +
@@ -191,7 +193,7 @@ const UNSAFE_INPUT_PATTERNS = [
   /\blife\s+(isn'?t|is\s+not)\s+worth\s+(it|living|anything)\b/i,
   /\bi\s+(hate|can'?t\s+stand)\s+(living|being\s+alive|my\s+life)\b/i,
   /\bi\s+can'?t\s+(go\s+on|do\s+this\s+anymore|keep\s+going)\b/i,
-  /\bi\s+want\s+to\s+dis[sa]*p+ear\s+(forever|for\s+good)\b/i,
+  /\bi\s+want\s+to\s+dis[sa]*p+ear(\s+(forever|for\s+good))?\b/i,
   // === Self-harm & suicide — isolation/worthlessness phrasing ===
   /\bi\s+hate\s+my\s?self\b/i,
   /\bnobody\s+(cares|loves|likes)\s+(about\s+)?me\b/i,
@@ -205,7 +207,7 @@ const UNSAFE_INPUT_PATTERNS = [
   /\bkys\b/i,         // "kill yourself" slang, aimed at others but still unsafe context
   // === Violence towards others ===
   /\b(kill|hurt|shoot|stab|beat\s+up|punch|attack|strangle)\s+(him|her|them|you|my\s+(mom|dad|sister|brother|friend|classmate)|the\s+(teacher|kid|boy|girl|bus\s+driver))\b/i,
-  /\bi'?m\s+(gonna|going\s+to)\s+(kill|hurt|shoot|stab|beat|attack)\s+/i,
+  /\bi'?m\s+(gonna|going\s+to)\s+(kill|hurt|shoot|stab|beat|attack)\s+(him|her|them|you|my\s*(self|mom|dad|sister|brother|friend)|the\s+(teacher|kid|boy|girl))\b/i,
   // === Sexual content — action/intent based, NOT bare anatomy ===
   // (bare anatomy nouns removed per codex review — penis/vagina/breast/nipple
   // can appear in legitimate science questions. We match sexualized context.)
@@ -399,12 +401,16 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
     // don't get truncated mid-story (brief mode 300 tokens ≈ 225 words, not
     // enough for the Reading prompt's 300-600 word range). HW-01: detailMode
     // ALSO bumps maxTokens to 1500 for thorough standard-mode responses.
-    const result = await groqFetch(GROQ_KEY, apiMessages, {
-      maxTokens: (detailMode || subject === "reading") ? 1500 : 300,
-    });
-    setLoading(false);
+    let result;
+    try {
+      result = await groqFetch(GROQ_KEY, apiMessages, {
+        maxTokens: (detailMode || subject === "reading") ? 1500 : 300,
+      });
+    } finally {
+      setLoading(false);
+    }
 
-    if (result.ok && result.data) {
+    if (result?.ok && result.data) {
       // MATH GROUND-TRUTH: silently correct any wrong arithmetic BEFORE the student sees it.
       // This is the hard fix for the "5x10=40 incident" class of bugs. Prompt-level
       // "please double-check" is unreliable; JavaScript is not. See verifyMath() for details.
