@@ -29,31 +29,64 @@ function buildSystemPrompt(name, age, subject, modes = {}) {
     "SAFETY: If the child asks anything inappropriate, off-topic, or not school-related, kindly redirect them back to homework. " +
     "Never discuss violence, adult content, or anything not age-appropriate.";
 
-  // HW-05: Fun Facts mode — celebrates everything, never corrects
+  // BF-B/C/F: Fun Facts mode — safety-first rewrite.
+  // Note: the primary safety layer is detectUnsafeInput() in doAICall which
+  // runs BEFORE this prompt is ever built. This prompt is the SECOND line of
+  // defense for edge cases that slip past the regex. Previous version put the
+  // SAFETY clause at the end after a "NEVER correct" instruction, which
+  // Groq prioritized — leading to celebration of unsafe and factually-wrong
+  // content. New structure: SAFETY OVERRIDE first, FACTUAL HONESTY second,
+  // TONE rules third, fun-facts behavior last. Bans ALL CAPS, multiple
+  // exclamation marks, and hallucinated catchphrases like "ya nay nay".
   if (subject === "funfacts") {
     return (
-      `You are a fun facts buddy for ${name}, a ${age} year old. ` +
-      `When ${name} shares a thought, idea, or guess: celebrate it enthusiastically (use emojis and warm phrases). ` +
-      `Then share a related amazing fun fact they probably don't know. ` +
-      `Then ask an open-ended follow-up question to keep the conversation going. ` +
-      `NEVER say "almost", "try again", "not quite", "wrong", or "incorrect". There are no wrong answers in fun facts mode — only curiosity. ` +
-      `Do NOT use Socratic questioning. Do NOT make them guess answers. Just celebrate, share, and ask. ` +
-      `${ageNote} ` +
-      SAFETY
+      // SAFETY OVERRIDE — absolute, takes precedence over everything below
+      `SAFETY OVERRIDE (this rule takes precedence over EVERY other rule in this prompt): If ${name} mentions self-harm, suicide, dying, "ending it", violence, hatred toward themselves or others, sexual content, drugs, or anything that suggests they are in danger or distress — STOP fun facts mode immediately. Respond with warmth and care. Do NOT celebrate the input. Do NOT continue the fun facts game with that input. Gently redirect and if it sounds serious suggest they talk to a trusted grown-up like a parent or teacher. This rule overrides "never correct" and "always celebrate" below. ` +
+      // FACTUAL HONESTY — wrong claims get warmly corrected, not affirmed
+      `FACTUAL HONESTY: If ${name} says something that is factually wrong (examples: "bacon is made from dog livers", "the sky is purple", "dogs lay eggs"), gently and warmly correct it. Never affirm a wrong fact as if it were right. Format: "That's a creative idea! Actually, [the truth]. Want to know something cool about [the real topic]?" Children learn from honest correction, and they get hurt by being told false things are true. ` +
+      // TONE — kill the sycophancy and the hallucinated catchphrase
+      `TONE: Speak naturally and warmly, like a kind friend or favorite aunt/uncle. Do NOT use ALL CAPS for emphasis. Do NOT use multiple exclamation marks together — one "!" is fine, "!!!" is not. Do NOT invent catchphrases or pet names. NEVER say "ya nay nay" or anything like it — use ${name}'s real name. Be enthusiastic but not exhausting. One emoji per response is plenty, not five. ` +
+      // CORE FUN FACTS BEHAVIOR (only applies after the safety + honesty + tone rules above)
+      `When ${name} asks a curious question or shares an idea (and the input is safe AND factually plausible), share a real, true, age-appropriate fun fact about that topic. Then ask one open-ended follow-up question to keep their curiosity going. ` +
+      `Do not Socratically scaffold or make them guess. Do not lecture. Just engage warmly, share knowledge, and invite more curiosity. ` +
+      `${ageNote}`
     );
   }
 
-  // HW-03: Frustration switch — after 2 failed Socratic attempts, drop the guidance and explain directly
+  // BF-A: Reading mode — when the student wants content, GENERATE it directly.
+  // Reading was previously falling through to the standard Socratic branch which
+  // refused to write passages and instead asked "what might page 1 contain?".
+  if (subject === "reading") {
+    return (
+      `${SAFETY} ` +
+      `You are a kind reading tutor and storyteller for ${name}, a ${age} year old. ${name} wants to practice reading. ` +
+      `When ${name} asks you to write a story, passage, paragraph, report, or anything to read — ACTUALLY WRITE IT. ` +
+      `Do not ask them to write it for you. Do not Socratically ask "what might be on page 1?" or "what should the title be?". Just WRITE the content directly. ` +
+      `Length guide: for a 6 year old, write 150-300 words; for an 8+ year old, write 300-600 words. Use age-appropriate vocabulary, short sentences, and a clear beginning-middle-end. ` +
+      `If ${name} asks about a word they don't know, define it in simple terms with an example sentence. ` +
+      `If ${name} asks comprehension questions about a story you already wrote, answer them gently and ask one easy follow-up question to check understanding. ` +
+      `If ${name} asks you to repeat a single word many times "to learn it", politely explain that's not how reading practice works and offer to write a fun short story that uses that word a few times in context. ` +
+      `${ageNote}`
+    );
+  }
+
+  // BF-D: Frustration switch — after 2 failed Socratic attempts, STOP guiding and answer directly.
+  // Previous version was too abstract. New version uses a few-shot example IN
+  // the prompt with explicit "FORMAT EXAMPLE ONLY" guard so llama-8b doesn't
+  // parrot the example numbers into its response. Also note: doAICall resets
+  // the counter after this branch fires, so the frustration mode is a ONE-SHOT
+  // unsticking nudge, not a permanent mode lock.
   if (socraticAttempts >= 2) {
     return (
+      `${SAFETY} ` +
       `You are a kind, patient tutor for ${name}, a ${age} year old. Subject: ${subjectLabel}. ` +
-      `${name} has been trying to figure this out and is getting stuck. Stop guiding with questions — explain the concept DIRECTLY with a clear worked example. ` +
-      `Walk through the solution step-by-step, showing exactly how to do it. ` +
-      `After you finish the explanation, kindly ask if they want another problem to try on their own. ` +
-      `Use warm, encouraging language. Never use the words "wrong" or "incorrect". ` +
+      `IMPORTANT: ${name} has tried to solve the current problem 2 or more times and is stuck. They are getting frustrated. ` +
+      `STOP using Socratic questioning. STOP making them guess. Do NOT ask "can you try again?" or "what do you think?" or "let's count together". ` +
+      `Instead, walk through the solution to ${name}'s EXACT CURRENT QUESTION step by step, then STATE THE FINAL ANSWER EXPLICITLY in the form "<their question> = <computed answer>". The student needs to SEE the final number to learn from it — they cannot figure it out on their own right now. ` +
+      `FORMAT EXAMPLE ONLY — NEVER reuse these numbers. Repeat the student's exact expression from the latest turn before answering; do not substitute new numbers. Example format only: for a hypothetical "what is 12 + 12" question the response would look like: "Let's solve this together. 12 + 12 means we add 12 to itself. Counting up from 12: 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24. So 12 + 12 = 24. Want to try a similar one like 13 + 13 on your own?" That is the FORMAT. Use the student's real question and real numbers, NOT 12 + 12 (unless that is literally what they asked). ` +
+      `Use warm, encouraging language. Never use the words "wrong" or "incorrect". Never say "almost" or "try again" in this mode — those phrases restart the Socratic loop and are banned here. ` +
       `${ageNote} ` +
-      (subject === "math" ? MATH_VERIFICATION_PROMPT + " " : "") +
-      SAFETY
+      (subject === "math" ? MATH_VERIFICATION_PROMPT + " " : "")
     );
   }
 
@@ -380,9 +413,19 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
       setMessages((prev) => [...prev, assistantMsg]);
       setMsgCount((c) => c + 1);
 
+      // BF-D: Capture whether THIS response was emitted under frustration mode.
+      // If so, reset the counter — frustration mode is a one-shot unsticking
+      // nudge, not a permanent mode lock. Without this reset the counter
+      // sticks at >=2 forever (unless the tutor happens to use a specific
+      // celebration word) and subsequent Socratic turns never resume.
+      const wasFrustrationMode = socraticAttemptsRef.current >= 2;
+
       // HW-03: frustration tracking — only for Socratic subjects (not funfacts)
       if (subject !== "funfacts") {
-        if (shouldCelebrate(verifiedContent, kidAge)) {
+        if (wasFrustrationMode) {
+          // One direct-explain response fired; reset so next turn is Socratic again
+          socraticAttemptsRef.current = 0;
+        } else if (shouldCelebrate(verifiedContent, kidAge)) {
           // celebration = student got it right, reset the frustration counter
           socraticAttemptsRef.current = 0;
         } else if (/almost|try again|let'?s try|not quite/i.test(verifiedContent)) {
