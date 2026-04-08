@@ -193,7 +193,8 @@ const UNSAFE_INPUT_PATTERNS = [
   /\blife\s+(isn'?t|is\s+not)\s+worth\s+(it|living|anything)\b/i,
   /\bi\s+(hate|can'?t\s+stand)\s+(living|being\s+alive|my\s+life)\b/i,
   /\bi\s+can'?t\s+(go\s+on|do\s+this\s+anymore|keep\s+going)\b/i,
-  /\bi\s+want\s+to\s+dis[sa]*p+ear(\s+(forever|for\s+good))?\b/i,
+  /\bi\s+(want\s+to|wanna)\s+dis[sa]*p+ear(\s+(forever|for\s+good))?\b/i,
+  /\bi\s+wish\s+i\s+could\s+dis[sa]*p+ear\b/i,
   // === Self-harm & suicide — isolation/worthlessness phrasing ===
   /\bi\s+hate\s+my\s?self\b/i,
   /\bnobody\s+(cares|loves|likes)\s+(about\s+)?me\b/i,
@@ -207,7 +208,7 @@ const UNSAFE_INPUT_PATTERNS = [
   /\bkys\b/i,         // "kill yourself" slang, aimed at others but still unsafe context
   // === Violence towards others ===
   /\b(kill|hurt|shoot|stab|beat\s+up|punch|attack|strangle)\s+(him|her|them|you|my\s+(mom|dad|sister|brother|friend|classmate)|the\s+(teacher|kid|boy|girl|bus\s+driver))\b/i,
-  /\bi'?m\s+(gonna|going\s+to)\s+(kill|hurt|shoot|stab|beat|attack)\s+(him|her|them|you|my\s*(self|mom|dad|sister|brother|friend)|the\s+(teacher|kid|boy|girl))\b/i,
+  /\bi'?m\s+(gonna|going\s+to)\s+(kill|hurt|shoot|stab|beat|attack)\s+(everyone|anyone|him|her|them|you|my\s*(self|mom|dad|sister|brother|friend)|the\s+(teacher|kid|boy|girl))\b/i,
   // === Sexual content — action/intent based, NOT bare anatomy ===
   // (bare anatomy nouns removed per codex review — penis/vagina/breast/nipple
   // can appear in legitimate science questions. We match sexualized context.)
@@ -406,6 +407,9 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
       result = await groqFetch(GROQ_KEY, apiMessages, {
         maxTokens: (detailMode || subject === "reading") ? 1500 : 300,
       });
+    } catch {
+      showToast && showToast("Oops, tutor had a hiccup. Try again!");
+      return;
     } finally {
       setLoading(false);
     }
