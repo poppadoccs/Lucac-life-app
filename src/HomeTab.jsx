@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { groqFetch, SWATCH_COLORS, triggerConfetti } from "./utils";
+import { useState, useEffect } from "react";
+import { groqFetch, SWATCH_COLORS, triggerConfetti, cacheGet, cacheSet } from "./utils";
 import { DAYS, MONTHS, dateKey } from "./shared";
 import { getActionPreviewLabel } from "./aiAgent";
 
@@ -166,6 +166,80 @@ export default function HomeTab({
   setFamilySubTab,
 }) {
   const today = new Date();
+
+  // ── Daily Spark (T01) — self-growth widget for parent role ──
+  const [sparkData, setSparkData] = useState(null);
+  const [sparkLoading, setSparkLoading] = useState(false);
+  const SPARK_CATEGORIES = ["growth", "mindfulness", "resilience", "joy", "connection"];
+  const SPARK_EMOJIS = ["🌱", "💡", "🤩", "🙏", "🫶"];
+
+  function parseSparkContent(raw) {
+    const lines = raw.split('\n').map(s => s.trim()).filter(Boolean);
+    let question = "", jokeSetup = "", jokePunchline = "", fact = "";
+    for (const line of lines) {
+      if (line.startsWith("QUESTION:")) question = line.replace("QUESTION:", "").trim();
+      else if (line.startsWith("JOKE:")) {
+        const jokeStr = line.replace("JOKE:", "").trim();
+        if (jokeStr.includes("|")) {
+          const parts = jokeStr.split("|");
+          jokeSetup = parts[0].trim();
+          jokePunchline = parts[1].trim();
+        } else {
+          jokeSetup = jokeStr;
+          jokePunchline = "";
+        }
+      } else if (line.startsWith("FACT:")) fact = line.replace("FACT:", "").trim();
+    }
+    return { question, jokeSetup, jokePunchline, fact };
+  }
+
+  async function fetchSpark(category, bypassCache = false) {
+    if (!GROQ_KEY) return;
+    const currentDate = new Date().toISOString().split('T')[0]; // always live date
+    const cacheKey = `spark_${currentDate}_${category}`;
+    if (!bypassCache) {
+      const cached = cacheGet(cacheKey);
+      if (cached) { setSparkData(cached); return; }
+    }
+    setSparkLoading(true);
+    const result = await groqFetch(GROQ_KEY, [{
+      role: "user",
+      content: `Generate daily spark content for a co-parenting parent focused on personal growth. Theme: ${category}.
+
+Format your response EXACTLY like this — no intro text, nothing else:
+QUESTION: [A specific, actionable self-reflection question. Avoid clichés. Include a concrete micro-action in ≤3 sentences.]
+JOKE: [A clean, light-hearted setup | punchline]
+FACT: [A surprising, uplifting fact about human connection, resilience, or wellbeing]`
+    }], { maxTokens: 300 });
+    setSparkLoading(false);
+    if (result.ok && result.data) {
+      const parsed = parseSparkContent(result.data);
+      const newData = { ...parsed, category, date: currentDate, reaction: null };
+      setSparkData(newData);
+      cacheSet(cacheKey, newData);
+    } else {
+      showToast("Couldn't load Daily Spark — try again", "error");
+    }
+  }
+
+  function saveSparkReaction(emoji) {
+    const currentDate = new Date().toISOString().split('T')[0];
+    const cacheKey = `spark_${currentDate}_${sparkData?.category}`;
+    const updated = { ...sparkData, reaction: emoji };
+    setSparkData(updated);
+    cacheSet(cacheKey, updated);
+    fbSet(`sparkReaction/${currentDate}`, emoji);
+  }
+
+  useEffect(() => {
+    if (!isParent || isAdmin) return;
+    const currentDate = new Date().toISOString().split('T')[0];
+    const category = SPARK_CATEGORIES[new Date().getDay() % SPARK_CATEGORIES.length];
+    // If sparkData is already fresh for today, skip fetch
+    if (sparkData?.date === currentDate) return;
+    fetchSpark(category);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayStr]); // todayStr changes at midnight → triggers fresh fetch
 
   const QUICK_ADD_HINTS = [
     "Try: 'add soccer Tuesday 4pm for Luca'",
@@ -583,37 +657,116 @@ export default function HomeTab({
           </div>
         )}
 
-        {/* ═══ DAILY SPOTLIGHT — Groq-powered widget ═══ */}
-        <div style={{ background: V.bgCardAlt, borderRadius:10, padding:"10px 14px", marginBottom:12,
-          border:`1px solid ${V.borderDefault}` }}>
-          <div onClick={() => {
-            groqFetch(GROQ_KEY, [{role:"user",content:"Give me one short motivational quote (under 15 words) for a single dad. Just the quote."}], {maxTokens:80})
-              .then(r => { if(r.ok && r.data) { setQuote(r.data.replace(/"/g,"")); setSpotlightResponse(""); } });
-          }} style={{ fontSize:13, color: V.textMuted, fontStyle:"italic", cursor:"pointer", marginBottom:spotlightResponse?8:0 }}>
-            ✦ {spotlightResponse || quote} <span style={{fontSize:10,opacity:0.5}}>tap for new quote</span>
-          </div>
-          {spotlightLoading && <div style={{fontSize:12,color:V.textDim,fontStyle:"italic"}}>Thinking...</div>}
-          <div style={{display:"flex",gap:6,marginTop:6}}>
-            <input value={spotlightInput} onChange={e=>setSpotlightInput(e.target.value)}
-              onKeyDown={e=>{if(e.key==="Enter" && spotlightInput.trim()){
+        {/* ═══ DAILY SPOTLIGHT — admin only (Alex's motivational quote widget) ═══ */}
+        {isAdmin && (
+          <div style={{ background: V.bgCardAlt, borderRadius:10, padding:"10px 14px", marginBottom:12,
+            border:`1px solid ${V.borderDefault}` }}>
+            <div onClick={() => {
+              groqFetch(GROQ_KEY, [{role:"user",content:"Give me one short motivational quote (under 15 words) for a single dad. Just the quote."}], {maxTokens:80})
+                .then(r => { if(r.ok && r.data) { setQuote(r.data.replace(/"/g,"")); setSpotlightResponse(""); } });
+            }} style={{ fontSize:13, color: V.textMuted, fontStyle:"italic", cursor:"pointer", marginBottom:spotlightResponse?8:0 }}>
+              ✦ {spotlightResponse || quote} <span style={{fontSize:10,opacity:0.5}}>tap for new quote</span>
+            </div>
+            {spotlightLoading && <div style={{fontSize:12,color:V.textDim,fontStyle:"italic"}}>Thinking...</div>}
+            <div style={{display:"flex",gap:6,marginTop:6}}>
+              <input value={spotlightInput} onChange={e=>setSpotlightInput(e.target.value)}
+                onKeyDown={e=>{if(e.key==="Enter" && spotlightInput.trim()){
+                  setSpotlightLoading(true);
+                  const q = spotlightInput.trim(); setSpotlightInput("");
+                  groqFetch(GROQ_KEY, [{role:"user",content:q}], {maxTokens:300})
+                    .then(r=>{setSpotlightLoading(false);if(r.ok&&r.data){setSpotlightResponse(r.data);fbSet("spotlightResponse",r.data);}
+                      else{showToast("Couldn't reach AI — showing daily quote instead","error");}});
+                }}}
+                placeholder="Ask anything... facts, news, motivation"
+                style={{...inputStyle,flex:1,padding:"6px 10px",fontSize:12,borderRadius:16}} />
+              <button onClick={()=>{
+                if(!spotlightInput.trim()) return;
                 setSpotlightLoading(true);
                 const q = spotlightInput.trim(); setSpotlightInput("");
                 groqFetch(GROQ_KEY, [{role:"user",content:q}], {maxTokens:300})
                   .then(r=>{setSpotlightLoading(false);if(r.ok&&r.data){setSpotlightResponse(r.data);fbSet("spotlightResponse",r.data);}
                     else{showToast("Couldn't reach AI — showing daily quote instead","error");}});
-              }}}
-              placeholder="Ask anything... facts, news, motivation"
-              style={{...inputStyle,flex:1,padding:"6px 10px",fontSize:12,borderRadius:16}} />
-            <button onClick={()=>{
-              if(!spotlightInput.trim()) return;
-              setSpotlightLoading(true);
-              const q = spotlightInput.trim(); setSpotlightInput("");
-              groqFetch(GROQ_KEY, [{role:"user",content:q}], {maxTokens:300})
-                .then(r=>{setSpotlightLoading(false);if(r.ok&&r.data){setSpotlightResponse(r.data);fbSet("spotlightResponse",r.data);}
-                  else{showToast("Couldn't reach AI — showing daily quote instead","error");}});
-            }} style={{...btnPrimary,borderRadius:16,padding:"6px 12px",fontSize:12}}>Ask</button>
+              }} style={{...btnPrimary,borderRadius:16,padding:"6px 12px",fontSize:12}}>Ask</button>
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* ═══ DAILY SPARK — parent home widget (Danyells) ═══ */}
+        {isParent && !isAdmin && (
+          <div style={{ background: V.bgCardAlt, borderRadius:10, padding:"12px 14px", marginBottom:12,
+            border:`1px solid ${V.borderDefault}` }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+              <div style={{ fontWeight:700, fontSize:14, color:V.accent }}>✨ Daily Spark</div>
+              <button onClick={() => {
+                const cat = SPARK_CATEGORIES[new Date().getDay() % SPARK_CATEGORIES.length];
+                fetchSpark(cat, true);
+              }} disabled={sparkLoading}
+                style={{ background:"none", border:"none", cursor:"pointer", fontSize:12, color:V.textDim,
+                  padding:"2px 8px", borderRadius:8, opacity: sparkLoading ? 0.4 : 1 }}>
+                {sparkLoading ? "Loading…" : "↻ Refresh"}
+              </button>
+            </div>
+
+            {sparkLoading && (
+              <div style={{ fontSize:12, color:V.textDim, fontStyle:"italic", textAlign:"center", padding:"10px 0" }}>
+                Generating your spark…
+              </div>
+            )}
+
+            {!sparkLoading && !sparkData && (
+              <div style={{ textAlign:"center", padding:"8px 0" }}>
+                <button onClick={() => {
+                  const cat = SPARK_CATEGORIES[new Date().getDay() % SPARK_CATEGORIES.length];
+                  fetchSpark(cat);
+                }} style={{ ...btnPrimary, padding:"8px 16px", fontSize:13 }}>Load Today's Spark</button>
+              </div>
+            )}
+
+            {!sparkLoading && sparkData && (
+              <>
+                {sparkData.question && (
+                  <div style={{ marginBottom:10 }}>
+                    <div style={{ fontSize:10, fontWeight:700, color:V.textDim, textTransform:"uppercase",
+                      letterSpacing:1, marginBottom:4 }}>Today's Question</div>
+                    <div style={{ fontSize:13, color:V.textPrimary, lineHeight:1.5 }}>{sparkData.question}</div>
+                  </div>
+                )}
+                {sparkData.jokeSetup && (
+                  <div style={{ marginBottom:10, padding:"8px 10px", background:`${V.accent}12`, borderRadius:8 }}>
+                    <div style={{ fontSize:10, fontWeight:700, color:V.accent, marginBottom:3 }}>😄 Laugh Break</div>
+                    <div style={{ fontSize:13, color:V.textSecondary }}>{sparkData.jokeSetup}</div>
+                    {sparkData.jokePunchline && (
+                      <div style={{ fontSize:13, color:V.textPrimary, fontWeight:600, marginTop:4,
+                        borderTop:`1px dashed ${V.borderDefault}`, paddingTop:4 }}>
+                        {sparkData.jokePunchline}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {sparkData.fact && (
+                  <div style={{ marginBottom:10 }}>
+                    <div style={{ fontSize:10, fontWeight:700, color:V.textDim, textTransform:"uppercase",
+                      letterSpacing:1, marginBottom:4 }}>Did You Know?</div>
+                    <div style={{ fontSize:13, color:V.textMuted, lineHeight:1.5 }}>{sparkData.fact}</div>
+                  </div>
+                )}
+                <div style={{ display:"flex", gap:6, justifyContent:"center",
+                  paddingTop:8, borderTop:`1px solid ${V.borderDefault}` }}>
+                  {SPARK_EMOJIS.map(emoji => (
+                    <button key={emoji} onClick={() => saveSparkReaction(emoji)}
+                      aria-label={`React with ${emoji}`}
+                      style={{ fontSize:22, background: sparkData.reaction === emoji ? `${V.accent}22` : "none",
+                        border: sparkData.reaction === emoji ? `2px solid ${V.accent}` : "2px solid transparent",
+                        borderRadius:"50%", width:44, height:44, cursor:"pointer",
+                        display:"flex", alignItems:"center", justifyContent:"center", transition:"all 0.15s" }}>
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* ═══ CALENDAR ═══ */}
         <div style={{
@@ -1365,7 +1518,7 @@ export default function HomeTab({
       },
       {
         icon: "📋", title: "Family Rules", stat: `${allRules.length} rules`,
-        action: () => { setTab("family"); setFamilySubTab("rules"); },
+        action: () => { setTab("family"); setFamilySubTab?.("rules"); },
         content: (
           <div style={{ marginTop: 8 }}>
             {allRules.length === 0 && <div style={{fontSize:12,color:V.textDim,fontStyle:"italic"}}>No rules set</div>}
@@ -1380,7 +1533,7 @@ export default function HomeTab({
       },
       {
         icon: "🔄", title: "Exchange Log", stat: `${(exchangeLog||[]).length} entries`,
-        action: () => { setTab("family"); setFamilySubTab("exchange"); },
+        action: () => { setTab("family"); setFamilySubTab?.("exchange"); },
         content: (
           <div style={{ marginTop: 8 }}>
             {recentExchanges.length === 0 && <div style={{fontSize:12,color:V.textDim,fontStyle:"italic"}}>No exchanges yet</div>}

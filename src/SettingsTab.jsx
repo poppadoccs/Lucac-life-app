@@ -22,7 +22,8 @@ export default function SettingsTab({ V, THEMES, themeName, setThemeName, profil
       )}
       <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
         {["profiles","theme",
-          ...(isAdmin ? ["widgets","contacts","alerts"] : [])
+          ...(isAdmin ? ["alerts"] : []),
+          ...((isAdmin || isParent) ? ["widgets","contacts"] : [])
         ].map(t=>(
           <button key={t} onClick={()=>setSettingsSubTab(t)}
             style={{...settingsSubTab===t?btnPrimary:btnSecondary,padding:"6px 12px",fontSize:12}}>
@@ -304,7 +305,7 @@ export default function SettingsTab({ V, THEMES, themeName, setThemeName, profil
         </div>
       )}
 
-      {settingsSubTab === "alerts" && (
+      {isAdmin && settingsSubTab === "alerts" && (
         <div style={cardStyle}>
           <div style={{fontWeight:700,color:"#f59e0b",marginBottom:10}}>🔔 Event Reminders</div>
           <div style={{fontSize:13,color:V.textMuted,marginBottom:12}}>How many minutes before an event to get reminded?</div>

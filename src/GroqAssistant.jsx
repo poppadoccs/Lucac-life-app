@@ -126,9 +126,16 @@ export default function GroqAssistant({
       getEventsInRange: (start, end, person) => {
         const results = [];
         const endDate = end || start;
+        const isAdminUser = currentProfile?.type === "admin";
+        const currentName = currentProfile?.name;
         Object.entries(events || {}).forEach(([dateKey, dayEvs]) => {
           if (dateKey >= start && dateKey <= endDate) {
             (dayEvs || []).forEach(ev => {
+              // Filter private events — creator sees own, others don't
+              const isPrivateEvent = ev.isPrivate ?? ev.private ?? false;
+              if (isPrivateEvent && !isAdminUser) {
+                if ((ev.creator ?? "admin") !== currentName) return;
+              }
               if (!person || ev.who === person || !ev.who) {
                 results.push({ title: ev.title, date: dateKey, time: ev.time, who: ev.who });
               }
@@ -199,7 +206,13 @@ export default function GroqAssistant({
       },
       getDailyBriefingData: (forPerson) => {
         const today = todayStr;
-        const todayEvs = (events || {})[today] || [];
+        const isAdminUser = currentProfile?.type === "admin";
+        const currentName = currentProfile?.name;
+        const todayEvs = ((events || {})[today] || []).filter(e => {
+          const isPrivate = e.isPrivate ?? e.private ?? false;
+          if (isPrivate && !isAdminUser) return (e.creator ?? "admin") === currentName;
+          return true;
+        });
         const lines = [];
         lines.push(`Events today: ${todayEvs.length > 0 ? todayEvs.map(e => e.title + (e.time ? " at " + e.time : "")).join(", ") : "None"}`);
         lines.push(`Routines: ${(routines || []).filter(r => r.done).length}/${(routines || []).length} done`);
@@ -241,6 +254,7 @@ export default function GroqAssistant({
               who: args.person || "",
               notes: "",
               duration: args.duration || 60,
+              creator: userName,
             };
             if (args.repeat && args.repeat !== "none") {
               eventData.repeat = args.repeat;
@@ -263,9 +277,12 @@ export default function GroqAssistant({
             let found = false;
             for (const d of Object.keys(updated)) {
               const before = (updated[d] || []).length;
-              updated[d] = (updated[d] || []).filter(
-                e => !(e.title || "").toLowerCase().includes(keyword)
-              );
+              updated[d] = (updated[d] || []).filter(e => {
+                if (!(e.title || "").toLowerCase().includes(keyword)) return true;
+                // T05: non-admin can only delete their own events
+                if (userRole !== "admin" && (e.creator ?? "admin") !== userName) return true;
+                return false;
+              });
               if (updated[d].length < before) found = true;
               if (updated[d].length === 0) delete updated[d];
             }
@@ -285,10 +302,17 @@ export default function GroqAssistant({
             if (!keyword) { results.push("\u274C No keyword provided for edit."); break; }
             const updated = { ...(events || {}) };
             let edited = false;
-            for (const d of Object.keys(updated)) {
+            let permissionDenied = false;
+            outer: for (const d of Object.keys(updated)) {
               const evList = updated[d] || [];
               for (let i = 0; i < evList.length; i++) {
                 if ((evList[i].title || "").toLowerCase().includes(keyword)) {
+                  // T05: non-admin can only edit their own events; continue searching for an owned match
+                  if (userRole !== "admin" && (evList[i].creator ?? "admin") !== userName) {
+                    permissionDenied = true;
+                    continue; // keep looking — a later match might be owned
+                  }
+                  permissionDenied = false; // found an owned match, clear any prior denial
                   if (args.newTitle) evList[i].title = args.newTitle;
                   if (args.newTime) evList[i].time = args.newTime;
                   if (args.newDate && args.newDate !== d) {
@@ -301,12 +325,13 @@ export default function GroqAssistant({
                     updated[d] = evList;
                   }
                   edited = true;
-                  break;
+                  break outer;
                 }
               }
-              if (edited) break;
             }
-            if (edited) {
+            if (permissionDenied) {
+              results.push(`\u274C You can only edit events you created.`);
+            } else if (edited) {
               fbSet("events", updated);
               const changes = [];
               if (args.newTitle) changes.push(`title to "${args.newTitle}"`);

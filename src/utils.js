@@ -200,18 +200,13 @@ export function getVoicesReady() {
 // Per D-06: guard sensitive paths only, not every path.
 const ADMIN_ONLY_PATHS = [
   "profiles",
-  "contacts",
   "alertMinutes",
-  "themeName",
-  "widgetPrefs",
   "custodyPattern",
   "custodyOverrides",
-  "callButtons",
   "quoteMode",
   "customQuotePrompt",
   "themeOverrides",
   "calendarSize",
-  "spotlightResponse",
 ];
 
 const PARENT_WRITE_PATHS = [
@@ -236,6 +231,13 @@ const PARENT_WRITE_PATHS = [
   "goals",
   "goalStyles",
   "chores",
+  // T06: unblock Danyells customization
+  "themeName",
+  "widgetPrefs",
+  "callButtons",
+  "contacts",
+  "spotlightResponse",
+  "sparkReaction",
 ];
 
 const KID_WRITE_PATHS = [

@@ -423,9 +423,15 @@ export default function App() {
       getEventsInRange: (start, end, person) => {
         const results = [];
         const endD = end || start;
+        const isAdminUser = currentProfile?.type === "admin";
         Object.entries(events || {}).forEach(([dk, dayEvs]) => {
           if (dk >= start && dk <= endD) {
             (dayEvs || []).forEach(ev => {
+              // T02: filter private events — matches filterEventsForRole: creator sees own, others don't
+              const isPrivateEvent = ev.isPrivate ?? ev.private ?? false;
+              if (isPrivateEvent && !isAdminUser) {
+                if ((ev.creator ?? "admin") !== currentProfile?.name) return;
+              }
               if (!person || ev.who === person || !ev.who) {
                 results.push({ title: ev.title, date: dk, time: ev.time, who: ev.who });
               }
@@ -461,7 +467,10 @@ export default function App() {
       },
       getDailyBriefingData: () => {
         const td = todayStr;
-        const todayEvs = (events || {})[td] || [];
+        const isAdminUser = currentProfile?.type === "admin";
+        const todayEvs = ((events || {})[td] || []).filter(e =>
+          isAdminUser || !(e.isPrivate ?? e.private ?? false)
+        );
         const custody = getCustodyForDate(td);
         const lines = [];
         lines.push(`📅 Events today: ${todayEvs.length > 0 ? todayEvs.map(e => `${e.title}${e.time ? ' at ' + e.time : ''}`).join(', ') : 'None'}`);
