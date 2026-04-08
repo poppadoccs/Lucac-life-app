@@ -10,6 +10,7 @@
 
 ## Recent Decisions
 - D007–D009 logged during S02 planning (homeworkSessions prop wiring, socraticAttempts as ref, S02 scope limited to HW-01..HW-05)
+- S02 bugfix v2.1 shipped 2026-04-08: commit `8fd472c` (BF-0 deterministic JS safety guard) + commit `e0cc711` (BF-A Reading prompt branch, BF-B/C/F Fun Facts safety rewrite, BF-D frustration one-shot + counter reset). UAT pending from Alex.
 
 ## Blockers
 - **gsd2 dispatcher rate-limited** when loading slice context for `claude-sonnet-4-6` subagents. S02 was executed via manual Path B bypass from Claude Code Opus 4.6 session. Same blocker will affect S03 planning unless: (a) Anthropic tier rate limit increased, OR (b) `M001-RESEARCH.md` (94 KB) is excluded from planning dispatches, OR (c) S03 is planned manually like S02 was executed.
