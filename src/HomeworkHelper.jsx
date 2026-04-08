@@ -191,7 +191,7 @@ const UNSAFE_INPUT_PATTERNS = [
   /\blife\s+(isn'?t|is\s+not)\s+worth\s+(it|living|anything)\b/i,
   /\bi\s+(hate|can'?t\s+stand)\s+(living|being\s+alive|my\s+life)\b/i,
   /\bi\s+can'?t\s+(go\s+on|do\s+this\s+anymore|keep\s+going)\b/i,
-  /\bi\s+want\s+to\s+disappear\s+(forever|for\s+good)\b/i,
+  /\bi\s+want\s+to\s+dis[sa]*p+ear\s+(forever|for\s+good)\b/i,
   // === Self-harm & suicide — isolation/worthlessness phrasing ===
   /\bi\s+hate\s+my\s?self\b/i,
   /\bnobody\s+(cares|loves|likes)\s+(about\s+)?me\b/i,
