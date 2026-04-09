@@ -481,11 +481,11 @@ FACT: [A surprising, uplifting fact about human connection, resilience, or wellb
     for (let d = 1; d <= daysInMonth; d++) allCells.push(d);
     // Filter cells based on calendar view
     let cells = allCells;
-    if (calView === "W" || calView === "2W") {
+    if (calView === "W" || calView === "2W" || calView === "3W") {
       const todayDate = today.getDate();
       const todayDow = today.getDay();
       const weekStart = todayDate - todayDow;
-      const daysToShow = calView === "W" ? 7 : 14;
+      const daysToShow = calView === "W" ? 7 : calView === "2W" ? 14 : 21;
       cells = [];
       for (let i = 0; i < daysToShow; i++) {
         const d = weekStart + i;
@@ -779,7 +779,7 @@ FACT: [A surprising, uplifting fact about human connection, resilience, or wellb
             borderBottom: `1px solid ${V.borderDefault}`
           }}>
             <button onClick={() => { if(calMonth===0){setCalMonth(11);setCalYear(y=>y-1);}else setCalMonth(m=>m-1); }}
-              style={{ width: 40, height: 40, borderRadius: V.r2, background: V.bgElevated,
+              style={{ width: 44, height: 44, borderRadius: V.r2, background: V.bgElevated,
                 border: `1px solid ${V.borderSubtle}`, color: V.textSecondary, fontSize: 20,
                 cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
               aria-label="Previous month">‹</button>
@@ -789,10 +789,10 @@ FACT: [A surprising, uplifting fact about human connection, resilience, or wellb
               <button onClick={() => { setCalMonth(today.getMonth()); setCalYear(today.getFullYear()); }}
                 style={{ background: V.accentGlow, border: `1px solid ${V.accent}33`, color: V.accent, fontSize: 11, fontWeight: 600, cursor: "pointer", borderRadius: 20, padding: "3px 14px", marginTop: 6 }}>Today</button>
               <div style={{ display:"flex", gap:4, marginTop:6, flexWrap:"wrap", justifyContent:"center" }}>
-                {["W","2W","M"].map(v => (
+                {["W","2W","3W","M"].map(v => (
                   <button key={v} onClick={() => setCalView(v)}
                     style={{ padding:"2px 10px", borderRadius:12, fontSize:10, fontWeight:600, cursor:"pointer", border:"none",
-                      background: calView === v ? V.accent : V.bgElevated, color: calView === v ? "#fff" : V.textDim }}>{v === "W" ? "1 Week" : v === "2W" ? "2 Weeks" : "Month"}</button>
+                      background: calView === v ? V.accent : V.bgElevated, color: calView === v ? "#fff" : V.textDim }}>{v === "W" ? "1 Week" : v === "2W" ? "2 Weeks" : v === "3W" ? "3 Weeks" : "Month"}</button>
                 ))}
                 <span style={{width:1,background:V.borderSubtle,margin:"0 2px"}} />
                 {[{k:"compact",l:"Small"},{k:"default",l:"Default"},{k:"expanded",l:"Large"}].map(s => (
@@ -801,9 +801,28 @@ FACT: [A surprising, uplifting fact about human connection, resilience, or wellb
                       background: calendarSize === s.k ? V.info : V.bgElevated, color: calendarSize === s.k ? "#fff" : V.textDim }}>{s.l}</button>
                 ))}
               </div>
+              {/* Jump to month — CAL-02 forward scroll affordance */}
+              <div style={{ marginTop:6, display:"flex", justifyContent:"center" }}>
+                <select
+                  aria-label="Jump to month"
+                  value={`${calYear}-${calMonth}`}
+                  onChange={e => {
+                    const [y, m] = e.target.value.split("-").map(Number);
+                    setCalYear(y);
+                    setCalMonth(m);
+                  }}
+                  style={{ fontSize:11, borderRadius:10, padding:"4px 8px", border:`1px solid ${V.borderSubtle}`,
+                    background:V.bgElevated, color:V.textSecondary, cursor:"pointer", minHeight:30 }}>
+                  {Array.from({length:13}, (_,i) => {
+                    const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
+                    const m = d.getMonth(); const y = d.getFullYear();
+                    return <option key={`${y}-${m}`} value={`${y}-${m}`}>{MONTHS[m]} {y}</option>;
+                  })}
+                </select>
+              </div>
             </div>
             <button onClick={() => { if(calMonth===11){setCalMonth(0);setCalYear(y=>y+1);}else setCalMonth(m=>m+1); }}
-              style={{ width: 40, height: 40, borderRadius: V.r2, background: V.bgElevated,
+              style={{ width: 44, height: 44, borderRadius: V.r2, background: V.bgElevated,
                 border: `1px solid ${V.borderSubtle}`, color: V.textSecondary, fontSize: 20,
                 cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
               aria-label="Next month">›</button>
