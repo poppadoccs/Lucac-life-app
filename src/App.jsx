@@ -104,24 +104,181 @@ const THEMES = {
 
 // formatTime, parseTime, TimePicker, SwatchPicker, BlockStyleEditor moved to HomeTab.jsx
 
-// ─── KID HOME SCAFFOLD ──────────────────────────────────────────────────────
-// A0 serial prep: props wired, TODO markers for A2 to fill in (KIDS-01/02/03).
+// ─── KID HOME WIDGETS ───────────────────────────────────────────────────────
+// A2 fill-in: KIDS-01 (7-day calendar strip), KIDS-02 (goals), KIDS-03 (routines+streaks).
 // Defined at module level so React never remounts it between renders.
 function KidHome({ profile, kidVisibleEvents, routineState, kidsData, fbSet, V, cardStyle, showToast }) {
+  const [expandedDay, setExpandedDay] = useState(null);
+
+  const today = new Date();
+  const todayDk = dateKey(today.getFullYear(), today.getMonth(), today.getDate());
+
+  // ── KIDS-01: 7-day strip ───────────────────────────────────────────────────
+  const strip = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    const dk = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+    return { dk, dayLabel: DAYS[d.getDay()], dateNum: d.getDate(), evs: kidVisibleEvents[dk] || [] };
+  });
+
+  // ── KIDS-02: Goals ─────────────────────────────────────────────────────────
+  const kd = (kidsData || {})[profile.name] || {};
+  const allGoals = kd.goals || [];
+  const displayGoals = allGoals.slice(0, 3);
+
+  function toggleGoal(i) {
+    const updated = allGoals.map((g, gi) => gi === i ? { ...g, done: !g.done } : g);
+    fbSet(`kidsData/${profile.name}/goals`, updated);
+  }
+
+  // ── KIDS-03: Routines + per-routine streaks ─────────────────────────────────
+  const routines = profile.routines || [];
+  const kidRS = (routineState || {})[profile.name] || {};
+
+  function computeStreak(routineId) {
+    let streak = 0;
+    const d = new Date(today);
+    for (let i = 0; i < 60; i++) {
+      const dk = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+      if (kidRS[dk]?.[routineId]) { streak++; d.setDate(d.getDate() - 1); }
+      else break;
+    }
+    return streak;
+  }
+
+  function completeRoutine(routine) {
+    if (kidRS[todayDk]?.[routine.id]) return;
+    // Count consecutive completed days before today to compute new streak
+    let priorStreak = 0;
+    const prev = new Date(today);
+    prev.setDate(today.getDate() - 1);
+    for (let i = 0; i < 60; i++) {
+      const dk = dateKey(prev.getFullYear(), prev.getMonth(), prev.getDate());
+      if (kidRS[dk]?.[routine.id]) { priorStreak++; prev.setDate(prev.getDate() - 1); }
+      else break;
+    }
+    const newStreak = priorStreak + 1;
+    fbSet(`routineState/${profile.name}/${todayDk}/${routine.id}`, true);
+    if (newStreak >= 30) {
+      triggerConfetti(document.body, "big");
+      showToast("👑 30-DAY STREAK! Legendary! 🎉", "success");
+    } else if (newStreak === 7) {
+      triggerConfetti(document.body, "big");
+      showToast("STREAK MASTER! 🔥", "success");
+    } else if (newStreak === 3) {
+      triggerConfetti(document.body, "small");
+    }
+  }
+
   return (
     <div>
-      {/* TODO: A2 — KIDS-01 family calendar strip
-           7-day strip from kidVisibleEvents. Each day shows date + event count. Tap to expand event list.
-           Private admin events are already excluded by kidVisibleEvents filter. */}
-      {/* TODO: A2 — KIDS-02 personal goals widget
-           Read kidsData[profile.name].goals → [{id,text,done}]. Show top 3 active. Checkbox toggles done.
-           Write back via fbSet("kidsData", {...kidsData, [profile.name]: {...kd, goals:[...]}}) */}
-      {/* TODO: A2 — KIDS-03 personal routines with streak computation
-           Routine definitions: profiles[profile.id].routines → [{id,text,emoji}] (admin sets via KidsTab)
-           Completion writes: fbSet("routineState/{name}/{YYYY-MM-DD}/{routineId}", true)
-           Streak: walk backwards from today in routineState[name], count consecutive completed days.
-           3-day → triggerConfetti("small"). 7-day → triggerConfetti("big") + toast "STREAK MASTER! 🔥".
-           30-day → 👑 crown. Display 🔥{streak} next to each routine. */}
+      {/* KIDS-01: 7-day family calendar strip */}
+      <div style={{ ...cardStyle, marginBottom: 12 }}>
+        <div style={{ fontWeight: 700, marginBottom: 10, color: V.accent }}>📅 This Week</div>
+        <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4 }}>
+          {strip.map(({ dk, dayLabel, dateNum, evs }) => {
+            const isToday = dk === todayDk;
+            const isExpanded = expandedDay === dk;
+            return (
+              <button
+                key={dk}
+                onClick={() => setExpandedDay(isExpanded ? null : dk)}
+                style={{
+                  background: isToday ? V.accent : V.bgCardAlt,
+                  border: `2px solid ${isExpanded ? V.accent : isToday ? V.accent : V.borderSubtle}`,
+                  borderRadius: 10, padding: "8px 10px",
+                  minWidth: 44, minHeight: 60,
+                  cursor: "pointer", textAlign: "center", flexShrink: 0,
+                  outline: isExpanded && !isToday ? `2px solid ${V.accent}` : "none",
+                  outlineOffset: 2,
+                }}
+              >
+                <div style={{ fontSize: 10, color: isToday ? "#fff" : V.textDim, fontWeight: 600 }}>{dayLabel}</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: isToday ? "#fff" : V.textPrimary }}>{dateNum}</div>
+                {evs.length > 0 && (
+                  <div style={{ fontSize: 10, fontWeight: 700, color: isToday ? "#fff" : V.accent }}>{evs.length}📌</div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        {expandedDay && (
+          <div style={{ marginTop: 8, borderTop: `1px solid ${V.borderSubtle}`, paddingTop: 8 }}>
+            {(kidVisibleEvents[expandedDay] || []).length === 0 ? (
+              <div style={{ color: V.textDim, fontSize: 13, textAlign: "center", padding: "4px 0" }}>No events this day</div>
+            ) : (
+              (kidVisibleEvents[expandedDay] || []).map((ev, i) => (
+                <div key={i} style={{ fontSize: 13, color: V.textPrimary, padding: "4px 0", display: "flex", gap: 6, alignItems: "center" }}>
+                  <span>{ev.emoji || "📅"}</span>
+                  <span style={{ fontWeight: 600, flex: 1 }}>{ev.title || ev.text}</span>
+                  {ev.time && <span style={{ color: V.textDim, fontSize: 12 }}>{ev.time}</span>}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* KIDS-02: Personal goals widget */}
+      {displayGoals.length > 0 && (
+        <div style={{ ...cardStyle, marginBottom: 12 }}>
+          <div style={{ fontWeight: 700, marginBottom: 10, color: V.accent }}>✨ My Goals</div>
+          {displayGoals.map((goal, i) => (
+            <div key={goal.id || i} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+              <button
+                onClick={() => toggleGoal(i)}
+                aria-label={goal.done ? "Uncheck goal" : "Check goal done"}
+                style={{
+                  width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                  border: `2px solid ${goal.done ? V.accent : V.borderDefault}`,
+                  background: goal.done ? V.accent : "transparent",
+                  cursor: "pointer", fontSize: 14,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "#fff",
+                }}
+              >{goal.done ? "✓" : ""}</button>
+              <span style={{ fontSize: 14, flex: 1, color: goal.done ? V.textDim : V.textPrimary, textDecoration: goal.done ? "line-through" : "none" }}>
+                {goal.text}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* KIDS-03: Daily routines with per-routine streaks */}
+      {routines.length > 0 && (
+        <div style={{ ...cardStyle }}>
+          <div style={{ fontWeight: 700, marginBottom: 10, color: V.accent }}>🌟 Daily Routines</div>
+          {routines.map((routine) => {
+            const done = !!kidRS[todayDk]?.[routine.id];
+            const streak = computeStreak(routine.id);
+            return (
+              <div key={routine.id} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                <button
+                  onClick={() => !done && completeRoutine(routine)}
+                  aria-label={done ? `${routine.text} complete` : `Complete ${routine.text}`}
+                  style={{
+                    width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+                    border: `2px solid ${done ? V.accent : V.borderDefault}`,
+                    background: done ? `${V.accent}22` : "transparent",
+                    cursor: done ? "default" : "pointer",
+                    fontSize: 22,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}
+                >{done ? "✅" : (routine.emoji || "⭐")}</button>
+                <span style={{ flex: 1, fontSize: 14, color: done ? V.textDim : V.textPrimary, textDecoration: done ? "line-through" : "none" }}>
+                  {routine.text}
+                </span>
+                {streak > 0 && (
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "#f97316", flexShrink: 0 }}>
+                    {streak >= 30 ? "👑" : "🔥"}{streak}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
