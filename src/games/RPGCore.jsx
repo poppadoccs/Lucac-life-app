@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo } from "react";
-import { GameBtn } from "./_shared";
+import { GameBtn, generateMathProblem } from "./_shared";
 import { speakText } from "../utils";
 import FishGame from "./FishGame";
 import RacingGame from "./RacingGame";
@@ -376,14 +376,14 @@ const EMOTION_MAP = {
   happy: "😊", scared: "😨", determined: "😤", victorious: "🎉", hurt: "😣", idle: null,
 };
 
-function Avatar({ emoji, emotion, anim, size = 60, style: extraStyle, profile }) {
+function Avatar({ emoji, emotion, anim, size = 60, style: extraStyle, avatarDataUrl }) {
   const face = EMOTION_MAP[emotion] || null;
   let animName = "none";
   if (anim === "bounce") animName = "ll-bounce 0.6s ease-in-out infinite";
   if (anim === "shake") animName = "ll-shake 0.5s ease-in-out";
   if (anim === "jump") animName = "ll-jump 0.8s ease-in-out";
   if (anim === "pulse") animName = "ll-pulse 1s ease-in-out infinite";
-  const dataUrl = profile?.avatarDataUrl;
+  const dataUrl = avatarDataUrl;
   return (
     <div style={{ position: "relative", display: "inline-block", animation: animName, ...extraStyle }}>
       {dataUrl
@@ -488,6 +488,8 @@ function InventoryBar({ inventory }) {
 
 export default function RPGCore({ profile, kidsData, fbSet, addStars, transitionTo, curriculum, initialScreen }) {
   const { isLucaMode, mathDifficulty } = curriculum;
+  // Avatar canvas drawn by AvatarCreator lives in kidsData, not profile (canWrite fix)
+  const avatarDataUrl = kidsData?.[profile?.name]?.avatarDataUrl || null;
 
   // Internal screen state — RPGCore manages its own navigation
   const [screen, setScreen] = useState(initialScreen || "world_select");
@@ -890,7 +892,7 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
               <div style={{ fontSize: 15, color: "rgba(255,255,255,0.85)", lineHeight: 1.5 }}>{scene.desc}</div>
             </div>
             <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
-              <Avatar emoji={playerEmoji} emotion={emotion} anim={avatarAnim} size={56} profile={profile} />
+              <Avatar emoji={playerEmoji} emotion={emotion} anim={avatarAnim} size={56} avatarDataUrl={avatarDataUrl} />
             </div>
             {!choiceResult && choiceSet && (
               <div style={{ background: "rgba(0,0,0,0.4)", borderRadius: 14, padding: 14 }}>
@@ -948,7 +950,7 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
             <div style={{ textAlign: "center", fontSize: 14, fontWeight: 900, color: "#fbbf24",
               textShadow: "0 0 10px #fbbf24", marginBottom: 4, letterSpacing: 4 }}>─── VS ───</div>
             <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
-              <Avatar emoji={playerEmoji} emotion={emotion} anim={avatarAnim} size={52} profile={profile} />
+              <Avatar emoji={playerEmoji} emotion={emotion} anim={avatarAnim} size={52} avatarDataUrl={avatarDataUrl} />
             </div>
             <div style={{ marginBottom: 12 }}>
               <HPDisplay current={hp} max={MAX_HP} label={playerName} color={playerColor} />
@@ -998,7 +1000,7 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
           <div style={{ position: "relative", zIndex: 1, padding: 20, minHeight: 500,
             display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
             <div style={{ fontSize: 60, marginBottom: 8, animation: "ll-jump 1s ease-in-out infinite" }}>🏆</div>
-            <Avatar emoji={playerEmoji} emotion="victorious" anim="jump" size={64} profile={profile} />
+            <Avatar emoji={playerEmoji} emotion="victorious" anim="jump" size={64} avatarDataUrl={avatarDataUrl} />
             <div style={{ fontSize: 28, fontWeight: 900, color: "#7c3aed", textShadow: "0 2px 0 rgba(0,0,0,0.1)", margin: "12px 0 4px" }}>WORLD COMPLETE!</div>
             <div style={{ fontSize: 18, color: "#4c1d95", fontWeight: 600, marginBottom: 6 }}>{world.emoji} {world.name} conquered!</div>
             <div style={{ fontSize: 16, color: "#6d28d9", marginBottom: 16 }}>{playerName} is a true LEGEND!</div>
@@ -1028,7 +1030,7 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, #1a0000, #000)" }} />
           <div style={{ position: "relative", zIndex: 1, padding: 20, minHeight: 500,
             display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
-            <Avatar emoji={playerEmoji} emotion="hurt" anim="shake" size={64} profile={profile} />
+            <Avatar emoji={playerEmoji} emotion="hurt" anim="shake" size={64} avatarDataUrl={avatarDataUrl} />
             <div style={{ fontSize: 28, fontWeight: 900, color: "#ef4444", textShadow: "0 0 20px rgba(239,68,68,0.5)", margin: "16px 0 8px" }}>GAME OVER</div>
             <div style={{ fontSize: 16, color: "rgba(255,255,255,0.7)", marginBottom: 8 }}>The adventure is not over yet!</div>
             <div style={{ fontSize: 14, color: "rgba(255,255,255,0.5)", marginBottom: 24 }}>You earned {starsEarned} ⭐ stars before falling.</div>
@@ -1177,7 +1179,7 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
             <div style={{ textAlign:"center", marginBottom:20 }}>
               <div style={{ fontSize:28, fontWeight:900, color:"#60a5fa", textShadow:"0 0 20px rgba(96,165,250,0.4)", marginBottom:4 }}>🎮 MINI GAMES</div>
               <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)" }}>Learn while you play!</div>
-              <Avatar emoji={playerEmoji} emotion="happy" anim="bounce" size={50} profile={profile} />
+              <Avatar emoji={playerEmoji} emotion="happy" anim="bounce" size={50} avatarDataUrl={avatarDataUrl} />
               <div style={{ fontSize:14, color:"#fbbf24", marginTop:4 }}>⭐ {currentPoints} Total Stars</div>
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, maxWidth:400, margin:"0 auto" }}>
@@ -1217,39 +1219,10 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
     const maxRounds = 10;
     const coopDone = coopRound >= maxRounds;
 
-    // Generate problems for new round
-    function generateMathProblemLocal(difficulty) {
-      let a, b, op, answer, question;
-      if (difficulty === 'easy') {
-        op = Math.random() > 0.5 ? '+' : '-';
-        a = Math.floor(Math.random() * 9) + 1;
-        b = Math.floor(Math.random() * (op === '-' ? a : 9)) + 1;
-        answer = op === '+' ? a + b : a - b;
-        question = `${a} ${op} ${b}`;
-      } else {
-        if (Math.random() > 0.5) {
-          a = Math.floor(Math.random() * 10) + 2; b = Math.floor(Math.random() * 10) + 2;
-          answer = a * b; question = `${a} × ${b}`;
-        } else {
-          b = Math.floor(Math.random() * 9) + 2; answer = Math.floor(Math.random() * 10) + 1;
-          a = answer * b; question = `${a} ÷ ${b}`;
-        }
-      }
-      const choices = [answer];
-      while (choices.length < 3) {
-        const wrong = answer + (Math.random() > 0.5 ? 1 : -1) * (Math.floor(Math.random() * 3) + 1);
-        if (wrong > 0 && !choices.includes(wrong)) choices.push(wrong);
-      }
-      for (let i = choices.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [choices[i], choices[j]] = [choices[j], choices[i]];
-      }
-      return { question, answer, choices };
-    }
-
+    // Use shared generator from _shared.js (no local duplicate)
     if (!coopProblemLeft && !coopDone) {
-      setCoopProblemLeft(generateMathProblemLocal('hard'));
-      setCoopProblemRight(generateMathProblemLocal('easy'));
+      setCoopProblemLeft(generateMathProblem('hard'));
+      setCoopProblemRight(generateMathProblem('easy'));
       setCoopRoundWinner(null);
     }
 

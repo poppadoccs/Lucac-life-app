@@ -18,9 +18,10 @@ const COLORS = [
   { name: "White",  hex: "#f9fafb" },
 ];
 
-// Props: { profile, fbSet, onSave, onClose }
+// Props: { profile, kidsData, fbSet, onSave, onClose }
+// avatarDataUrl lives in kidsData (kid-writeable), not profiles (admin-only)
 // onSave(dataUrl) fires after writing to Firebase
-export default function AvatarCreator({ profile, fbSet, onSave, onClose }) {
+export default function AvatarCreator({ profile, kidsData, fbSet, onSave, onClose }) {
   const canvasRef = useRef(null);
   const [color, setColor] = useState("#111827");
   const [brushSize, setBrushSize] = useState(8);
@@ -40,10 +41,11 @@ export default function AvatarCreator({ profile, fbSet, onSave, onClose }) {
     ctx.scale(dpr, dpr);
     ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, LOGICAL_SIZE, LOGICAL_SIZE);
-    if (profile?.avatarDataUrl) {
+    const existingUrl = kidsData?.[profile?.name]?.avatarDataUrl;
+    if (existingUrl) {
       const img = new Image();
       img.onload = () => ctx.drawImage(img, 0, 0, LOGICAL_SIZE, LOGICAL_SIZE);
-      img.src = profile.avatarDataUrl;
+      img.src = existingUrl;
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -125,7 +127,7 @@ export default function AvatarCreator({ profile, fbSet, onSave, onClose }) {
     const canvas = canvasRef.current;
     // 0.5 JPEG quality keeps save under ~200KB for a 300px canvas
     const dataUrl = canvas.toDataURL("image/jpeg", 0.5);
-    if (fbSet && profile?.name) fbSet(`profiles/${profile.name}/avatarDataUrl`, dataUrl);
+    if (fbSet && profile?.name) fbSet(`kidsData/${profile.name}/avatarDataUrl`, dataUrl);
     onSave?.(dataUrl);
   }
 
