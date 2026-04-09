@@ -11,6 +11,7 @@ import BudgetTab from "./BudgetTab";
 import HomeworkHelper from "./HomeworkHelper";
 import GroqAssistant from "./GroqAssistant";
 import SettingsTab from "./SettingsTab";
+import ParentDashboard from "./ParentDashboard";
 import HomeTab from "./HomeTab";
 import KidsTab from "./KidsTab";
 import FamilyTab from "./FamilyTab";
@@ -1552,6 +1553,7 @@ export default function App() {
     { id:"kids", label:"Kids", icon:"⭐", roles:["admin","parent","kid"] },
     { id:"family", label:"Family", icon:"🤝", roles:["admin","parent"] },
     { id:"settings", label:"Settings", icon:"⚙️", roles:["admin","parent"] },
+    { id:"parentdash", label:"Progress", icon:"📊", roles:["admin","parent"] },
   ];
   const tabs = guestMode
     ? allTabs.filter(t => t.roles.includes("guest"))
@@ -1669,6 +1671,8 @@ export default function App() {
           alertMinutes={alertMinutes} setAlertMinutes={setAlertMinutes}
           callButtons={callButtons} setCallButtons={setCallButtons}
           contactDad={contactDad} contactMom={contactMom} />}
+        {tab === "parentdash" && <ParentDashboard V={V} profiles={profiles} kidsData={kidsData}
+          GROQ_KEY={GROQ_KEY} cardStyle={cardStyle} btnPrimary={btnPrimary} />}
       </div>
 
       {/* Bottom nav */}
