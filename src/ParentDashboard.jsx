@@ -95,16 +95,20 @@ Data:
 
 Write 3–4 sentences max. Be specific and encouraging. Mention one clear strength and one area to practice. Suggest one fun activity they can try this week.`;
 
-    const result = await callAI(groqKey, [{ role: "user", content: prompt }], {
-      maxTokens: 200, temperature: 0.7, timeout: 15000,
-    });
-
-    if (result.ok) {
-      setReport(result.data);
-    } else {
-      setReportError(result.error || "Could not generate report — try again.");
+    try {
+      const result = await callAI(groqKey, [{ role: "user", content: prompt }], {
+        maxTokens: 200, temperature: 0.7, timeout: 15000,
+      });
+      if (result.ok) {
+        setReport(result.data);
+      } else {
+        setReportError(result.error || "Could not generate report — try again.");
+      }
+    } catch {
+      setReportError("Could not generate report — try again.");
+    } finally {
+      setLoadingReport(false);
     }
-    setLoadingReport(false);
   }
 
   if (kids.length === 0) {
@@ -140,6 +144,7 @@ Write 3–4 sentences max. Be specific and encouraging. Mention one clear streng
             return (
               <button
                 key={k.name}
+                aria-pressed={active}
                 onClick={() => { setSelectedKidName(k.name); setReport(""); setReportError(""); }}
                 style={{
                   padding: "10px 18px", borderRadius: 10,
@@ -147,7 +152,7 @@ Write 3–4 sentences max. Be specific and encouraging. Mention one clear streng
                   background: active ? accent : "transparent",
                   color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 14, minHeight: 44,
                 }}
-              >{k.emoji || "👤"} {k.name}</button>
+              >{active ? "✓ " : ""}{k.emoji || "👤"} {k.name}</button>
             );
           })}
         </div>

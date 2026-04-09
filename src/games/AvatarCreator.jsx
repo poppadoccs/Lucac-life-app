@@ -123,11 +123,17 @@ export default function AvatarCreator({ profile, kidsData, fbSet, onSave, onClos
     ctx.fillRect(0, 0, LOGICAL_SIZE, LOGICAL_SIZE);
   }
 
-  function handleSave() {
+  async function handleSave() {
     const canvas = canvasRef.current;
     // 0.5 JPEG quality keeps save under ~200KB for a 300px canvas
     const dataUrl = canvas.toDataURL("image/jpeg", 0.5);
-    if (fbSet && profile?.name) fbSet(`kidsData/${profile.name}/avatarDataUrl`, dataUrl);
+    if (fbSet && profile?.name) {
+      try {
+        await fbSet(`kidsData/${profile.name}/avatarDataUrl`, dataUrl);
+      } catch {
+        // Firebase write failed (offline?) — still close modal with local dataUrl
+      }
+    }
     onSave?.(dataUrl);
   }
 
@@ -184,9 +190,9 @@ export default function AvatarCreator({ profile, kidsData, fbSet, onSave, onClos
                 title={c.name}
                 onClick={() => { setColor(c.hex); setIsEraser(false); }}
                 style={{
-                  width: 36, height: 36, borderRadius: 8, background: c.hex,
+                  width: 44, height: 44, borderRadius: 8, background: c.hex,
                   border: `3px solid ${!isEraser && color === c.hex ? "#fbbf24" : "#374151"}`,
-                  cursor: "pointer", minHeight: 36, minWidth: 36,
+                  cursor: "pointer", minHeight: 44, minWidth: 44,
                 }}
               />
               <span style={{ fontSize: 9, color: "#9ca3af" }}>{c.name}</span>
