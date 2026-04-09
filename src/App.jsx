@@ -13,6 +13,7 @@ import GroqAssistant from "./GroqAssistant";
 import SettingsTab from "./SettingsTab";
 import ParentDashboard from "./ParentDashboard";
 import HomeTab from "./HomeTab";
+import GmailWidget from "./GmailWidget";
 import KidsTab from "./KidsTab";
 import FamilyTab from "./FamilyTab";
 import { runAgentLoop, getActionPreviewLabel, testGroqConnection } from "./aiAgent";
@@ -1645,6 +1646,7 @@ export default function App() {
           myRules={myRules} theirRules={theirRules} sharedRules={sharedRules} exchangeLog={exchangeLog}
           tab={tab} setTab={setTab}
         />}
+        {tab === "home" && <GmailWidget V={V} currentProfile={currentProfile} showToast={showToast} />}
         {tab === "food" && <FoodTab V={V} currentProfile={currentProfile} foodLog={foodLog} myFoods={myFoods}
           nutritionGoals={nutritionGoals} fbSet={fbSet} GROQ_KEY={GROQ_KEY} showToast={showToast} profiles={profiles}
           shoppingList={shoppingList} weightLog={weightLog} isRecording={isRecording} startVoiceInput={startVoiceInput} stopVoiceInput={stopVoiceInput} />}
