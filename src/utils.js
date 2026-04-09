@@ -76,6 +76,7 @@ export async function callAI(apiKey, messages, opts = {}) {
 // Exported separately so callers can compute deterministic math outside the
 // regex-scanner context (e.g., unit tests, future math widgets).
 export function computeExpr(expr) {
+  if (typeof expr !== "string" || !expr.trim()) return null;
   const normalized = expr.replace(/[x×]/gi, "*").replace(/÷/g, "/");
   // Whitelist: only digits, operators, decimal points, whitespace — no keywords or function calls
   if (!/^[\d\s+\-*/.]+$/.test(normalized)) return null;

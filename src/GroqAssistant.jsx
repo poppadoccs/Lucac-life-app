@@ -302,17 +302,21 @@ export default function GroqAssistant({
               results.push("\u274C Bulk delete requires admin access.");
               break;
             }
+            const keyword = (args.searchTerm || "").toLowerCase();
+            // Require at least one targeting parameter — reject empty args to prevent accidental full wipe
+            if (!args.deleteAll && !keyword && !args.date) {
+              results.push("\u274C delete_events_bulk needs at least one of: deleteAll, date, or searchTerm.");
+              break;
+            }
             const updated = { ...(events || {}) };
             let deletedCount = 0;
-            const keyword = (args.searchTerm || "").toLowerCase();
             for (const d of Object.keys(updated)) {
               if (args.date && d !== args.date) continue;
               const before = (updated[d] || []).length;
-              updated[d] = args.deleteAll && !keyword
-                ? []
-                : (updated[d] || []).filter(e => keyword
-                    ? !(e.title || "").toLowerCase().includes(keyword)
-                    : false);
+              // No keyword = delete all events in scope; keyword = delete matching only
+              updated[d] = keyword
+                ? (updated[d] || []).filter(e => !(e.title || "").toLowerCase().includes(keyword))
+                : [];
               deletedCount += before - updated[d].length;
               if (updated[d].length === 0) delete updated[d];
             }

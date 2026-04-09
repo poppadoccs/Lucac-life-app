@@ -480,7 +480,8 @@ async function testGroqConnection(apiKey) {
   const result = await callAI(apiKey, [{ role: 'user', content: 'Say hello in one word.' }], {
     model: MODEL_LIGHT, maxTokens: 10, temperature: 0, timeout: 10000
   });
-  return { ok: result.ok, error: result.error };
+  // Preserve status-like detail in error string so SettingsTab can distinguish failure types
+  return { ok: result.ok, error: result.error, status: result.ok ? 200 : null };
 }
 
 // ═══ TYPE COERCION — Groq returns strings for booleans/numbers ═══
