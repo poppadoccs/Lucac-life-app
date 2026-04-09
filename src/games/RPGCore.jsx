@@ -5,6 +5,8 @@ import FishGame from "./FishGame";
 import RacingGame from "./RacingGame";
 import BoardGame from "./BoardGame";
 import ReadingGame from "./ReadingGame";
+import MathRacer from "./MathRacer";
+import MultiplicationMonsters from "./MultiplicationMonsters";
 
 // ─── CONSTANTS ───────────────────────────────────────────
 
@@ -814,6 +816,8 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
   if (screen === "racing") return <><style>{KEYFRAMES_CSS}</style><RacingGame {...gameProps} /></>;
   if (screen === "board") return <><style>{KEYFRAMES_CSS}</style><BoardGame {...gameProps} /></>;
   if (screen === "reading") return <><style>{KEYFRAMES_CSS}</style><ReadingGame {...gameProps} /></>;
+  if (screen === "mathracer") return <><style>{KEYFRAMES_CSS}</style><MathRacer {...gameProps} /></>;
+  if (screen === "monsters") return <><style>{KEYFRAMES_CSS}</style><MultiplicationMonsters {...gameProps} /></>;
 
   // ─── WORLD SELECT ─────────────────────────────────────
   if (screen === "world_select") {
@@ -1188,6 +1192,8 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
                 { emoji:"🏎️", name:"Racing", desc:"Dodge & drive!", bg:"linear-gradient(135deg, #dc2626, #f97316)", screen:"racing" },
                 { emoji:"🎲", name:"Board Game", desc:"Play together!", bg:"linear-gradient(135deg, #7c3aed, #a855f7)", screen:"board" },
                 { emoji:"📖", name:"Reading", desc:"Complete stories!", bg:"linear-gradient(135deg, #059669, #34d399)", screen:"reading" },
+                { emoji:"⚡", name:"Math Racer", desc:"Catch the answer!", bg:"linear-gradient(135deg, #1d4ed8, #60a5fa)", screen:"mathracer" },
+                { emoji:"👾", name:"Monsters", desc:"Battle with math!", bg:"linear-gradient(135deg, #6d28d9, #ec4899)", screen:"monsters" },
               ].map((g, i) => (
                 <div key={i} onClick={() => localTransitionTo(g.screen)}
                   style={{ background:g.bg, borderRadius:16, padding:20, textAlign:"center", cursor:"pointer", minHeight:120 }}>

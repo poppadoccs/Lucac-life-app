@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { testGroqConnection } from "./aiAgent";
+import { LEARNING_SUBJECTS, getCurriculum, getELI5 } from "./LearningEngine";
 
-export default function SettingsTab({ V, THEMES, themeName, setThemeName, profiles, currentProfile, setCurrentProfile, widgetPrefs, setWidgetPref, fbSet, showToast, isAdmin, isParent, GROQ_KEY, cardStyle, btnPrimary, btnSecondary, inputStyle, alertMinutes, setAlertMinutes, callButtons, setCallButtons, contactDad, contactMom }) {
+export default function SettingsTab({ V, THEMES, themeName, setThemeName, profiles, currentProfile, setCurrentProfile, widgetPrefs, setWidgetPref, fbSet, showToast, isAdmin, isParent, GROQ_KEY, cardStyle, btnPrimary, btnSecondary, inputStyle, alertMinutes, setAlertMinutes, callButtons, setCallButtons, contactDad, contactMom, curriculum = {}, learningStats = {} }) {
   const [settingsSubTab, setSettingsSubTab] = useState("profiles");
   const [profileNameEdit, setProfileNameEdit] = useState("");
   const [pinEdit, setPinEdit] = useState("");
@@ -10,6 +11,8 @@ export default function SettingsTab({ V, THEMES, themeName, setThemeName, profil
   const [newMemberEmoji, setNewMemberEmoji] = useState("😊");
   const [newMemberType, setNewMemberType] = useState("parent");
   const [saveFeedback, setSaveFeedback] = useState("");
+  const [eliModal, setEliModal] = useState(null); // { subjectLabel, text } | null
+  const [eliLoading, setEliLoading] = useState(false);
 
   function showSave(msg) { setSaveFeedback(msg); setTimeout(() => setSaveFeedback(""), 2000); }
 
@@ -22,12 +25,12 @@ export default function SettingsTab({ V, THEMES, themeName, setThemeName, profil
       )}
       <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
         {["profiles","theme",
-          ...(isAdmin ? ["alerts"] : []),
+          ...(isAdmin ? ["alerts","learning"] : []),
           ...((isAdmin || isParent) ? ["widgets","contacts"] : [])
         ].map(t=>(
           <button key={t} onClick={()=>setSettingsSubTab(t)}
             style={{...settingsSubTab===t?btnPrimary:btnSecondary,padding:"6px 12px",fontSize:12}}>
-            {t==="profiles"?"👤 Profiles":t==="theme"?"🎨 Theme":t==="widgets"?"📦 Widgets":t==="contacts"?"📞 Contacts":"🔔 Alerts"}
+            {t==="profiles"?"👤 Profiles":t==="theme"?"🎨 Theme":t==="widgets"?"📦 Widgets":t==="contacts"?"📞 Contacts":t==="learning"?"📚 Learning":"🔔 Alerts"}
           </button>
         ))}
       </div>
@@ -301,6 +304,80 @@ export default function SettingsTab({ V, THEMES, themeName, setThemeName, profil
                 }} style={{...btnPrimary,padding:"8px 14px"}}>Add</button>
               </div>
             </div>
+          )}
+        </div>
+      )}
+
+      {isAdmin && settingsSubTab === "learning" && (
+        <div>
+          {/* ELI5 modal */}
+          {eliModal && (
+            <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.6)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+              onClick={()=>setEliModal(null)}>
+              <div style={{background:V.bgCard,borderRadius:16,padding:20,maxWidth:360,width:"100%",border:`1px solid ${V.borderSubtle}`}}
+                onClick={e=>e.stopPropagation()}>
+                <div style={{fontWeight:700,color:V.accent,marginBottom:8,fontSize:15}}>📖 {eliModal.subjectLabel}</div>
+                <div style={{fontSize:13,color:V.textPrimary,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{eliModal.text}</div>
+                <button onClick={()=>setEliModal(null)} style={{...btnSecondary,marginTop:14,width:"100%"}}>Close</button>
+              </div>
+            </div>
+          )}
+          {/* Per-kid curriculum editor */}
+          {(profiles||[]).filter(p=>p.type==="kid").map(p => {
+            const config = getCurriculum(curriculum, p.name);
+            const kidStats = learningStats?.[p.name] || {};
+            function accuracy(subjId) {
+              const attempts = Object.values(kidStats[subjId] || {});
+              if (attempts.length < 3) return null;
+              return attempts.filter(a=>a.correct).length / attempts.length;
+            }
+            return (
+              <div key={p.id} style={{...cardStyle,marginBottom:12}}>
+                <div style={{fontWeight:700,color:V.accent,marginBottom:10,fontSize:15}}>{p.emoji} {p.name}</div>
+                {LEARNING_SUBJECTS.map(subj => {
+                  const active = (config.activeSubjects||[]).includes(subj.id);
+                  const acc = accuracy(subj.id);
+                  return (
+                    <div key={subj.id} style={{borderBottom:`1px solid ${V.borderDefault}`,paddingBottom:8,marginBottom:8}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                        <input type="checkbox" checked={active} id={`${p.id}-${subj.id}`}
+                          onChange={e=>{
+                            const next = e.target.checked
+                              ? [...(config.activeSubjects||[]), subj.id]
+                              : (config.activeSubjects||[]).filter(s=>s!==subj.id);
+                            fbSet(`curriculum/${p.name}/activeSubjects`, next);
+                          }}
+                          style={{width:18,height:18,cursor:"pointer",accentColor:V.accent}} />
+                        <label htmlFor={`${p.id}-${subj.id}`} style={{fontSize:13,color:V.textPrimary,fontWeight:600,cursor:"pointer",flex:1}}>
+                          {subj.label}
+                        </label>
+                        <button onClick={async()=>{
+                          setEliLoading(true);
+                          const text = await getELI5(GROQ_KEY, p.name, subj.id);
+                          setEliLoading(false);
+                          setEliModal({subjectLabel:subj.label,text});
+                        }} disabled={eliLoading}
+                          style={{...btnSecondary,padding:"3px 8px",fontSize:11}}>
+                          {eliLoading?"...":"💡 Refresh"}
+                        </button>
+                      </div>
+                      {acc !== null && (
+                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                          <div style={{flex:1,height:6,background:V.bgElevated,borderRadius:3,overflow:"hidden"}}>
+                            <div style={{height:"100%",width:`${Math.round(acc*100)}%`,background:acc>=0.7?V.success:acc>=0.4?"#f59e0b":V.danger,borderRadius:3,transition:"width 0.4s"}} />
+                          </div>
+                          <span style={{fontSize:11,color:V.textMuted,fontWeight:700,minWidth:32}}>{Math.round(acc*100)}%</span>
+                        </div>
+                      )}
+                      {acc === null && <div style={{fontSize:11,color:V.textDim}}>No data yet (need 3+ attempts)</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+          {(profiles||[]).filter(p=>p.type==="kid").length === 0 && (
+            <div style={{...cardStyle,color:V.textMuted,fontSize:13}}>No kid profiles found. Add a kid in Profiles first.</div>
           )}
         </div>
       )}
