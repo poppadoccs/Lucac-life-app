@@ -54,6 +54,9 @@ export async function groqFetch(apiKey, messages, opts = {}) {
   }
 }
 
+// callAI — alias for groqFetch, same signature and return value
+export const callAI = groqFetch;
+
 // Export rate limit state so aiAgent can check it too
 export function isRateLimited() {
   return _rateLimitState.retryAfter > Date.now();
