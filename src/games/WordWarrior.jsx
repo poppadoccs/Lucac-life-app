@@ -82,6 +82,7 @@ export default function WordWarrior({ profile, kidsData, fbSet, addStars, transi
   const recogRef   = useRef(null);
   const listeningRef = useRef(false);
   const stopSpeakRef = useRef(null);
+  const mountedRef   = useRef(true);
 
   const syncPhase = (p) => { phaseRef.current = p; setPhase(p); };
   const syncHits  = (n) => { hitsRef.current  = n; setHits(n);  };
@@ -114,7 +115,7 @@ export default function WordWarrior({ profile, kidsData, fbSet, addStars, transi
     recog.onend = () => {
       listeningRef.current = false;
       if (phaseRef.current === "listening") {
-        setTimeout(startListening, 350);
+        setTimeout(() => { if (mountedRef.current) startListening(); }, 350);
       }
     };
     listeningRef.current = true;
@@ -128,7 +129,10 @@ export default function WordWarrior({ profile, kidsData, fbSet, addStars, transi
   }
 
   // Start on mount; restart whenever phase returns to "listening"
-  useEffect(() => { startListening(); return stopListening; }, []); // eslint-disable-line
+  useEffect(() => {
+    startListening();
+    return () => { mountedRef.current = false; stopListening(); if (stopSpeakRef.current) stopSpeakRef.current(); };
+  }, []); // eslint-disable-line
   useEffect(() => { if (phase === "listening") startListening(); }, [phase]); // eslint-disable-line
 
   // ── Voice match handler ────────────────────────────────────────────────────
@@ -148,11 +152,11 @@ export default function WordWarrior({ profile, kidsData, fbSet, addStars, transi
         setEarnedStars(stars);
         setFeedback("💥 Slain!");
         syncPhase("dead");
-        setTimeout(() => advanceMonster(newKills), 1400);
+        setTimeout(() => { if (mountedRef.current) advanceMonster(newKills); }, 1400);
       } else {
         setFeedback(`✅ Hit! ${3 - newHits} more!`);
         syncPhase("hit");
-        setTimeout(() => { setFeedback(""); syncPhase("listening"); }, 900);
+        setTimeout(() => { if (mountedRef.current) { setFeedback(""); syncPhase("listening"); } }, 900);
       }
     } else {
       // Miss — speak the target word so kid can repeat it
@@ -162,7 +166,7 @@ export default function WordWarrior({ profile, kidsData, fbSet, addStars, transi
       stopSpeakRef.current = speakText(wordRef.current, {
         onStop: () => {
           stopSpeakRef.current = null;
-          setTimeout(() => { setFeedback(""); syncPhase("listening"); }, 400);
+          setTimeout(() => { if (mountedRef.current) { setFeedback(""); syncPhase("listening"); } }, 400);
         },
       });
     }

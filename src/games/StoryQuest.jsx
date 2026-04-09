@@ -113,12 +113,15 @@ export default function StoryQuest({ profile, kidsData, fbSet, addStars, transit
   const [autoRead, setAutoRead]         = useState(isLuca);
   const [speaking, setSpeaking]         = useState(false);
 
-  const fallbackRef   = useRef(null);
-  const stopSpeakRef  = useRef(null);
-  const lastSpokenRef = useRef("");
-  const phaseRef      = useRef("loading");
-  const recogRef      = useRef(null);
-  const listeningRef  = useRef(false);
+  const fallbackRef      = useRef(null);
+  const stopSpeakRef     = useRef(null);
+  const lastSpokenRef    = useRef("");
+  const phaseRef         = useRef("loading");
+  const recogRef         = useRef(null);
+  const listeningRef     = useRef(false);
+  const mountedRef       = useRef(true);
+  const choicesMadeRef   = useRef([]); // mirrors choicesMade for async/SR callbacks
+  const isChoosingRef    = useRef(false); // prevents voice+tap double-fire
   // Current pending choice options (for SR callback)
   const pendingChoiceRef = useRef({ A: "", B: "" });
 
@@ -151,7 +154,7 @@ export default function StoryQuest({ profile, kidsData, fbSet, addStars, transit
     if (last && last !== lastSpokenRef.current) speak(last);
   }, [storyItems.length, autoRead]); // eslint-disable-line
 
-  useEffect(() => () => { stopSpeech(); stopListening(); }, []); // eslint-disable-line
+  useEffect(() => () => { mountedRef.current = false; stopSpeech(); stopListening(); }, []); // eslint-disable-line
 
   // ── Voice recognition for choices ────────────────────────────────────────────
   function startChoiceListening(optA, optB) {
@@ -167,21 +170,21 @@ export default function StoryQuest({ profile, kidsData, fbSet, addStars, transit
       if (pick) {
         setVoiceHint(`✅ Heard "${pick}" — choosing!`);
         stopListening();
-        setTimeout(() => handleChoice(pick, pick === "A" ? pendingChoiceRef.current.A : pendingChoiceRef.current.B), 600);
+        setTimeout(() => { if (mountedRef.current) handleChoice(pick, pick === "A" ? pendingChoiceRef.current.A : pendingChoiceRef.current.B); }, 600);
       } else {
         setVoiceHint(`🎤 Say "A" or "B" — try again`);
         listeningRef.current = false;
-        setTimeout(() => startChoiceListening(pendingChoiceRef.current.A, pendingChoiceRef.current.B), 400);
+        setTimeout(() => { if (mountedRef.current) startChoiceListening(pendingChoiceRef.current.A, pendingChoiceRef.current.B); }, 400);
       }
     };
     recog.onerror = () => {
       listeningRef.current = false;
-      setTimeout(() => startChoiceListening(pendingChoiceRef.current.A, pendingChoiceRef.current.B), 600);
+      setTimeout(() => { if (mountedRef.current) startChoiceListening(pendingChoiceRef.current.A, pendingChoiceRef.current.B); }, 600);
     };
     recog.onend = () => {
       listeningRef.current = false;
       if (phaseRef.current === "voice_choice") {
-        setTimeout(() => startChoiceListening(pendingChoiceRef.current.A, pendingChoiceRef.current.B), 400);
+        setTimeout(() => { if (mountedRef.current) startChoiceListening(pendingChoiceRef.current.A, pendingChoiceRef.current.B); }, 400);
       }
     };
     listeningRef.current = true;
@@ -197,6 +200,7 @@ export default function StoryQuest({ profile, kidsData, fbSet, addStars, transit
   // Start choice listening whenever we enter voice_choice phase
   useEffect(() => {
     if (phase === "voice_choice") {
+      isChoosingRef.current = false; // reset guard when ready for next choice
       const items = storyItems;
       const active = items.slice().reverse().find(i => i.type === "choice" && !i.chosen);
       if (active) {
@@ -238,6 +242,7 @@ export default function StoryQuest({ profile, kidsData, fbSet, addStars, transit
       { model: STORY_MODEL, maxTokens: 1300, timeout: STORY_TIMEOUT }
     );
 
+    if (!mountedRef.current) return;
     if (!result.ok) { activateFallback(); return; }
 
     const topic = `${kidName}'s Quest`;
@@ -268,7 +273,10 @@ export default function StoryQuest({ profile, kidsData, fbSet, addStars, transit
 
   // ── Choice handling ───────────────────────────────────────────────────────────
   async function handleChoice(choiceLabel, choiceText) {
-    const newChoices = [...choicesMade, choiceText];
+    if (isChoosingRef.current) return; // prevent voice+tap double-fire
+    isChoosingRef.current = true;
+    const newChoices = [...choicesMadeRef.current, choiceText];
+    choicesMadeRef.current = newChoices;
     setChoicesMade(newChoices);
     setVoiceHint("");
 
@@ -313,6 +321,7 @@ export default function StoryQuest({ profile, kidsData, fbSet, addStars, transit
       { model: STORY_MODEL, maxTokens: 450, timeout: STORY_TIMEOUT }
     );
 
+    if (!mountedRef.current) return;
     if (!result.ok) { activateFallback(newChoices); return; }
 
     const chunk = parseChunk(result.data);
