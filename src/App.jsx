@@ -104,6 +104,29 @@ const THEMES = {
 
 // formatTime, parseTime, TimePicker, SwatchPicker, BlockStyleEditor moved to HomeTab.jsx
 
+// ─── KID HOME SCAFFOLD ──────────────────────────────────────────────────────
+// A0 serial prep: props wired, TODO markers for A2 to fill in (KIDS-01/02/03).
+// Defined at module level so React never remounts it between renders.
+function KidHome({ profile, kidVisibleEvents, routineState, kidsData, fbSet, V, cardStyle, showToast }) {
+  return (
+    <div>
+      {/* TODO: A2 — KIDS-01 family calendar strip
+           7-day strip from kidVisibleEvents. Each day shows date + event count. Tap to expand event list.
+           Private admin events are already excluded by kidVisibleEvents filter. */}
+      {/* TODO: A2 — KIDS-02 personal goals widget
+           Read kidsData[profile.name].goals → [{id,text,done}]. Show top 3 active. Checkbox toggles done.
+           Write back via fbSet("kidsData", {...kidsData, [profile.name]: {...kd, goals:[...]}}) */}
+      {/* TODO: A2 — KIDS-03 personal routines with streak computation
+           Routine definitions: profiles[profile.id].routines → [{id,text,emoji}] (admin sets via KidsTab)
+           Completion writes: fbSet("routineState/{name}/{YYYY-MM-DD}/{routineId}", true)
+           Streak: walk backwards from today in routineState[name], count consecutive completed days.
+           3-day → triggerConfetti("small"). 7-day → triggerConfetti("big") + toast "STREAK MASTER! 🔥".
+           30-day → 👑 crown. Display 🔥{streak} next to each routine. */}
+    </div>
+  );
+}
+// ────────────────────────────────────────────────────────────────────────────
+
 export default function App() {
   const [screen, setScreen] = useState("profiles");
   const [profiles, setProfiles] = useState([{ id:"admin", name:"Me", emoji:"👑", type:"admin", color:"#f59e0b", pin:"1234" }]);
@@ -237,6 +260,10 @@ export default function App() {
   const [weightLog, setWeightLog] = useState({});
   const [homeworkSessions, setHomeworkSessions] = useState({});
 
+  // A0: kid routine completion state + B0: board game rooms
+  const [routineState, setRoutineState] = useState({});
+  const [boardGames, setBoardGames] = useState({});
+
   // Call buttons (upgradable)
   const [callButtons, setCallButtons] = useState([]);
   // Quote customization
@@ -305,7 +332,8 @@ export default function App() {
     "profiles","kidsData","custodySchedule","myRules","theirRules","sharedRules",
     "exchangeLog","foodLog","myFoods","nutritionGoals","trackedMacros","contacts","alertMinutes","themeName","widgetPrefs",
     "budgetData","shoppingList","weightLog","homeworkSessions","callButtons","quoteMode","customQuotePrompt","jrHistory","themeOverrides",
-    "custodyPattern","custodyOverrides","ruleProposals","spotlightResponse","calendarSize","chores"];
+    "custodyPattern","custodyOverrides","ruleProposals","spotlightResponse","calendarSize","chores",
+    "routineState","boardGames"];
 
   const fbSetters = {
     events: setEvents, eventStyles: setEventStyles, routines: setRoutines,
@@ -333,6 +361,8 @@ export default function App() {
     spotlightResponse: v => setSpotlightResponse(v || ""),
     calendarSize: v => setCalendarSize(v || "default"),
     chores: v => setChores(v || []),
+    routineState: v => setRoutineState(v || {}),
+    boardGames: v => setBoardGames(v || {}),
   };
 
   // Pre-populate from localStorage cache on mount
@@ -1258,17 +1288,25 @@ export default function App() {
                   padding:14, width:"100%", marginBottom:12, fontSize:16, cursor:"pointer", fontWeight:700 }}>
                 🎮 Play LUCAC Legends
               </button>
-              {/* Today's events for this kid */}
+              {/* A0 scaffold: KidHome widgets — A2 fills in KIDS-01/02/03 inside KidHome component */}
               {(() => {
-                const dk = todayKey();
-                const myEvents = (visibleEvents[dk]||[]).filter(ev => !ev.who || ev.who === currentProfile.name);
-                return myEvents.length > 0 && (
-                  <div style={cardStyle}>
-                    <div style={{fontWeight:700,color:V.accent,marginBottom:8}}>📅 Today</div>
-                    {myEvents.map((ev,i) => (
-                      <div key={i} style={{fontSize:14,color:V.textSecondary,marginBottom:4}}>{ev.time} — {ev.title}</div>
-                    ))}
-                  </div>
+                const kidVisibleEvents = Object.fromEntries(
+                  Object.entries(visibleEvents).map(([dk, evs]) => [
+                    dk,
+                    (evs || []).filter(ev => !ev.who || ev.who === currentProfile.name),
+                  ])
+                );
+                return (
+                  <KidHome
+                    profile={currentProfile}
+                    kidVisibleEvents={kidVisibleEvents}
+                    routineState={routineState}
+                    kidsData={kidsData}
+                    fbSet={fbSet}
+                    V={V}
+                    cardStyle={cardStyle}
+                    showToast={showToast}
+                  />
                 );
               })()}
             </div>

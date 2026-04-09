@@ -822,7 +822,7 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
   const gameProps = { profile, kidsData, fbSet, addStars, transitionTo: localTransitionTo, curriculum };
   if (screen === "fish") return <><style>{KEYFRAMES_CSS}</style><FishGame {...gameProps} /></>;
   if (screen === "racing") return <><style>{KEYFRAMES_CSS}</style><RacingGame {...gameProps} /></>;
-  if (screen === "potion") return <><style>{KEYFRAMES_CSS}</style><BoardGame {...gameProps} /></>;
+  if (screen === "board") return <><style>{KEYFRAMES_CSS}</style><BoardGame {...gameProps} /></>;
   if (screen === "reading") return <><style>{KEYFRAMES_CSS}</style><ReadingGame {...gameProps} /></>;
 
   // ─── WORLD SELECT ─────────────────────────────────────
@@ -1196,7 +1196,7 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
               {[
                 { emoji:"🐟", name:"Fish Eater", desc:"Eat fish & grow!", bg:"linear-gradient(135deg, #0369a1, #22d3ee)", screen:"fish" },
                 { emoji:"🏎️", name:"Racing", desc:"Dodge & drive!", bg:"linear-gradient(135deg, #dc2626, #f97316)", screen:"racing" },
-                { emoji:"🧪", name:"Potions", desc:"Brew spells!", bg:"linear-gradient(135deg, #7c3aed, #a855f7)", screen:"potion" },
+                { emoji:"🎲", name:"Board Game", desc:"Play together!", bg:"linear-gradient(135deg, #7c3aed, #a855f7)", screen:"board" },
                 { emoji:"📖", name:"Reading", desc:"Complete stories!", bg:"linear-gradient(135deg, #059669, #34d399)", screen:"reading" },
               ].map((g, i) => (
                 <div key={i} onClick={() => localTransitionTo(g.screen)}

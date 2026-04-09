@@ -11,6 +11,10 @@ export default function KidsTab({ V, profiles, currentProfile, kidsData, chores,
   const [newChoreEmoji, setNewChoreEmoji] = useState("🧹");
   const [newChoreKid, setNewChoreKid] = useState("");
   const [newChoreStars, setNewChoreStars] = useState(5);
+  // A0: routine + goal editors (keyed by kidId / kidName)
+  const [newRoutineText, setNewRoutineText] = useState({});
+  const [newRoutineEmoji, setNewRoutineEmoji] = useState({});
+  const [newGoalText, setNewGoalText] = useState({});
 
   const TASK_EMOJIS = ["🧹","🍽️","🛏️","📚","🐕","🧺","🪥","🎒","🧸","🎨","🏃","🚿","🗑️","🪴","📝","👕","🧤","🥤","🍎","✏️","🎵","🐱","🚗","💤","🪣","📖","🎮","🧹","🪥","⭐"];
   const kidProfiles = (profiles||[]).filter(p => p.type === "kid");
@@ -34,6 +38,36 @@ export default function KidsTab({ V, profiles, currentProfile, kidsData, chores,
     fbSet("kidsData", updated);
     triggerConfetti(document.body, "small");
     showToast("Great job! +10 points! ⭐", "success");
+  }
+
+  // A0: routine editor helpers — writes to profiles/{kidId}/routines
+  function addRoutine(kid) {
+    const text = (newRoutineText[kid.id] || "").trim();
+    if (!text) return;
+    const existing = (profiles||[]).find(p => p.id === kid.id)?.routines || [];
+    const routine = { id: Date.now()+"", text, emoji: newRoutineEmoji[kid.id] || "⭐" };
+    fbSet(`profiles/${kid.id}/routines`, [...existing, routine]);
+    setNewRoutineText(s => ({ ...s, [kid.id]: "" }));
+    showToast("Routine added! ✅", "success");
+  }
+  function removeRoutine(kid, routineId) {
+    const existing = (profiles||[]).find(p => p.id === kid.id)?.routines || [];
+    fbSet(`profiles/${kid.id}/routines`, existing.filter(r => r.id !== routineId));
+  }
+
+  // A0: goals editor helpers — writes to kidsData/{name}/goals
+  function addGoal(kid) {
+    const text = (newGoalText[kid.name] || "").trim();
+    if (!text) return;
+    const kd = getKidData(kid.name);
+    const goal = { id: Date.now()+"", text, done: false };
+    fbSet("kidsData", { ...(kidsData||{}), [kid.name]: { ...kd, goals: [...(kd.goals||[]), goal] }});
+    setNewGoalText(s => ({ ...s, [kid.name]: "" }));
+    showToast("Goal added! 🌟", "success");
+  }
+  function removeGoal(kid, goalId) {
+    const kd = getKidData(kid.name);
+    fbSet("kidsData", { ...(kidsData||{}), [kid.name]: { ...kd, goals: (kd.goals||[]).filter(g => g.id !== goalId) }});
   }
 
   if (showGame) {
@@ -111,6 +145,57 @@ export default function KidsTab({ V, profiles, currentProfile, kidsData, chores,
                 </div>
               </div>
             )}
+
+            {/* A0: Admin routine editor — defines routines kids see on their home screen */}
+            {isAdmin && (() => {
+              const kidRoutines = (profiles||[]).find(p => p.id === kid.id)?.routines || [];
+              return (
+                <div style={{marginTop:12,padding:10,background:V.bgCardAlt,borderRadius:V.r2}}>
+                  <div style={{fontWeight:700,color:V.accent,marginBottom:6,fontSize:13}}>🔁 Daily Routines</div>
+                  {kidRoutines.map(r => (
+                    <div key={r.id} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                      <span style={{fontSize:18}}>{r.emoji}</span>
+                      <span style={{flex:1,fontSize:13,color:V.textPrimary}}>{r.text}</span>
+                      <button onClick={()=>removeRoutine(kid,r.id)}
+                        style={{background:"none",border:"none",cursor:"pointer",color:V.danger,fontSize:12,padding:"2px 6px"}}>✕</button>
+                    </div>
+                  ))}
+                  <div style={{display:"flex",gap:6,marginTop:6}}>
+                    <input value={newRoutineEmoji[kid.id]||"⭐"} onChange={e=>setNewRoutineEmoji(s=>({...s,[kid.id]:e.target.value}))}
+                      style={{...inputStyle,width:48,padding:"6px 8px",fontSize:16,textAlign:"center"}} maxLength={2} />
+                    <input value={newRoutineText[kid.id]||""} onChange={e=>setNewRoutineText(s=>({...s,[kid.id]:e.target.value}))}
+                      onKeyDown={e=>e.key==="Enter"&&addRoutine(kid)}
+                      placeholder="Routine name..." style={{...inputStyle,flex:1,padding:"6px 10px",fontSize:13}} />
+                    <button onClick={()=>addRoutine(kid)} style={{...btnPrimary,padding:"6px 12px",fontSize:13}}>Add</button>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* A0: Admin goals editor — defines goals kids see on their home screen */}
+            {isAdmin && (() => {
+              const kd = getKidData(kid.name);
+              const kidGoals = kd.goals || [];
+              return (
+                <div style={{marginTop:8,padding:10,background:V.bgCardAlt,borderRadius:V.r2}}>
+                  <div style={{fontWeight:700,color:V.accent,marginBottom:6,fontSize:13}}>🌟 Goals</div>
+                  {kidGoals.map(g => (
+                    <div key={g.id} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                      <span style={{fontSize:14,color:g.done?V.success:V.textPrimary,flex:1,textDecoration:g.done?"line-through":"none"}}>{g.text}</span>
+                      <span style={{fontSize:11,color:V.textDim}}>{g.done?"Done":"Active"}</span>
+                      <button onClick={()=>removeGoal(kid,g.id)}
+                        style={{background:"none",border:"none",cursor:"pointer",color:V.danger,fontSize:12,padding:"2px 6px"}}>✕</button>
+                    </div>
+                  ))}
+                  <div style={{display:"flex",gap:6,marginTop:6}}>
+                    <input value={newGoalText[kid.name]||""} onChange={e=>setNewGoalText(s=>({...s,[kid.name]:e.target.value}))}
+                      onKeyDown={e=>e.key==="Enter"&&addGoal(kid)}
+                      placeholder="New goal..." style={{...inputStyle,flex:1,padding:"6px 10px",fontSize:13}} />
+                    <button onClick={()=>addGoal(kid)} style={{...btnPrimary,padding:"6px 12px",fontSize:13}}>Add</button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         );
       })}

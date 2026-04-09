@@ -244,6 +244,8 @@ const KID_WRITE_PATHS = [
   "kidsData",
   "homeworkSessions",
   "jrHistory",
+  "routineState",  // A0: kid completion state for daily routines
+  "boardGames",    // B0: shared multiplayer board game rooms
 ];
 
 export function canWrite(profile, path) {
@@ -285,6 +287,13 @@ export function canWrite(profile, path) {
       const nameSegment = path.split("/")[1];
       return !nameSegment || nameSegment === profile.name;
     }
+    // routineState: kids can only write their own completion state
+    if (topPath === "routineState") {
+      const nameSegment = path.split("/")[1];
+      return !nameSegment || nameSegment === profile.name;
+    }
+    // boardGames: shared multi-kid tree — any kid can create/join rooms
+    if (topPath === "boardGames") return true;
     return true;
   }
 
