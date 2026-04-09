@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { groqFetch, parseGroqJSON, cacheGet, cacheSet, createSpeechRecognition } from "./utils";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { groqFetch, parseGroqJSON, cacheGet, cacheSet, createSpeechRecognition, callAI } from "./utils";
 
 // ═══ HELPER FUNCTIONS ═══
 
@@ -329,9 +329,41 @@ function WeightChart({ entries, V }) {
   );
 }
 
+// ═══ MEAL SCORER (Task 4) ═══
+function scoreMeal(items) {
+  if (!items || items.length === 0) return null;
+  const totalCal = items.reduce((s, f) => s + (Number(f.calories) || 0), 0);
+  if (totalCal < 50) return null;
+  const protein = items.reduce((s, f) => s + (Number(f.protein) || 0), 0);
+  const fiber = items.reduce((s, f) => s + (Number(f.fiber) || 0), 0);
+  const sugar = items.reduce((s, f) => s + (Number(f.sugar) || 0), 0);
+  const satFat = items.reduce((s, f) => s + (Number(f.satFat) || 0), 0);
+
+  let score = 100;
+  const proteinRatio = totalCal > 0 ? (protein * 4) / totalCal : 0;
+  if (proteinRatio >= 0.30) score += 0;
+  else if (proteinRatio >= 0.20) score -= 10;
+  else score -= 25;
+  if (fiber >= 5) score += 0;
+  else if (fiber >= 3) score -= 5;
+  else score -= 15;
+  if (sugar <= 15) score += 0;
+  else if (sugar <= 30) score -= 10;
+  else score -= 25;
+  if (satFat <= 8) score += 0;
+  else if (satFat <= 15) score -= 10;
+  else score -= 20;
+
+  if (score >= 90) return "A";
+  if (score >= 75) return "B";
+  if (score >= 60) return "C";
+  if (score >= 45) return "D";
+  return "F";
+}
+
 // ═══ MAIN COMPONENT ═══
 
-export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutritionGoals, fbSet, GROQ_KEY, showToast, profiles }) {
+export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutritionGoals, fbSet, GROQ_KEY, showToast, profiles, weightLog: weightLogProp = [] }) {
   // ── State ──
   const [hatMode, setHatMode] = useState(() => cacheGet("foodHatMode") || "daily");
   const [expandedMeals, setExpandedMeals] = useState({ Breakfast: true, Lunch: true, Dinner: true, Snacks: true });
@@ -375,6 +407,53 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
   const todayLog = log.filter(f => f.date === today && f.profile === currentProfile);
   const goals = nutritionGoals || { calories: 2200, protein: 150, carbs: 250, fat: 70 };
   const todayMacros = sumMacros(todayLog);
+
+  // ── Adaptive TDEE (Task 3) ──
+  const tdeeResult = useMemo(() => {
+    const profileLog = (Array.isArray(foodLog) ? foodLog : []).filter(f => f.profile === currentProfile);
+    const sorted = [...(weightLogProp.length > 0 ? weightLogProp : weightLog)]
+      .sort((a, b) => a.date.localeCompare(b.date));
+    if (sorted.length < 2) return null;
+
+    const startDate = sorted[0].date;
+    const endDate = sorted[sorted.length - 1].date;
+
+    const daysWithFood = {};
+    for (const entry of profileLog) {
+      if (entry.date >= startDate && entry.date <= endDate) {
+        daysWithFood[entry.date] = (daysWithFood[entry.date] || 0) + (Number(entry.calories) || 0);
+      }
+    }
+    const foodDays = Object.keys(daysWithFood);
+    if (foodDays.length < 7) return null;
+
+    const avgCal = foodDays.reduce((s, d) => s + daysWithFood[d], 0) / foodDays.length;
+    const startWeight = Number(sorted[0].weight);
+    const endWeight = Number(sorted[sorted.length - 1].weight);
+    const weightChangeLbs = endWeight - startWeight;
+    const totalDays = foodDays.length;
+    const energyStoredPerDay = (weightChangeLbs * 3500) / totalDays;
+    const tdee = Math.round(avgCal - energyStoredPerDay);
+
+    if (tdee < 800 || tdee > 6000) return null;
+    return { tdee, days: totalDays, weightChange: weightChangeLbs.toFixed(1) };
+  }, [foodLog, weightLogProp, weightLog, currentProfile]);
+
+  // ── Logging streak (Task 5) ──
+  const loggingStreak = useMemo(() => {
+    const profileLog = (Array.isArray(foodLog) ? foodLog : []).filter(f => f.profile === currentProfile);
+    if (profileLog.length === 0) return 0;
+    const loggedDays = new Set(profileLog.map(f => f.date));
+    let streak = 0;
+    const d = new Date();
+    while (true) {
+      const dk = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      if (!loggedDays.has(dk)) break;
+      streak++;
+      d.setDate(d.getDate() - 1);
+    }
+    return streak;
+  }, [foodLog, currentProfile]);
 
   // ── Effects ──
   useEffect(() => {
@@ -555,7 +634,7 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
       clearTimeout(voiceTimerRef.current);
       setVoiceLoading(true);
 
-      const res = await groqFetch(GROQ_KEY, [
+      const res = await callAI(GROQ_KEY, [
         { role: "system", content: "You are a nutrition extractor. Return ONLY valid JSON array, no explanation." },
         { role: "user", content: `Extract food items from: "${transcript}". Return JSON array: [{"food":"name","qty":number,"unit":"g or oz or cup or piece","meal":"Breakfast or Lunch or Dinner or Snacks","cal":number,"protein":number,"carbs":number,"fat":number}]. Use USDA data. If meal not mentioned, use "Snacks".` }
       ], { maxTokens: 600 });
@@ -801,6 +880,21 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
   return (
     <div style={{ padding: V.sp3, maxWidth: 480, margin: "0 auto" }}>
 
+      {/* ── LOGGING STREAK ── */}
+      {(Array.isArray(foodLog) ? foodLog : []).some(f => f.profile === currentProfile) && (
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          gap: 6, marginBottom: 10, padding: "8px 16px",
+          background: loggingStreak > 0 ? V.bgCardAlt : "transparent",
+          borderRadius: V.r2, fontSize: 13, fontWeight: 600, color: V.textPrimary,
+        }}>
+          {loggingStreak > 0
+            ? <><span>🔥</span><span>{loggingStreak}-day logging streak</span></>
+            : <span style={{ color: V.textMuted, fontWeight: 400 }}>Log today to start a streak!</span>
+          }
+        </div>
+      )}
+
       {/* ── HAT MODE TOGGLE ── */}
       <div style={{ display: "flex", gap: 6, marginBottom: V.sp3, justifyContent: "center" }}>
         {[
@@ -889,8 +983,24 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
 
       {/* ── DASHBOARD HAT: ENERGY ── */}
       {hatMode === "energy" && (
-        <div style={{ ...card, display: "flex", justifyContent: "center" }}>
+        <div style={{ ...card, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
           <MacroRing value={todayMacros.cal} target={goals.calories || 2200} color="#4A90D9" label="Net Energy" unit="cal" size={120} strokeWidth={10} />
+          <div style={{ textAlign: "center" }}>
+            {tdeeResult ? (
+              <>
+                <div style={{ fontSize: 13, fontWeight: 700, color: V.textPrimary }}>
+                  Est. TDEE: {tdeeResult.tdee} cal/day
+                </div>
+                <div style={{ fontSize: 12, color: V.textMuted, marginTop: 2 }}>
+                  ({tdeeResult.days}-day average · {Math.abs(tdeeResult.weightChange)} lb {Number(tdeeResult.weightChange) >= 0 ? "gained" : "lost"})
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 13, color: V.textMuted }}>
+                Log 7+ days of weight &amp; food to unlock TDEE
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -967,6 +1077,7 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
         const mealItems = todayLog.filter(f => f.meal === meal.key);
         const mealCals = mealItems.reduce((s, f) => s + (Number(f.calories) || 0), 0);
         const expanded = expandedMeals[meal.key];
+        const grade = scoreMeal(mealItems);
 
         return (
           <div key={meal.key} style={{ ...card, padding: 0, overflow: "hidden" }}>
@@ -984,6 +1095,16 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
               </span>
               <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontSize: 13, color: V.textMuted, fontWeight: 600 }}>{fmt(mealCals)} cal</span>
+                {grade && (
+                  <span style={{
+                    fontSize: 12, fontWeight: 700, marginLeft: 6, padding: "1px 6px",
+                    borderRadius: V.r1 || 4,
+                    background: grade === "A" ? "#22c55e" : grade === "B" ? "#3b82f6" : grade === "C" ? "#f59e0b" : grade === "D" ? "#f97316" : "#ef4444",
+                    color: "#fff",
+                  }} aria-label={`Meal grade ${grade}`}>
+                    {grade}
+                  </span>
+                )}
                 <span style={{ fontSize: 16, color: V.textMuted, transform: expanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>
                   &#9660;
                 </span>
