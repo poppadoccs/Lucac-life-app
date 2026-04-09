@@ -345,7 +345,7 @@ export default function SettingsTab({ V, THEMES, themeName, setThemeName, profil
                             const next = e.target.checked
                               ? [...(config.activeSubjects||[]), subj.id]
                               : (config.activeSubjects||[]).filter(s=>s!==subj.id);
-                            fbSet(`curriculum/${p.name}/activeSubjects`, next);
+                            if (fbSet) fbSet(`curriculum/${p.name}/activeSubjects`, next);
                           }}
                           style={{width:18,height:18,cursor:"pointer",accentColor:V.accent}} />
                         <label htmlFor={`${p.id}-${subj.id}`} style={{fontSize:13,color:V.textPrimary,fontWeight:600,cursor:"pointer",flex:1}}>
@@ -357,7 +357,7 @@ export default function SettingsTab({ V, THEMES, themeName, setThemeName, profil
                           setEliLoading(false);
                           setEliModal({subjectLabel:subj.label,text});
                         }} disabled={eliLoading}
-                          style={{...btnSecondary,padding:"3px 8px",fontSize:11}}>
+                          style={{...btnSecondary,padding:"6px 12px",fontSize:12,minHeight:36}}>
                           {eliLoading?"...":"💡 Refresh"}
                         </button>
                       </div>

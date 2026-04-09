@@ -5,7 +5,7 @@
 // Worlds unlock when the previous table accuracy ≥ 60% OR was cleared this session.
 
 import { useState, useEffect, useRef } from "react";
-import { GameBtn, recordGameHistory, ageBandFromProfile } from "./_shared";
+import { GameBtn, recordGameHistory, ageBandFromProfile, generateMathProblem } from "./_shared";
 import { recordAttempt } from "../LearningEngine";
 
 const WORLDS = [
@@ -69,13 +69,16 @@ export default function MultiplicationMonsters({
   const [bossCorrect, setBossCorrect] = useState(0);
   const [sessionWins, setSessionWins] = useState(new Set()); // world indices cleared this session
 
-  const flashingRef  = useRef(false);
-  const starsRef     = useRef(0);
-  const scoreRef     = useRef(0);
-  const startTimeRef = useRef(0);
+  const flashingRef     = useRef(false);
+  const starsRef        = useRef(0);
+  const scoreRef        = useRef(0);
+  const startTimeRef    = useRef(0);
+  const bossCorrectRef  = useRef(0); // tracks correct count without stale closure
+  const bossEndedRef    = useRef(false); // prevents double-endBoss from timer+answer race
 
   useEffect(() => { starsRef.current = stars; }, [stars]);
   useEffect(() => { scoreRef.current = score; }, [score]);
+  useEffect(() => { bossCorrectRef.current = bossCorrect; }, [bossCorrect]);
 
   // ── Unlock logic ──────────────────────────────────────────────────────────
   function isUnlocked(idx) {
@@ -165,15 +168,17 @@ export default function MultiplicationMonsters({
     setBossProbs(probs);
     setBossIdx(0);
     setBossCorrect(0);
+    bossCorrectRef.current = 0;
+    bossEndedRef.current = false;
     setBossTime(BOSS_SECONDS);
     setPhase("boss");
   }
 
-  // Boss countdown timer
+  // Boss countdown timer — uses bossCorrectRef to avoid stale closure
   useEffect(() => {
     if (phase !== "boss") return;
     if (bossTime <= 0) {
-      setBossCorrect(c => { endBoss(c); return c; });
+      if (!bossEndedRef.current) endBoss(bossCorrectRef.current);
       return;
     }
     const t = setTimeout(() => setBossTime(s => s - 1), 1000);
@@ -184,7 +189,8 @@ export default function MultiplicationMonsters({
     if (phase !== "boss" || bossIdx >= BOSS_PROBLEMS) return;
     const correct = choice === bossProbs[bossIdx]?.answer;
     recordAttempt(fbSet, profile?.name, "multiplication", correct, 0);
-    const newCorrect = bossCorrect + (correct ? 1 : 0);
+    const newCorrect = bossCorrectRef.current + (correct ? 1 : 0);
+    bossCorrectRef.current = newCorrect;
     setBossCorrect(newCorrect);
     const nextIdx = bossIdx + 1;
     setBossIdx(nextIdx);
@@ -194,6 +200,8 @@ export default function MultiplicationMonsters({
   }
 
   function endBoss(correctCount) {
+    if (bossEndedRef.current) return;
+    bossEndedRef.current = true;
     const won = correctCount >= Math.ceil(BOSS_PROBLEMS * 0.6);
     if (won) {
       addStars?.(3);

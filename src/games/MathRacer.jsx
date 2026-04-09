@@ -4,17 +4,24 @@
 // Integrates with LearningEngine.recordAttempt for adaptive learning.
 
 import { useState, useEffect, useRef } from "react";
-import { GameBtn, recordGameHistory, ageBandFromProfile } from "./_shared";
+import { GameBtn, recordGameHistory, ageBandFromProfile, generateMathProblem } from "./_shared";
 import { recordAttempt } from "../LearningEngine";
 
 const LANE_COLORS = ["#60a5fa", "#34d399", "#f87171", "#a78bfa"];
 
-// Generate a multiplication problem for the given times table
+// Generate a multiplication problem for a specific times table with 4 answer lanes.
+// Uses generateMathProblem from _shared as wrong-answer candidates; adds a 4th choice.
 function makeRacerProblem(table) {
   const b = Math.floor(Math.random() * 12) + 1;
   const answer = table * b;
   const question = `${table} × ${b} = ?`;
+  // Seed wrong answers from _shared generator, then fill to 4 with custom deltas
+  const sharedChoices = generateMathProblem("easy", "multiplication").choices;
   const choices = [answer];
+  for (const c of sharedChoices) {
+    if (choices.length >= 4) break;
+    if (c !== answer && !choices.includes(c)) choices.push(c);
+  }
   while (choices.length < 4) {
     const delta = (Math.floor(Math.random() * 6) + 1) * (Math.random() > 0.5 ? 1 : -1);
     const wrong = answer + delta;
