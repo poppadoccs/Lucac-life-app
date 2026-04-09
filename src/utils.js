@@ -16,6 +16,7 @@ export async function groqFetch(apiKey, messages, opts = {}) {
     return { ok: false, data: null, error: `AI is resting — try again in ${waitSecs}s` };
   }
 
+  const { temperature = 0.7 } = opts;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
 
@@ -23,7 +24,7 @@ export async function groqFetch(apiKey, messages, opts = {}) {
     const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model, max_tokens: maxTokens, messages }),
+      body: JSON.stringify({ model, max_tokens: maxTokens, messages, temperature }),
       signal: controller.signal,
     });
     clearTimeout(timer);
@@ -59,6 +60,52 @@ export function isRateLimited() {
 }
 export function setRateLimited(ms) {
   _rateLimitState.retryAfter = Date.now() + ms;
+}
+
+// callAI — unified AI call function (AI-06 foundation, provider-agnostic interface).
+// Currently wraps Groq only. When AI-06 ships this will auto-fallback
+// Groq → OpenRouter → Ollama without callers needing to change.
+export async function callAI(apiKey, messages, opts = {}) {
+  return groqFetch(apiKey, messages, opts);
+}
+
+// computeExpr — safe sandboxed math evaluator.
+// Returns the numeric result of an arithmetic expression string, or null if
+// the expression contains unsafe chars or throws.  Kid-friendly operators
+// (x, ×, ÷) are normalised to JS operators before evaluation.
+// Exported separately so callers can compute deterministic math outside the
+// regex-scanner context (e.g., unit tests, future math widgets).
+export function computeExpr(expr) {
+  const normalized = expr.replace(/[x×]/gi, "*").replace(/÷/g, "/");
+  // Whitelist: only digits, operators, decimal points, whitespace — no keywords or function calls
+  if (!/^[\d\s+\-*/.]+$/.test(normalized)) return null;
+  try {
+    // eslint-disable-next-line no-new-func
+    const result = Function(`"use strict"; return (${normalized});`)();
+    if (typeof result !== "number" || !isFinite(result)) return null;
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+// verifyMath — scan AI text and silently correct wrong arithmetic before display.
+// Moved here from HomeworkHelper.jsx so it is reusable across all components.
+// Scans for "<expr> = <answer>" patterns; replaces wrong answers with the
+// correct value from computeExpr.  Float-tolerance comparison prevents
+// 0.1+0.2 = 0.30000000000000004 false-positive corrections.
+// Background: the "5×10=40 incident" — LLMs pattern-match tokens, they don't
+// compute.  Prompt-level "please double-check" fails ~5% of the time.
+// This is the hard guarantee: JavaScript computes the truth, not the LLM.
+export function verifyMath(text) {
+  if (typeof text !== "string" || !text) return text;
+  const pattern = /(\d+(?:\.\d+)?(?:\s*[+\-*x×/÷]\s*\d+(?:\.\d+)?)+)\s*=\s*(-?\d+(?:\.\d+)?)/gi;
+  return text.replace(pattern, (match, expr, statedAnswer) => {
+    const trueAnswer = computeExpr(expr);
+    if (trueAnswer === null) return match;
+    if (Math.abs(Number(statedAnswer) - trueAnswer) < 1e-9) return match;
+    return `${expr} = ${trueAnswer}`;
+  });
 }
 
 // --- Parse JSON from Groq response (strips markdown fences) ---

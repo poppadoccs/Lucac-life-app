@@ -1,6 +1,6 @@
 // src/aiAgent.js — The Lucac Life AI Agent Engine
 // Replaces ALL regex-based parsing with Groq native function calling
-import { isRateLimited, setRateLimited } from './utils.js';
+import { isRateLimited, setRateLimited, callAI } from './utils.js';
 
 const MODEL_HEAVY = 'llama-3.3-70b-versatile'; // tool calling, complex reasoning
 const MODEL_LIGHT = 'llama-3.1-8b-instant';    // simple text, connection tests
@@ -454,11 +454,11 @@ async function executeReadTool(funcName, args, appState, apiKey) {
       const kidPrompt = isKid
         ? "You are a kind, warm friend talking to a child (age 6-8). Use simple words. Be encouraging and gentle. Use emoji. Make them feel safe and heard. Never dismiss their feelings. Keep it to 2-3 short sentences."
         : "You are a supportive friend. Be warm, real, and honest — not fake-positive. Acknowledge what they're feeling first, then help them see a path forward. If they're happy, celebrate with them. If they're sad, sit with them in it before offering hope. Keep it to 3-4 sentences. Be conversational, not clinical.";
-      const supportResp = await callGroqWithRetry(apiKey, [
+      const result = await callAI(apiKey, [
         { role: 'system', content: kidPrompt },
         { role: 'user', content: `I'm feeling ${args.emotion}. ${args.context}` }
-      ], null, { temperature: 0.8 });
-      return supportResp.choices?.[0]?.message?.content || "I'm here for you. Tell me more about what's going on.";
+      ], { model: MODEL_LIGHT, maxTokens: 400, temperature: 0.8 });
+      return result.ok ? result.data : "I'm here for you. Tell me more about what's going on.";
     }
     case 'generate_daily_briefing': {
       return appState.getDailyBriefingData(args.forPerson);
@@ -477,26 +477,10 @@ async function executeReadTool(funcName, args, appState, apiKey) {
 
 // ═══ SIMPLE CONNECTION TEST ═══
 async function testGroqConnection(apiKey) {
-  if (isRateLimited()) {
-    return { ok: false, error: 'Rate limited — try again shortly' };
-  }
-  try {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: MODEL_LIGHT, messages: [{ role: 'user', content: 'Say hello in one word.' }], max_tokens: 10, temperature: 0 })
-    });
-    if (response.status === 429) {
-      const retryHeader = response.headers.get('retry-after');
-      setRateLimited(retryHeader ? parseInt(retryHeader) * 1000 : 60000);
-    }
-    const data = await response.json();
-    console.log('[testGroq] Status:', response.status, 'Response:', JSON.stringify(data).slice(0, 200));
-    return { ok: response.ok, status: response.status, data };
-  } catch (error) {
-    console.error('[testGroq] Error:', error);
-    return { ok: false, error: error.message };
-  }
+  const result = await callAI(apiKey, [{ role: 'user', content: 'Say hello in one word.' }], {
+    model: MODEL_LIGHT, maxTokens: 10, temperature: 0, timeout: 10000
+  });
+  return { ok: result.ok, error: result.error };
 }
 
 // ═══ TYPE COERCION — Groq returns strings for booleans/numbers ═══

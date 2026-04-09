@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { groqFetch, createSpeechRecognition, triggerConfetti, speakText } from "./utils";
+import { callAI, verifyMath, createSpeechRecognition, triggerConfetti, speakText } from "./utils";
 
 const SUBJECTS = [
   { key: "math", label: "Math", icon: "\u{1F522}" },
@@ -119,47 +119,6 @@ function shouldCelebrate(text, age) {
     return /great|awesome|correct|right|amazing|fantastic|wonderful|good job|well done|perfect|excellent|bravo/.test(lower);
   }
   return /correct|well done|excellent|perfect/.test(lower);
-}
-
-// JavaScript ground-truth math verification.
-// LLMs pattern-match arithmetic; they don't actually compute. Every time we ask
-// Groq to explain 5+4, there's a real chance it writes "= 8" or "= 10". This
-// function scans the AI's response for "<expression> = <answer>" patterns,
-// computes the true answer in a sandboxed Function() (only digits and
-// arithmetic operators allowed — no arbitrary code), and silently rewrites any
-// wrong answer to the correct one before the student ever sees it.
-//
-// Handles: 5+4=9, 5 + 4 = 9, 5×10=50, 5x10=50, 12÷3=4, 1+2+3=6, 5+4*2=13.
-// Skips: word-answer forms ("five plus four is nine"), fractional answers like
-// "3/4" that can't be a trailing number, word problems without explicit
-// expressions, and any expression containing non-numeric chars.
-//
-// Background: the "5×10=40 incident" from earlier in this project got a
-// prompt-only "please double-check" fix, which LLMs ignore ~5% of the time.
-// This is the hard fix that actually guarantees correctness.
-function verifyMath(text) {
-  if (typeof text !== "string" || !text) return text;
-  // Match: <number>(<op><number>)+ = <number>
-  // Operators: + - * x × / ÷    (x and × are kid/teacher multiply notation)
-  const pattern = /(\d+(?:\.\d+)?(?:\s*[+\-*x×/÷]\s*\d+(?:\.\d+)?)+)\s*=\s*(-?\d+(?:\.\d+)?)/gi;
-  return text.replace(pattern, (match, expr, statedAnswer) => {
-    // Normalize kid-friendly operators to JS operators
-    const normalized = expr.replace(/[x×]/gi, "*").replace(/÷/g, "/");
-    // Whitelist: only digits, standard operators, dots, whitespace — NO letters,
-    // NO keywords, NO function calls. This makes Function() safe against code injection.
-    if (!/^[\d\s+\-*/.]+$/.test(normalized)) return match;
-    try {
-      // eslint-disable-next-line no-new-func
-      const trueAnswer = Function(`"use strict"; return (${normalized});`)();
-      if (typeof trueAnswer !== "number" || !isFinite(trueAnswer)) return match;
-      // Float-tolerance comparison (0.1 + 0.2 = 0.30000000000000004 shouldn't trip us)
-      if (Math.abs(Number(statedAnswer) - trueAnswer) < 1e-9) return match;
-      // AI was WRONG. Replace with the correct answer while keeping the expression formatting.
-      return `${expr} = ${trueAnswer}`;
-    } catch {
-      return match;
-    }
-  });
 }
 
 // BF-0: Deterministic safety guard for kid input.
@@ -404,7 +363,7 @@ export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY,
     // ALSO bumps maxTokens to 1500 for thorough standard-mode responses.
     let result;
     try {
-      result = await groqFetch(GROQ_KEY, apiMessages, {
+      result = await callAI(GROQ_KEY, apiMessages, {
         maxTokens: (detailMode || subject === "reading") ? 1500 : 300,
       });
     } catch {

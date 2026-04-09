@@ -296,6 +296,36 @@ export default function GroqAssistant({
             break;
           }
 
+          case "delete_events_bulk": {
+            const args = action.args;
+            if (userRole !== "admin") {
+              results.push("\u274C Bulk delete requires admin access.");
+              break;
+            }
+            const updated = { ...(events || {}) };
+            let deletedCount = 0;
+            const keyword = (args.searchTerm || "").toLowerCase();
+            for (const d of Object.keys(updated)) {
+              if (args.date && d !== args.date) continue;
+              const before = (updated[d] || []).length;
+              updated[d] = args.deleteAll && !keyword
+                ? []
+                : (updated[d] || []).filter(e => keyword
+                    ? !(e.title || "").toLowerCase().includes(keyword)
+                    : false);
+              deletedCount += before - updated[d].length;
+              if (updated[d].length === 0) delete updated[d];
+            }
+            if (deletedCount > 0) {
+              fbSet("events", updated);
+              showToast(`Deleted ${deletedCount} event${deletedCount !== 1 ? "s" : ""}`, "success");
+              results.push(`\u2705 Deleted ${deletedCount} event${deletedCount !== 1 ? "s" : ""}`);
+            } else {
+              results.push("\u274C No matching events found to delete.");
+            }
+            break;
+          }
+
           case "edit_event": {
             const args = action.args;
             const keyword = (args.searchTerm || "").toLowerCase();
