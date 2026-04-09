@@ -47,6 +47,15 @@ function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
 
+// Advance a YYYY-MM-DD date string by one frequency unit
+function advanceDate(dateStr, frequency) {
+  const d = new Date(dateStr + "T00:00:00");
+  if (frequency === "weekly")       d.setDate(d.getDate() + 7);
+  else if (frequency === "monthly") d.setMonth(d.getMonth() + 1);
+  else if (frequency === "yearly")  d.setFullYear(d.getFullYear() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
 // ═══ DATE PERIOD HELPERS ═══
 
 function getWeekRange(date) {
@@ -224,6 +233,80 @@ function DonutChart({ allCategories, catMap, categoryTotals, totalSpent, budgetL
   );
 }
 
+// ═══ MONTHLY TREND BAR CHART ═══
+
+function MonthlyTrendChart({ transactions, V }) {
+  const months = [];
+  const now = new Date();
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const y = d.getFullYear();
+    const m = d.getMonth();
+    const start = new Date(y, m, 1).toISOString().slice(0, 10);
+    const end   = new Date(y, m + 1, 0).toISOString().slice(0, 10);
+    const label = d.toLocaleDateString("en-US", { month: "short" });
+    const total = transactions
+      .filter((t) => t.date >= start && t.date <= end)
+      .reduce((s, t) => s + (Number(t.amount) || 0), 0);
+    months.push({ label, total });
+  }
+
+  const maxVal = Math.max(...months.map((m) => m.total), 1);
+  const svgH = 120;
+  const barW = 32;
+  const barGap = 8;
+  const padT = 20;
+  const padB = 24;
+  const svgW = months.length * (barW + barGap) + barGap;
+
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <svg
+        width="100%"
+        viewBox={`0 0 ${svgW} ${svgH}`}
+        role="img"
+        aria-label="Monthly spending trend bar chart"
+        style={{ display: "block", minWidth: svgW }}
+      >
+        {months.map((m, i) => {
+          const x    = barGap + i * (barW + barGap);
+          const barH = m.total > 0
+            ? Math.max(4, (m.total / maxVal) * (svgH - padT - padB))
+            : 2;
+          const y = svgH - padB - barH;
+          const isCurrentMonth = i === 5;
+          return (
+            <g key={i}>
+              <rect
+                x={x} y={y} width={barW} height={barH}
+                fill={isCurrentMonth ? V.accent : (V.accent + "88")}
+                rx={3}
+                aria-label={`${m.label}: ${fmtMoney(m.total)}`}
+              />
+              {m.total > 0 && (
+                <text
+                  x={x + barW / 2} y={Math.max(y - 3, padT - 2)}
+                  textAnchor="middle"
+                  style={{ fontSize: 9, fill: V.textSecondary, fontWeight: isCurrentMonth ? 700 : 400 }}
+                >
+                  {fmtMoney(m.total).replace("$", "$")}
+                </text>
+              )}
+              <text
+                x={x + barW / 2} y={svgH - 6}
+                textAnchor="middle"
+                style={{ fontSize: 10, fill: isCurrentMonth ? V.textPrimary : V.textMuted, fontWeight: isCurrentMonth ? 700 : 400 }}
+              >
+                {m.label}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
 // ═══ MAIN COMPONENT ═══
 
 export default function BudgetTab({ V, currentProfile, fbSet, GROQ_KEY, showToast, profiles, custodySchedule, budgetData, isAdmin }) {
@@ -253,10 +336,19 @@ export default function BudgetTab({ V, currentProfile, fbSet, GROQ_KEY, showToas
   const [aiMode, setAiMode] = useState("add"); // "add" | "ask"
   const [aiResponse, setAiResponse] = useState("");
 
+  // ─── Recurring expenses ───
+  const [showRecurring, setShowRecurring] = useState(false);
+  const [recDescription, setRecDescription] = useState("");
+  const [recAmount, setRecAmount] = useState("");
+  const [recCategory, setRecCategory] = useState("Bills");
+  const [recFrequency, setRecFrequency] = useState("monthly");
+  const [recStartDate, setRecStartDate] = useState(() => todayStr());
+
   // ─── Derived data ───
   const transactions = budgetData?.transactions || [];
   const categoryBudgets = budgetData?.categoryBudgets || {};
   const customCategories = budgetData?.customCategories || [];
+  const recurringExpenses = budgetData?.recurringExpenses || [];
 
   const allCategories = useMemo(() => {
     const customs = customCategories.map((c) => ({
@@ -328,6 +420,15 @@ export default function BudgetTab({ V, currentProfile, fbSet, GROQ_KEY, showToas
     return monthlyBudget;
   }, [period, monthlyBudget]);
 
+  // Safe to spend (PocketGuard-inspired)
+  const safeToSpend = budgetLimit - totalSpent;
+  const daysLeftInPeriod = useMemo(() => {
+    const end = new Date(currentRange.end + "T00:00:00");
+    const now = new Date();
+    return Math.max(0, Math.ceil((end - now) / 86400000));
+  }, [currentRange.end]);
+  const safePerDay = daysLeftInPeriod > 0 ? safeToSpend / daysLeftInPeriod : 0;
+
   // Biggest category
   const biggestCategory = useMemo(() => {
     let maxK = null, maxV = 0;
@@ -384,8 +485,30 @@ export default function BudgetTab({ V, currentProfile, fbSet, GROQ_KEY, showToas
 
   // ─── Firebase save helper ───
   function saveBudget(patch) {
-    fbSet("budgetData", { ...budgetData, transactions, categoryBudgets, customCategories, ...patch });
+    fbSet("budgetData", { ...budgetData, transactions, categoryBudgets, customCategories, recurringExpenses, ...patch });
   }
+
+  // ─── Auto-process recurring expenses on load ───
+  // When a recurring entry's nextDate <= today, auto-add transaction + advance nextDate.
+  // Safe: after Firebase writes, nextDates advance → effect re-runs but finds nothing due.
+  useEffect(() => {
+    if (!budgetData) return;
+    const todayDate = todayStr();
+    const currentRE = budgetData.recurringExpenses || [];
+    const due = currentRE.filter((re) => re.nextDate && re.nextDate <= todayDate);
+    if (due.length === 0) return;
+    const newTx = [...(budgetData.transactions || [])];
+    const updatedRE = currentRE.map((re) => {
+      if (!re.nextDate || re.nextDate > todayDate) return re;
+      newTx.push({
+        id: uid(), amount: re.amount, store: re.description,
+        category: re.category, date: re.nextDate,
+        note: "Auto-recurring", recurring: true,
+      });
+      return { ...re, nextDate: advanceDate(re.nextDate, re.frequency) };
+    });
+    fbSet("budgetData", { ...budgetData, transactions: newTx, recurringExpenses: updatedRE });
+  }, [budgetData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Category management ───
   function addCustomCategory() {
@@ -559,6 +682,52 @@ Answer naturally and concisely. If asked to organize, group by category and find
     const next = new Set(bulkSelected);
     if (next.has(id)) next.delete(id); else next.add(id);
     setBulkSelected(next);
+  }
+
+  // ─── Recurring expense management ───
+  function addRecurringExpense() {
+    const amt = parseFloat(recAmount);
+    if (!amt || amt <= 0) { showToast("Enter a valid amount"); return; }
+    const desc = recDescription.trim();
+    if (!desc) { showToast("Enter a description"); return; }
+    const newRE = {
+      id: uid(), description: desc, amount: amt,
+      category: recCategory, frequency: recFrequency, nextDate: recStartDate,
+    };
+    saveBudget({ recurringExpenses: [...recurringExpenses, newRE] });
+    setRecDescription(""); setRecAmount(""); setRecFrequency("monthly"); setRecStartDate(todayStr());
+    showToast(`Added recurring: ${desc}`);
+  }
+
+  function deleteRecurringExpense(id) {
+    saveBudget({ recurringExpenses: recurringExpenses.filter((re) => re.id !== id) });
+    showToast("Recurring expense removed");
+  }
+
+  // ─── CSV export ───
+  function downloadCSV() {
+    const rows = [
+      ["Date", "Store", "Category", "Amount", "Note", "Recurring"],
+      ...sortedTx.map((t) => [
+        t.date || "",
+        `"${(t.store || "").replace(/"/g, '""')}"`,
+        t.category || "Other",
+        (Number(t.amount) || 0).toFixed(2),
+        `"${(t.note || "").replace(/"/g, '""')}"`,
+        t.recurring ? "Yes" : "No",
+      ]),
+    ];
+    const csvText = rows.map((r) => r.join(",")).join("\n");
+    const blob = new Blob([csvText], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `budget-${currentRange.label.replace(/[^a-zA-Z0-9]/g, "-")}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast("CSV downloaded!");
   }
 
   // ─── Budget limits ───
@@ -795,6 +964,24 @@ Answer naturally and concisely. If asked to organize, group by category and find
               );
             })()}
           </div>
+          {budgetLimit > 0 && (
+            <div style={{
+              flex: "1 1 120px", padding: 12, borderRadius: V.r2,
+              background: safeToSpend >= 0 ? (V.success || "#22c55e") + "12" : "#f9731612",
+              border: `1px solid ${safeToSpend >= 0 ? (V.success || "#22c55e") + "44" : "#f9731644"}`,
+              textAlign: "center",
+            }}>
+              <div style={{ fontSize: 11, color: V.textMuted, marginBottom: 2 }}>Safe to Spend</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: safeToSpend >= 0 ? V.success || "#22c55e" : "#f97316" }}>
+                {safeToSpend >= 0 ? fmtMoney(safeToSpend) : "-" + fmtMoney(Math.abs(safeToSpend))}
+              </div>
+              {daysLeftInPeriod > 0 && (
+                <div style={{ fontSize: 10, color: V.textMuted }}>
+                  {safePerDay >= 0 ? fmtMoney(safePerDay) : "-" + fmtMoney(Math.abs(safePerDay))}/day · {daysLeftInPeriod}d left
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Per-category progress bars */}
@@ -1028,6 +1215,116 @@ Answer naturally and concisely. If asked to organize, group by category and find
         )}
       </div>
 
+      {/* ─── Recurring Expenses ─── */}
+      <div style={cardStyle}>
+        <button
+          style={{ ...btnSecondary, width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between" }}
+          onClick={() => setShowRecurring(!showRecurring)}
+          aria-expanded={showRecurring}
+          aria-label="Toggle recurring expenses"
+        >
+          <span style={{ fontWeight: 700 }}>
+            Recurring Expenses
+            {recurringExpenses.length > 0 && (
+              <span style={{ fontSize: 12, fontWeight: 400, color: V.textMuted, marginLeft: 8 }}>({recurringExpenses.length})</span>
+            )}
+          </span>
+          <span style={{ fontSize: 18 }}>{showRecurring ? "\u25B2" : "\u25BC"}</span>
+        </button>
+
+        {showRecurring && (
+          <div style={{ marginTop: 14 }}>
+            {/* Add form */}
+            <div style={{ fontSize: 13, fontWeight: 700, color: V.textPrimary, marginBottom: 8 }}>Add Recurring Expense</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+              <input
+                style={{ ...inputStyle, flex: "1 1 140px" }}
+                placeholder="Description (e.g. Spotify)"
+                value={recDescription}
+                onChange={(e) => setRecDescription(e.target.value)}
+                aria-label="Recurring expense description"
+              />
+              <input
+                style={{ ...inputStyle, flex: "0 0 90px" }}
+                type="number"
+                placeholder="Amount"
+                value={recAmount}
+                onChange={(e) => setRecAmount(e.target.value)}
+                min="0"
+                step="0.01"
+                aria-label="Recurring amount"
+              />
+            </div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+              <select
+                style={{ ...inputStyle, flex: "1 1 120px" }}
+                value={recCategory}
+                onChange={(e) => setRecCategory(e.target.value)}
+                aria-label="Recurring category"
+              >
+                {allCategories.map((c) => (
+                  <option key={c.key} value={c.key}>{c.emoji} {c.key}</option>
+                ))}
+              </select>
+              <select
+                style={{ ...inputStyle, flex: "0 0 120px" }}
+                value={recFrequency}
+                onChange={(e) => setRecFrequency(e.target.value)}
+                aria-label="Frequency"
+              >
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="yearly">Yearly</option>
+              </select>
+              <input
+                style={{ ...inputStyle, flex: "0 0 140px" }}
+                type="date"
+                value={recStartDate}
+                onChange={(e) => setRecStartDate(e.target.value)}
+                aria-label="Next due date"
+              />
+            </div>
+            <button style={btnPrimary} onClick={addRecurringExpense} aria-label="Add recurring expense">
+              Add Recurring
+            </button>
+
+            {/* Existing recurring list */}
+            {recurringExpenses.length > 0 && (
+              <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: V.textPrimary }}>Scheduled</div>
+                {recurringExpenses.map((re) => {
+                  const catInfo = catMap[re.category] || catMap["Other"];
+                  return (
+                    <div key={re.id} style={{
+                      display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
+                      background: V.bgInput, borderRadius: V.r2,
+                    }}>
+                      <span style={{ fontSize: 20 }}>{catInfo?.emoji || "\u{1F4E6}"}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: V.textPrimary }}>{re.description}</div>
+                        <div style={{ fontSize: 11, color: V.textMuted }}>
+                          {re.category} · {re.frequency} · next: {fmtDate(re.nextDate)}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: V.textPrimary, whiteSpace: "nowrap" }}>
+                        {fmtMoney(re.amount)}
+                      </div>
+                      <button
+                        style={btnDanger}
+                        onClick={() => deleteRecurringExpense(re.id)}
+                        aria-label={`Remove recurring ${re.description}`}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* ─── Category Chips ─── */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: V.sp3 }}>
         {allCategories.map((cat) => {
@@ -1110,6 +1407,17 @@ Answer naturally and concisely. If asked to organize, group by category and find
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* ─── Monthly Trend Chart ─── */}
+      <div style={cardStyle}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: V.textPrimary, marginBottom: 10 }}>
+          6-Month Spending Trend
+        </div>
+        <MonthlyTrendChart transactions={transactions} V={V} />
+        <div style={{ fontSize: 11, color: V.textMuted, textAlign: "center", marginTop: 4 }}>
+          Current month highlighted · bars labeled with totals
         </div>
       </div>
 
@@ -1445,14 +1753,23 @@ Answer naturally and concisely. If asked to organize, group by category and find
         )}
       </div>
 
-      {/* ─── Export Button ─── */}
-      <button
-        style={{ ...btnSecondary, width: "100%", textAlign: "center", marginBottom: V.sp4 }}
-        onClick={copyExport}
-        aria-label="Copy budget summary to clipboard"
-      >
-        Copy Summary
-      </button>
+      {/* ─── Export Buttons ─── */}
+      <div style={{ display: "flex", gap: 8, marginBottom: V.sp4 }}>
+        <button
+          style={{ ...btnSecondary, flex: 1, textAlign: "center" }}
+          onClick={copyExport}
+          aria-label="Copy budget summary to clipboard"
+        >
+          Copy Summary
+        </button>
+        <button
+          style={{ ...btnSecondary, flex: 1, textAlign: "center" }}
+          onClick={downloadCSV}
+          aria-label="Download transactions as CSV file"
+        >
+          Download CSV
+        </button>
+      </div>
     </div>
   );
 }
