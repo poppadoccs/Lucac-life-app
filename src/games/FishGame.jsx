@@ -42,6 +42,8 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
   const fishPosRef              = useRef({ x: 50, y: 50 });
   const fishSizeRef             = useRef(5);
   const fishInvincibleUntilRef  = useRef(0);
+  const speedBoostTimerRef      = useRef(null);
+  const doubleStarsTimerRef     = useRef(null);
 
   // Keep refs in sync
   useEffect(() => { fishPosRef.current = fishPos; },           [fishPos]);
@@ -170,12 +172,11 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
   useEffect(() => {
     if (!fishActive || fishSize >= 10 || fishGameOver || victory || boss) return;
     const show = () => {
-      if (!fishMathBubble) {
-        setFishMathBubble({
-          ...generateMathProblem(mathDifficulty),
-          x: Math.random() * 60 + 20, y: Math.random() * 50 + 15,
-        });
-      }
+      // Functional form avoids stale closure on fishMathBubble
+      setFishMathBubble(prev => prev ?? {
+        ...generateMathProblem(mathDifficulty),
+        x: Math.random() * 60 + 20, y: Math.random() * 50 + 15,
+      });
     };
     const iv      = setInterval(show, 12000);
     const timeout = setTimeout(show, 3000);
@@ -192,17 +193,19 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
       setFishPowerMsg("POWER UP! +2 Size! ✨");
       setTimeout(() => setFishPowerMsg(null), 800);
     } else if (type === "speed") {
+      if (speedBoostTimerRef.current) clearTimeout(speedBoostTimerRef.current);
       setSpeedBoost(true);
       setFishPowerMsg("SPEED BOOST! ⚡ 8s");
-      setTimeout(() => { setSpeedBoost(false); setFishPowerMsg(null); }, 8000);
+      speedBoostTimerRef.current = setTimeout(() => { setSpeedBoost(false); setFishPowerMsg(null); }, 8000);
     } else if (type === "shield") {
       setShield(true);
       setFishPowerMsg("SHIELD ACTIVE! 🛡️");
       setTimeout(() => setFishPowerMsg(null), 800);
     } else if (type === "doubleStars") {
+      if (doubleStarsTimerRef.current) clearTimeout(doubleStarsTimerRef.current);
       setDoubleStars(true);
       setFishPowerMsg("DOUBLE STARS! ⭐⭐ 15s");
-      setTimeout(() => { setDoubleStars(false); setFishPowerMsg(null); }, 15000);
+      doubleStarsTimerRef.current = setTimeout(() => { setDoubleStars(false); setFishPowerMsg(null); }, 15000);
     }
     if (isLucaMode) speakText("Power up!");
   };
@@ -232,7 +235,7 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
         setFishPowerMsg("SHIELD BLOCKED! 🛡️");
         setTimeout(() => setFishPowerMsg(null), 800);
       } else {
-        setFishSize(s => Math.max(0.5, s - 1));
+        setFishSize(s => { const n = s - 1; if (n <= 0) setFishGameOver(true); return Math.max(0.5, n); });
         setFishFlashRed(true);
         setTimeout(() => setFishFlashRed(false), 300);
       }
@@ -479,7 +482,7 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
                       if (c === fishMathBubble.answer) {
                         applyPowerUp(POWER_UPS[Math.floor(Math.random() * POWER_UPS.length)]);
                       } else {
-                        setFishSize(s => Math.max(0.5, s - 1));
+                        setFishSize(s => { const n = s - 1; if (n <= 0) setFishGameOver(true); return Math.max(0.5, n); });
                         setFishFlashRed(true);
                         setTimeout(() => setFishFlashRed(false), 300);
                       }
@@ -549,22 +552,26 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
         <div style={{ display:"flex", justifyContent:"center", marginTop:8 }}>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:6, width:210 }}>
             <div />
-            <button onClick={() => setFishPos(p => ({ ...p, y: Math.max(5, p.y - dpadStep) }))}
+            <button onClick={() => canMove && setFishPos(p => ({ ...p, y: Math.max(5, p.y - dpadStep) }))}
+              disabled={!canMove}
               style={{ minHeight:60, minWidth:60, fontSize:24, background:"#0369a1",
-                border:"2px solid #22d3ee", borderRadius:12, color:"#fff", cursor:"pointer" }}>⬆️</button>
+                border:"2px solid #22d3ee", borderRadius:12, color:"#fff", cursor: canMove ? "pointer" : "default", opacity: canMove ? 1 : 0.4 }}>⬆️</button>
             <div />
-            <button onClick={() => setFishPos(p => ({ ...p, x: Math.max(5, p.x - dpadStep) }))}
+            <button onClick={() => canMove && setFishPos(p => ({ ...p, x: Math.max(5, p.x - dpadStep) }))}
+              disabled={!canMove}
               style={{ minHeight:60, minWidth:60, fontSize:24, background:"#0369a1",
-                border:"2px solid #22d3ee", borderRadius:12, color:"#fff", cursor:"pointer" }}>⬅️</button>
+                border:"2px solid #22d3ee", borderRadius:12, color:"#fff", cursor: canMove ? "pointer" : "default", opacity: canMove ? 1 : 0.4 }}>⬅️</button>
             <div style={{ minHeight:60, minWidth:60, display:"flex", alignItems:"center", justifyContent:"center",
               fontSize:22, color:"rgba(255,255,255,0.3)" }}>🐠</div>
-            <button onClick={() => setFishPos(p => ({ ...p, x: Math.min(95, p.x + dpadStep) }))}
+            <button onClick={() => canMove && setFishPos(p => ({ ...p, x: Math.min(95, p.x + dpadStep) }))}
+              disabled={!canMove}
               style={{ minHeight:60, minWidth:60, fontSize:24, background:"#0369a1",
-                border:"2px solid #22d3ee", borderRadius:12, color:"#fff", cursor:"pointer" }}>➡️</button>
+                border:"2px solid #22d3ee", borderRadius:12, color:"#fff", cursor: canMove ? "pointer" : "default", opacity: canMove ? 1 : 0.4 }}>➡️</button>
             <div />
-            <button onClick={() => setFishPos(p => ({ ...p, y: Math.min(90, p.y + dpadStep) }))}
+            <button onClick={() => canMove && setFishPos(p => ({ ...p, y: Math.min(90, p.y + dpadStep) }))}
+              disabled={!canMove}
               style={{ minHeight:60, minWidth:60, fontSize:24, background:"#0369a1",
-                border:"2px solid #22d3ee", borderRadius:12, color:"#fff", cursor:"pointer" }}>⬇️</button>
+                border:"2px solid #22d3ee", borderRadius:12, color:"#fff", cursor: canMove ? "pointer" : "default", opacity: canMove ? 1 : 0.4 }}>⬇️</button>
             <div />
           </div>
         </div>
