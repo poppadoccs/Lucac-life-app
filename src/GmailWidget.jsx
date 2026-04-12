@@ -90,8 +90,16 @@ export default function GmailWidget({ V, currentProfile, showToast, widgetPrefs,
     tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
       client_id: GOOGLE_CLIENT_ID,
       scope: "https://www.googleapis.com/auth/gmail.readonly",
+      prompt: "",  // silent re-auth when user has already consented
       callback: handleTokenResponse,
     });
+    // Auto-refresh if there's a previously stored token (even expired)
+    try {
+      const stored = JSON.parse(localStorage.getItem(GMAIL_STORAGE_KEY) || "null");
+      if (stored && stored.token) {
+        tokenClientRef.current.requestAccessToken();
+      }
+    } catch (_) {}
   }, [gisReady]);
 
   function handleTokenResponse(response) {
