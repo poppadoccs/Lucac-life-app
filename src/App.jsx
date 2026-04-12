@@ -1647,7 +1647,7 @@ export default function App() {
           myRules={myRules} theirRules={theirRules} sharedRules={sharedRules} exchangeLog={exchangeLog}
           tab={tab} setTab={setTab}
         />}
-        {tab === "home" && <GmailWidget V={V} currentProfile={currentProfile} showToast={showToast} />}
+        {tab === "home" && <GmailWidget V={V} currentProfile={currentProfile} showToast={showToast} widgetPrefs={widgetPrefs} setWidgetPrefs={setWidgetPrefs} fbSet={fbSet} />}
         {tab === "food" && <FoodTab V={V} currentProfile={currentProfile} foodLog={foodLog} myFoods={myFoods}
           nutritionGoals={nutritionGoals} fbSet={fbSet} GROQ_KEY={GROQ_KEY} showToast={showToast} profiles={profiles}
           shoppingList={shoppingList} weightLog={weightLog} isRecording={isRecording} startVoiceInput={startVoiceInput} stopVoiceInput={stopVoiceInput} />}

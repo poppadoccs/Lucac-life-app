@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from "react";
+import { getWidgetPref, setWidgetPref } from "./WidgetSystem";
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
 const GMAIL_STORAGE_KEY = "gmail_auth"; // { token, expiresAt }
 
-export default function GmailWidget({ V, currentProfile, showToast }) {
+export default function GmailWidget({ V, currentProfile, showToast, widgetPrefs, setWidgetPrefs, fbSet }) {
   // All hooks must come before any conditional returns (React Rules of Hooks)
   const [gisReady, setGisReady] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -18,9 +19,27 @@ export default function GmailWidget({ V, currentProfile, showToast }) {
   const btnBase = { minHeight: 44, minWidth: 44, border: "none", borderRadius: V.r2, cursor: "pointer", fontWeight: 600, fontSize: 13, display: "inline-flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s ease" };
   const btnPrimary = { ...btnBase, background: V.accent, color: "#fff", padding: "0 16px" };
   const btnOutline = { ...btnBase, background: "transparent", color: V.accent, border: `1.5px solid ${V.accent}`, padding: "0 14px" };
+  const btnTool = { border: "none", borderRadius: 4, padding: "2px 7px", cursor: "pointer", fontSize: 11, fontWeight: 600, background: V.bgCardAlt, color: V.textMuted, minHeight: 26 };
 
   const role = currentProfile?.type || "guest";
   if (role === "kid" || role === "guest") return null;
+
+  // Widget prefs — compact hides snippets + limits to 3 emails; hidden shows a chip
+  const pref = getWidgetPref(widgetPrefs, currentProfile, "gmail");
+  const isCompact = pref.size === "compact";
+
+  function toggleSize() {
+    setWidgetPref(widgetPrefs, currentProfile, fbSet, setWidgetPrefs, "gmail",
+      { ...pref, size: isCompact ? "default" : "compact" });
+  }
+  function hideWidget() {
+    setWidgetPref(widgetPrefs, currentProfile, fbSet, setWidgetPrefs, "gmail",
+      { ...pref, hidden: true });
+  }
+  function showWidget() {
+    setWidgetPref(widgetPrefs, currentProfile, fbSet, setWidgetPrefs, "gmail",
+      { ...pref, hidden: false });
+  }
 
   useEffect(() => {
     let existingScriptLoadHandler = null;
@@ -204,12 +223,39 @@ export default function GmailWidget({ V, currentProfile, showToast }) {
     );
   }
 
+  // Hidden state — show a small chip so it can be restored
+  if (pref.hidden) {
+    return (
+      <button
+        onClick={showWidget}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 6,
+          background: V.bgCardAlt, border: `1px solid ${V.borderSubtle}`,
+          borderRadius: 20, padding: "6px 14px", marginBottom: V.sp3,
+          cursor: "pointer", fontSize: 12, color: V.textMuted, fontWeight: 600,
+        }}
+      >
+        📧 Show Gmail
+      </button>
+    );
+  }
+
+  const visibleEmails = isCompact ? emails.slice(0, 3) : emails;
+
   return (
     <div style={card}>
       {/* Header row */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
         <span style={{ fontSize: 16, fontWeight: 700, color: V.textPrimary }}>📧 Gmail</span>
-        <div style={{ display: "flex", gap: 6 }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {/* Widget controls */}
+          <button onClick={toggleSize} style={btnTool} title={isCompact ? "Expand" : "Compact"}>
+            {isCompact ? "Expand" : "Compact"}
+          </button>
+          <button onClick={hideWidget} style={{ ...btnTool, color: V.danger }} title="Hide widget">
+            Hide
+          </button>
+          {/* Gmail controls */}
           {connected && (
             <>
               <button onClick={refreshEmails} disabled={loading} style={{ ...btnOutline, padding: "0 12px", fontSize: 12 }}>
@@ -257,39 +303,41 @@ export default function GmailWidget({ V, currentProfile, showToast }) {
       )}
 
       {/* Email list */}
-      {connected && !loading && emails.map(email => {
-        const isExpanded = expandedId === email.id;
+      {connected && !loading && visibleEmails.map(email => {
+        const isExpanded = !isCompact && expandedId === email.id;
         return (
           <div
             key={email.id}
-            style={{
-              borderBottom: `1px solid ${V.borderSubtle}`,
-              padding: "10px 0",
-            }}
+            style={{ borderBottom: `1px solid ${V.borderSubtle}`, padding: isCompact ? "6px 0" : "10px 0" }}
           >
-            {/* Collapsed header — tappable */}
             <button
-              onClick={() => setExpandedId(isExpanded ? null : email.id)}
+              onClick={() => !isCompact && setExpandedId(isExpanded ? null : email.id)}
               style={{
-                width: "100%", background: "transparent", border: "none", cursor: "pointer",
-                padding: 0, textAlign: "left", minHeight: 44,
+                width: "100%", background: "transparent", border: "none",
+                cursor: isCompact ? "default" : "pointer",
+                padding: 0, textAlign: "left", minHeight: isCompact ? 32 : 44,
                 display: "flex", flexDirection: "column", gap: 2,
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: V.textPrimary, flex: 1, wordBreak: "break-word" }}>
+                <span style={{
+                  fontSize: isCompact ? 12 : 13, fontWeight: 700, color: V.textPrimary,
+                  flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: isCompact ? "nowrap" : "normal",
+                }}>
                   {email.subject}
                 </span>
-                <span style={{ fontSize: 11, color: V.textMuted, whiteSpace: "nowrap", flexShrink: 0 }}>
-                  {formatDate(email.date)}
-                </span>
+                {!isCompact && (
+                  <span style={{ fontSize: 11, color: V.textMuted, whiteSpace: "nowrap", flexShrink: 0 }}>
+                    {formatDate(email.date)}
+                  </span>
+                )}
               </div>
-              <div style={{ fontSize: 12, color: V.textSecondary }}>
+              <div style={{ fontSize: 11, color: V.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {email.sender}
               </div>
             </button>
 
-            {/* Expanded body */}
+            {/* Expanded body — full mode only */}
             {isExpanded && (
               <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px dashed ${V.borderSubtle}` }}>
                 <p style={{ fontSize: 12, color: V.textMuted, margin: "0 0 10px 0", lineHeight: 1.5 }}>
@@ -311,6 +359,13 @@ export default function GmailWidget({ V, currentProfile, showToast }) {
           </div>
         );
       })}
+
+      {/* Compact: show count of remaining */}
+      {isCompact && connected && !loading && emails.length > 3 && (
+        <div style={{ fontSize: 11, color: V.textMuted, textAlign: "center", paddingTop: 6 }}>
+          +{emails.length - 3} more — tap Expand to see all
+        </div>
+      )}
     </div>
   );
 }
