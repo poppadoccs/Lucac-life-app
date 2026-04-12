@@ -93,10 +93,10 @@ export default function GmailWidget({ V, currentProfile, showToast, widgetPrefs,
       prompt: "",  // silent re-auth when user has already consented
       callback: handleTokenResponse,
     });
-    // Auto-refresh if there's a previously stored token (even expired)
+    // Auto-refresh only when token is expired — valid tokens are handled by the first useEffect
     try {
       const stored = JSON.parse(localStorage.getItem(gmailKey(currentProfile?.id)) || "null");
-      if (stored && stored.token) {
+      if (stored && stored.token && stored.expiresAt <= Date.now()) {
         tokenClientRef.current.requestAccessToken();
       }
     } catch (_) {}
