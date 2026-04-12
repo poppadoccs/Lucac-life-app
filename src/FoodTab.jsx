@@ -411,7 +411,8 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
   const today = todayStr();
   const log = Array.isArray(foodLog) ? foodLog : [];
   const profileId = typeof currentProfile === "string" ? currentProfile : currentProfile?.name;
-  const todayLog = log.filter(f => f.date === today && f.profile === currentProfile);
+  const profileMatches = f => f.profile === profileId || f.profile?.name === profileId;
+  const todayLog = log.filter(f => f.date === today && profileMatches(f));
   const goals = nutritionGoals || { calories: 2200, protein: 150, carbs: 250, fat: 70 };
   const todayMacros = sumMacros(todayLog);
 
@@ -501,15 +502,15 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
 
   // Load weight log & shopping list from cache on mount, sync from firebase if available
   useEffect(() => {
-    const cached = cacheGet("weightLog_" + currentProfile);
+    const cached = cacheGet("weightLog_" + profileId);
     if (cached) setWeightLog(cached);
-    const cachedShop = cacheGet("shoppingList_" + currentProfile);
+    const cachedShop = cacheGet("shoppingList_" + profileId);
     if (cachedShop) setShoppingList(cachedShop);
-  }, [currentProfile]);
+  }, [profileId]);
 
   // ── Meal Memory: last 10 unique foods ──
   const mealMemory = (() => {
-    const profileLog = log.filter(f => f.profile === currentProfile);
+    const profileLog = log.filter(f => profileMatches(f));
     const seen = new Set();
     const items = [];
     for (let i = profileLog.length - 1; i >= 0 && items.length < 10; i--) {
@@ -570,7 +571,7 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
       carbs: Math.round(Number(item.carbs) || 0),
       fat: Math.round(Number(item.fat) || 0),
       date: today,
-      profile: currentProfile,
+      profile: profileId,
       meal: meal,
     };
     // Copy all micronutrient fields
@@ -741,7 +742,7 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
     const effectiveWeightLog = dedupeWeightLog([...(Array.isArray(weightLogProp) ? weightLogProp : []), ...weightLog]);
     const dedupedLog = dedupeWeightLog([...effectiveWeightLog, { date: today, weight: w }]);
     setWeightLog(dedupedLog);
-    cacheSet("weightLog_" + currentProfile, dedupedLog);
+    cacheSet("weightLog_" + profileId, dedupedLog);
     fbSet("weightLog", dedupedLog);
     setWeightInput("");
     showToast("Weight logged");
@@ -896,10 +897,18 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
     { key: "Snacks", icon: "\u{1F37F}", label: "Snacks" },
   ];
 
+  // ── Effective weight log: merge Firebase prop + local state, dedup by date ──
+  const effectiveWeightLog = useMemo(() => {
+    const merged = [...(Array.isArray(weightLogProp) ? weightLogProp : []), ...weightLog];
+    const byDate = {};
+    for (const e of merged) if (e?.date) byDate[e.date] = e;
+    return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
+  }, [weightLogProp, weightLog]);
+
   // ── Weekly data ──
   const week = weekDates();
   const weekData = week.map(d => {
-    const dayLog = log.filter(f => f.date === d && f.profile === currentProfile);
+    const dayLog = log.filter(f => f.date === d && profileMatches(f));
     return { date: d, ...sumMacros(dayLog) };
   });
 
@@ -1407,7 +1416,7 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
               />
               <button onClick={logWeight} style={btnPrimary}>Log Weight</button>
             </div>
-            <WeightChart entries={weightLog} V={V} />
+            <WeightChart entries={effectiveWeightLog} V={V} />
           </div>
         )}
       </div>
