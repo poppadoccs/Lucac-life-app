@@ -416,7 +416,7 @@ export default function App() {
   // Budget + Shopping List + Homework
   const [budgetData, setBudgetData] = useState({ transactions: [], categoryBudgets: {} });
   const [shoppingList, setShoppingList] = useState([]);
-  const [weightLog, setWeightLog] = useState({});
+  const [weightLog, setWeightLog] = useState([]);
   const [homeworkSessions, setHomeworkSessions] = useState({});
 
   // A0: kid routine completion state + B0: board game rooms
@@ -507,7 +507,7 @@ export default function App() {
     widgetPrefs: v => setWidgetPrefs(v || {}),
     budgetData: v => setBudgetData(v || { transactions: [], categoryBudgets: {} }),
     shoppingList: v => setShoppingList(v || []),
-    weightLog: v => setWeightLog(v || {}),
+    weightLog: v => setWeightLog(v || []),
     homeworkSessions: v => setHomeworkSessions(v || {}),
     callButtons: v => setCallButtons(v || []),
     quoteMode: v => setQuoteMode(v || "motivational"),

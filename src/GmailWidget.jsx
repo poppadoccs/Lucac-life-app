@@ -4,14 +4,7 @@ const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
 const GMAIL_STORAGE_KEY = "gmail_auth"; // { token, expiresAt }
 
 export default function GmailWidget({ V, currentProfile, showToast }) {
-  const card = { background: V.bgCard, borderRadius: V.r3, padding: V.sp4, boxShadow: V.shadowCard, marginBottom: V.sp3 };
-  const btnBase = { minHeight: 44, minWidth: 44, border: "none", borderRadius: V.r2, cursor: "pointer", fontWeight: 600, fontSize: 13, display: "inline-flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s ease" };
-  const btnPrimary = { ...btnBase, background: V.accent, color: "#fff", padding: "0 16px" };
-  const btnOutline = { ...btnBase, background: "transparent", color: V.accent, border: `1.5px solid ${V.accent}`, padding: "0 14px" };
-
-  const role = currentProfile?.type || "guest";
-  if (role === "kid" || role === "guest") return null;
-
+  // All hooks must come before any conditional returns (React Rules of Hooks)
   const [gisReady, setGisReady] = useState(false);
   const [connected, setConnected] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -20,6 +13,14 @@ export default function GmailWidget({ V, currentProfile, showToast }) {
   const [error, setError] = useState(null);
   const tokenClientRef = useRef(null);
   const abortControllerRef = useRef(null);
+
+  const card = { background: V.bgCard, borderRadius: V.r3, padding: V.sp4, boxShadow: V.shadowCard, marginBottom: V.sp3 };
+  const btnBase = { minHeight: 44, minWidth: 44, border: "none", borderRadius: V.r2, cursor: "pointer", fontWeight: 600, fontSize: 13, display: "inline-flex", alignItems: "center", justifyContent: "center", transition: "all 0.15s ease" };
+  const btnPrimary = { ...btnBase, background: V.accent, color: "#fff", padding: "0 16px" };
+  const btnOutline = { ...btnBase, background: "transparent", color: V.accent, border: `1.5px solid ${V.accent}`, padding: "0 14px" };
+
+  const role = currentProfile?.type || "guest";
+  if (role === "kid" || role === "guest") return null;
 
   useEffect(() => {
     let existingScriptLoadHandler = null;

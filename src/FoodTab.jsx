@@ -694,7 +694,7 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
         fat: Math.round(Number(item.fat) || 0),
         date: today,
         profile: profileId,
-        meal: item.meal || "Snacks",
+        meal: addPopup || item.meal || "Snacks",
       };
       for (const k of ALL_MICRO_KEYS) {
         entry[k] = Number(item[k]) || 0;
