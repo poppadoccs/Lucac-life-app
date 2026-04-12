@@ -19,8 +19,10 @@ export default function GmailWidget({ V, currentProfile, showToast }) {
   const [expandedId, setExpandedId] = useState(null);
   const [error, setError] = useState(null);
   const tokenClientRef = useRef(null);
+  const abortControllerRef = useRef(null);
 
   useEffect(() => {
+    let existingScriptLoadHandler = null;
     // Check for existing valid token first
     try {
       const stored = JSON.parse(localStorage.getItem(GMAIL_STORAGE_KEY) || "null");
@@ -31,9 +33,21 @@ export default function GmailWidget({ V, currentProfile, showToast }) {
     } catch (_) {}
 
     // Load GIS script
-    if (document.getElementById("gis-script")) {
-      setGisReady(true);
-      return;
+    const existingScript = document.getElementById("gis-script");
+    if (existingScript) {
+      if (window.google?.accounts?.oauth2) {
+        setGisReady(true);
+      } else {
+        existingScriptLoadHandler = () => setGisReady(true);
+        existingScript.addEventListener("load", existingScriptLoadHandler);
+      }
+      return () => {
+        if (existingScriptLoadHandler) {
+          existingScript.removeEventListener("load", existingScriptLoadHandler);
+        }
+        abortControllerRef.current?.abort();
+        abortControllerRef.current = null;
+      };
     }
     const script = document.createElement("script");
     script.id = "gis-script";
@@ -42,6 +56,13 @@ export default function GmailWidget({ V, currentProfile, showToast }) {
     script.onload = () => setGisReady(true);
     script.onerror = () => setError("Failed to load Google Sign-In");
     document.head.appendChild(script);
+
+    return () => {
+      script.onload = null;
+      script.onerror = null;
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
@@ -65,12 +86,15 @@ export default function GmailWidget({ V, currentProfile, showToast }) {
   }
 
   async function fetchEmails(token) {
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
     setLoading(true);
     setError(null);
     try {
       const listRes = await fetch(
         "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=10",
-        { headers: { Authorization: "Bearer " + token } }
+        { headers: { Authorization: "Bearer " + token }, signal: controller.signal }
       );
       if (listRes.status === 401) {
         localStorage.removeItem(GMAIL_STORAGE_KEY);
@@ -83,13 +107,25 @@ export default function GmailWidget({ V, currentProfile, showToast }) {
       if (!listRes.ok) throw new Error("Gmail list failed: " + listRes.status);
       const listData = await listRes.json();
       const messages = listData.messages || [];
+      let sessionExpired = false;
 
       const detailed = await Promise.all(
         messages.map(async ({ id }) => {
           const msgRes = await fetch(
             `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
-            { headers: { Authorization: "Bearer " + token } }
+            { headers: { Authorization: "Bearer " + token }, signal: controller.signal }
           );
+          if (msgRes.status === 401 || msgRes.status === 403) {
+            if (!sessionExpired) {
+              sessionExpired = true;
+              localStorage.removeItem(GMAIL_STORAGE_KEY);
+              setConnected(false);
+              setEmails([]);
+              showToast("Gmail session expired — please reconnect", "error");
+              controller.abort();
+            }
+            throw new Error("GMAIL_SESSION_EXPIRED");
+          }
           if (!msgRes.ok) return null;
           const msg = await msgRes.json();
           const headers = msg.payload?.headers || [];
@@ -105,9 +141,13 @@ export default function GmailWidget({ V, currentProfile, showToast }) {
       );
       setEmails(detailed.filter(Boolean));
     } catch (e) {
+      if (e.name === "AbortError" || e.message === "GMAIL_SESSION_EXPIRED") return;
       setError("Could not load emails: " + e.message);
     } finally {
-      setLoading(false);
+      if (abortControllerRef.current === controller) {
+        setLoading(false);
+        abortControllerRef.current = null;
+      }
     }
   }
 
@@ -120,6 +160,9 @@ export default function GmailWidget({ V, currentProfile, showToast }) {
   }
 
   function disconnectGmail() {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setLoading(false);
     localStorage.removeItem(GMAIL_STORAGE_KEY);
     setConnected(false);
     setEmails([]);

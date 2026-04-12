@@ -27,6 +27,12 @@ function dayLabel(dateStr) {
   return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];
 }
 
+function calendarDaysBetween(startDate, endDate) {
+  const [sy, sm, sd] = String(startDate).split("-").map(Number);
+  const [ey, em, ed] = String(endDate).split("-").map(Number);
+  return (Date.UTC(ey, em - 1, ed) - Date.UTC(sy, sm - 1, sd)) / 86400000;
+}
+
 const ALL_MICRO_KEYS = [
   "fiber","sodium","sugar","iron","vitC",
   "vitA","vitB1","vitB2","vitB3","vitB6","vitB9","vitB12","vitD","vitE","vitK",
@@ -404,13 +410,16 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
   // ── Derived values ──
   const today = todayStr();
   const log = Array.isArray(foodLog) ? foodLog : [];
+  const profileId = typeof currentProfile === "string" ? currentProfile : currentProfile?.name;
   const todayLog = log.filter(f => f.date === today && f.profile === currentProfile);
   const goals = nutritionGoals || { calories: 2200, protein: 150, carbs: 250, fat: 70 };
   const todayMacros = sumMacros(todayLog);
 
   // ── Adaptive TDEE (Task 3) ──
   const tdeeResult = useMemo(() => {
-    const profileLog = (Array.isArray(foodLog) ? foodLog : []).filter(f => f.profile === currentProfile);
+    const profileLog = (Array.isArray(foodLog) ? foodLog : []).filter(f =>
+      f.profile === profileId || f.profile?.name === profileId
+    );
     const sorted = [...(weightLogProp.length > 0 ? weightLogProp : weightLog)]
       .sort((a, b) => a.date.localeCompare(b.date));
     if (sorted.length < 2) return null;
@@ -427,21 +436,25 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
     const foodDays = Object.keys(daysWithFood);
     if (foodDays.length < 7) return null;
 
+    const elapsedDays = calendarDaysBetween(startDate, endDate);
+    if (!Number.isFinite(elapsedDays) || elapsedDays <= 0) return null;
+
     const avgCal = foodDays.reduce((s, d) => s + daysWithFood[d], 0) / foodDays.length;
     const startWeight = Number(sorted[0].weight);
     const endWeight = Number(sorted[sorted.length - 1].weight);
     const weightChangeLbs = endWeight - startWeight;
-    const totalDays = foodDays.length;
-    const energyStoredPerDay = (weightChangeLbs * 3500) / totalDays;
+    const energyStoredPerDay = (weightChangeLbs * 3500) / elapsedDays;
     const tdee = Math.round(avgCal - energyStoredPerDay);
 
     if (tdee < 800 || tdee > 6000) return null;
-    return { tdee, days: totalDays, weightChange: weightChangeLbs.toFixed(1) };
-  }, [foodLog, weightLogProp, weightLog, currentProfile]);
+    return { tdee, days: foodDays.length, weightChange: weightChangeLbs.toFixed(1) };
+  }, [foodLog, weightLogProp, weightLog, profileId]);
 
   // ── Logging streak (Task 5) ──
   const loggingStreak = useMemo(() => {
-    const profileLog = (Array.isArray(foodLog) ? foodLog : []).filter(f => f.profile === currentProfile);
+    const profileLog = (Array.isArray(foodLog) ? foodLog : []).filter(f =>
+      f.profile === profileId || f.profile?.name === profileId
+    );
     if (profileLog.length === 0) return 0;
     const loggedDays = new Set(profileLog.map(f => f.date));
     let streak = 0;
@@ -453,7 +466,7 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
       d.setDate(d.getDate() - 1);
     }
     return streak;
-  }, [foodLog, currentProfile]);
+  }, [foodLog, profileId]);
 
   // ── Effects ──
   useEffect(() => {
@@ -671,17 +684,38 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
 
   function confirmVoiceItems() {
     if (!voicePreview) return;
-    for (const item of voicePreview) {
-      addFood({
-        name: item.food,
-        calories: item.cal,
-        protein: item.protein,
-        carbs: item.carbs,
-        fat: item.fat,
-      }, item.meal || "Snacks");
-    }
+    const newEntries = voicePreview.map(item => {
+      const entry = {
+        name: item.name || item.food || "Unknown Food",
+        calories: Math.round(Number(item.calories || item.cal) || 0),
+        protein: Math.round(Number(item.protein) || 0),
+        carbs: Math.round(Number(item.carbs) || 0),
+        fat: Math.round(Number(item.fat) || 0),
+        date: today,
+        profile: currentProfile,
+        meal: item.meal || "Snacks",
+      };
+      for (const k of ALL_MICRO_KEYS) {
+        entry[k] = Number(item[k]) || 0;
+      }
+      return entry;
+    });
+    fbSet("foodLog", [...log, ...newEntries]);
+    setAddPopup(null);
+    setAddMode(null);
+    setSearchResults(null);
+    setSearchQuery("");
+    setServingSize(100);
     setVoicePreview(null);
-    showToast(`Logged ${voicePreview.length} item(s)`);
+    showToast(`Logged ${newEntries.length} item(s)`);
+  }
+
+  function dedupeWeightLog(entries) {
+    const byDate = {};
+    for (const entry of entries) {
+      if (entry?.date) byDate[entry.date] = entry;
+    }
+    return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
   }
 
   function saveGoals() {
@@ -704,11 +738,8 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
       showToast("Enter a valid weight");
       return;
     }
-    const newLog = [...weightLog, { date: today, weight: w }];
-    // Deduplicate by date, keep latest
-    const byDate = {};
-    for (const entry of newLog) byDate[entry.date] = entry;
-    const dedupedLog = Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
+    const effectiveWeightLog = dedupeWeightLog([...(Array.isArray(weightLogProp) ? weightLogProp : []), ...weightLog]);
+    const dedupedLog = dedupeWeightLog([...effectiveWeightLog, { date: today, weight: w }]);
     setWeightLog(dedupedLog);
     cacheSet("weightLog_" + currentProfile, dedupedLog);
     fbSet("weightLog", dedupedLog);
@@ -881,7 +912,7 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
     <div style={{ padding: V.sp3, maxWidth: 480, margin: "0 auto" }}>
 
       {/* ── LOGGING STREAK ── */}
-      {(Array.isArray(foodLog) ? foodLog : []).some(f => f.profile === currentProfile) && (
+      {(Array.isArray(foodLog) ? foodLog : []).some(f => f.profile === profileId || f.profile?.name === profileId) && (
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "center",
           gap: 6, marginBottom: 10, padding: "8px 16px",
