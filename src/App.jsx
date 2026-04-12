@@ -551,10 +551,11 @@ export default function App() {
       showToast("You don't have permission to do that.", "error");
       return;
     }
-    set(ref(db, key), val).catch(() => {
-      // If Firebase write fails (offline), cache locally — Firebase RTDB will sync when back online
-      cacheSet(key, val);
-    });
+    // Optimistic update: reflect write in local state immediately so UI doesn't
+    // wait for Firebase onValue echo (which can lag a render cycle in React 18 batching)
+    if (fbSetters[key]) fbSetters[key](val);
+    cacheSet(key, val);
+    set(ref(db, key), val).catch(() => {});
   }
 
   // showSave moved to SettingsTab.jsx
