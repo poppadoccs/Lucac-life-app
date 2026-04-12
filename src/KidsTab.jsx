@@ -40,19 +40,21 @@ export default function KidsTab({ V, profiles, currentProfile, kidsData, chores,
     showToast("Great job! +10 points! ⭐", "success");
   }
 
-  // A0: routine editor helpers — writes to profiles/{kidId}/routines
+  // A0: routine editor helpers — writes full profiles array to preserve Firebase array structure
   function addRoutine(kid) {
     const text = (newRoutineText[kid.id] || "").trim();
     if (!text) return;
     const existing = (profiles||[]).find(p => p.id === kid.id)?.routines || [];
     const routine = { id: Date.now()+"", text, emoji: newRoutineEmoji[kid.id] || "⭐" };
-    fbSet(`profiles/${kid.id}/routines`, [...existing, routine]);
+    const updated = (profiles||[]).map(p => p.id === kid.id ? {...p, routines: [...existing, routine]} : p);
+    fbSet("profiles", updated);
     setNewRoutineText(s => ({ ...s, [kid.id]: "" }));
     showToast("Routine added! ✅", "success");
   }
   function removeRoutine(kid, routineId) {
     const existing = (profiles||[]).find(p => p.id === kid.id)?.routines || [];
-    fbSet(`profiles/${kid.id}/routines`, existing.filter(r => r.id !== routineId));
+    const updated = (profiles||[]).map(p => p.id === kid.id ? {...p, routines: existing.filter(r => r.id !== routineId)} : p);
+    fbSet("profiles", updated);
   }
 
   // A0: goals editor helpers — writes to kidsData/{name}/goals
