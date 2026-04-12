@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { getWidgetPref, setWidgetPref } from "./WidgetSystem";
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
-const GMAIL_STORAGE_KEY = "gmail_auth"; // { token, expiresAt }
+const gmailKey = (profileId) => `gmail_auth_${profileId}`; // per-profile storage
 
 export default function GmailWidget({ V, currentProfile, showToast, widgetPrefs, setWidgetPrefs, fbSet }) {
   // All hooks must come before any conditional returns (React Rules of Hooks)
@@ -45,7 +45,7 @@ export default function GmailWidget({ V, currentProfile, showToast, widgetPrefs,
     let existingScriptLoadHandler = null;
     // Check for existing valid token first
     try {
-      const stored = JSON.parse(localStorage.getItem(GMAIL_STORAGE_KEY) || "null");
+      const stored = JSON.parse(localStorage.getItem(gmailKey(currentProfile?.id)) || "null");
       if (stored && stored.token && stored.expiresAt > Date.now()) {
         setConnected(true);
         fetchEmails(stored.token);
@@ -95,7 +95,7 @@ export default function GmailWidget({ V, currentProfile, showToast, widgetPrefs,
     });
     // Auto-refresh if there's a previously stored token (even expired)
     try {
-      const stored = JSON.parse(localStorage.getItem(GMAIL_STORAGE_KEY) || "null");
+      const stored = JSON.parse(localStorage.getItem(gmailKey(currentProfile?.id)) || "null");
       if (stored && stored.token) {
         tokenClientRef.current.requestAccessToken();
       }
@@ -108,7 +108,7 @@ export default function GmailWidget({ V, currentProfile, showToast, widgetPrefs,
       return;
     }
     const expiresAt = Date.now() + (response.expires_in || 3600) * 1000;
-    localStorage.setItem(GMAIL_STORAGE_KEY, JSON.stringify({ token: response.access_token, expiresAt }));
+    localStorage.setItem(gmailKey(currentProfile?.id), JSON.stringify({ token: response.access_token, expiresAt }));
     setConnected(true);
     fetchEmails(response.access_token);
   }
@@ -125,7 +125,7 @@ export default function GmailWidget({ V, currentProfile, showToast, widgetPrefs,
         { headers: { Authorization: "Bearer " + token }, signal: controller.signal }
       );
       if (listRes.status === 401) {
-        localStorage.removeItem(GMAIL_STORAGE_KEY);
+        localStorage.removeItem(gmailKey(currentProfile?.id));
         setConnected(false);
         setEmails([]);
         showToast("Gmail session expired — please reconnect", "error");
@@ -146,7 +146,7 @@ export default function GmailWidget({ V, currentProfile, showToast, widgetPrefs,
           if (msgRes.status === 401 || msgRes.status === 403) {
             if (!sessionExpired) {
               sessionExpired = true;
-              localStorage.removeItem(GMAIL_STORAGE_KEY);
+              localStorage.removeItem(gmailKey(currentProfile?.id));
               setConnected(false);
               setEmails([]);
               showToast("Gmail session expired — please reconnect", "error");
@@ -191,7 +191,7 @@ export default function GmailWidget({ V, currentProfile, showToast, widgetPrefs,
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
     setLoading(false);
-    localStorage.removeItem(GMAIL_STORAGE_KEY);
+    localStorage.removeItem(gmailKey(currentProfile?.id));
     setConnected(false);
     setEmails([]);
     showToast("Gmail disconnected", "info");
@@ -199,7 +199,7 @@ export default function GmailWidget({ V, currentProfile, showToast, widgetPrefs,
 
   function refreshEmails() {
     try {
-      const stored = JSON.parse(localStorage.getItem(GMAIL_STORAGE_KEY) || "null");
+      const stored = JSON.parse(localStorage.getItem(gmailKey(currentProfile?.id)) || "null");
       if (stored && stored.token && stored.expiresAt > Date.now()) {
         fetchEmails(stored.token);
       } else {
