@@ -570,7 +570,7 @@ export default function App() {
     // wait for Firebase onValue echo (which can lag a render cycle in React 18 batching)
     if (fbSetters[key]) fbSetters[key](val);
     cacheSet(key, val);
-    set(ref(db, key), val).catch(() => {});
+    set(ref(db, key), val).catch(e => showToast(`Save failed (${key}): ${e.message}`, "error"));
   }
 
   // showSave moved to SettingsTab.jsx
