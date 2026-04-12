@@ -497,7 +497,22 @@ export default function App() {
   const fbSetters = {
     events: setEvents, eventStyles: setEventStyles, routines: setRoutines,
     routineStyles: setRoutineStyles, goals: setGoals, goalStyles: setGoalStyles,
-    profiles: setProfiles, kidsData: setKidsData, custodySchedule: setCustodySchedule,
+    profiles: v => {
+      // Firebase returns a plain object (not array) when corrupt orphan keys exist
+      // (e.g. old sub-path writes left timestamp keys alongside numeric indices).
+      // Sanitize before setting so .map() never crashes.
+      if (Array.isArray(v)) {
+        setProfiles(v.filter(p => p && p.id && p.name));
+      } else if (v && typeof v === "object") {
+        const valid = Object.entries(v)
+          .filter(([k]) => /^\d+$/.test(k))        // numeric indices only
+          .sort(([a],[b]) => Number(a) - Number(b))
+          .map(([,p]) => p)
+          .filter(p => p && p.id && p.name);
+        if (valid.length) setProfiles(valid);
+      }
+    },
+    kidsData: setKidsData, custodySchedule: setCustodySchedule,
     myRules: setMyRules, theirRules: setTheirRules, sharedRules: setSharedRules,
     exchangeLog: setExchangeLog, foodLog: setFoodLog, myFoods: setMyFoods,
     nutritionGoals: v => setNutritionGoals(v || {}), trackedMacros: setTrackedMacros,
