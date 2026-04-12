@@ -693,7 +693,7 @@ export default function FoodTab({ V, currentProfile, foodLog, myFoods, nutrition
         carbs: Math.round(Number(item.carbs) || 0),
         fat: Math.round(Number(item.fat) || 0),
         date: today,
-        profile: currentProfile,
+        profile: profileId,
         meal: item.meal || "Snacks",
       };
       for (const k of ALL_MICRO_KEYS) {
