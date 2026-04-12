@@ -175,10 +175,12 @@ export default function HomeTab({
 
   function parseSparkContent(raw) {
     const lines = raw.split('\n').map(s => s.trim()).filter(Boolean);
-    let question = "", jokeSetup = "", jokePunchline = "", fact = "";
+    let question = "", jokeSetup = "", jokePunchline = "", fact = "", tips = [];
     for (const line of lines) {
       if (line.startsWith("QUESTION:")) question = line.replace("QUESTION:", "").trim();
-      else if (line.startsWith("JOKE:")) {
+      else if (line.startsWith("TIPS:")) {
+        tips = line.replace("TIPS:", "").split("•").map(s => s.trim()).filter(Boolean);
+      } else if (line.startsWith("JOKE:")) {
         const jokeStr = line.replace("JOKE:", "").trim();
         if (jokeStr.includes("|")) {
           const parts = jokeStr.split("|");
@@ -190,7 +192,7 @@ export default function HomeTab({
         }
       } else if (line.startsWith("FACT:")) fact = line.replace("FACT:", "").trim();
     }
-    return { question, jokeSetup, jokePunchline, fact };
+    return { question, tips, jokeSetup, jokePunchline, fact };
   }
 
   async function fetchSpark(category, bypassCache = false) {
@@ -207,10 +209,13 @@ export default function HomeTab({
       content: `Generate daily spark content for a co-parenting parent focused on personal growth. Theme: ${category}.
 
 Format your response EXACTLY like this — no intro text, nothing else:
-QUESTION: [A specific, actionable self-reflection question. Avoid clichés. Include a concrete micro-action in ≤3 sentences.]
+QUESTION: [A specific, honest self-reflection question about a real parenting/emotional challenge. No clichés.]
+TIPS: [Practical tip 1 — unusual, specific, actionable] • [Practical tip 2] • [Practical tip 3]
 JOKE: [A clean, light-hearted setup | punchline]
-FACT: [A surprising, uplifting fact about human connection, resilience, or wellbeing]`
-    }], { maxTokens: 300 });
+FACT: [A surprising, uplifting fact about human connection, resilience, or wellbeing]
+
+For TIPS: give 3 real, out-of-the-ordinary techniques. Think cognitive reframing, nervous system regulation, communication shifts — not generic "take deep breaths" advice.`
+    }], { maxTokens: 500 });
     setSparkLoading(false);
     if (result.ok && result.data) {
       const parsed = parseSparkContent(result.data);
@@ -729,6 +734,19 @@ FACT: [A surprising, uplifting fact about human connection, resilience, or wellb
                     <div style={{ fontSize:10, fontWeight:700, color:V.textDim, textTransform:"uppercase",
                       letterSpacing:1, marginBottom:4 }}>Today's Question</div>
                     <div style={{ fontSize:13, color:V.textPrimary, lineHeight:1.5 }}>{sparkData.question}</div>
+                  </div>
+                )}
+                {sparkData.tips?.length > 0 && (
+                  <div style={{ marginBottom:10, padding:"8px 10px", background:`${V.accent}0d`, borderRadius:8,
+                    border:`1px solid ${V.accent}22` }}>
+                    <div style={{ fontSize:10, fontWeight:700, color:V.accent, textTransform:"uppercase",
+                      letterSpacing:1, marginBottom:6 }}>💡 Try This</div>
+                    {sparkData.tips.map((tip, i) => (
+                      <div key={i} style={{ display:"flex", gap:8, marginBottom: i < sparkData.tips.length-1 ? 6 : 0 }}>
+                        <span style={{ fontSize:12, fontWeight:700, color:V.accent, flexShrink:0 }}>{i+1}.</span>
+                        <span style={{ fontSize:13, color:V.textSecondary, lineHeight:1.5 }}>{tip}</span>
+                      </div>
+                    ))}
                   </div>
                 )}
                 {sparkData.jokeSetup && (
