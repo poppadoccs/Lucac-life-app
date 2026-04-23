@@ -1,11 +1,26 @@
 import { useState, useEffect, useRef } from "react";
-import { speakText } from "../utils";
+import { speakText, verifyMath } from "../utils";
 import { generateMathProblem, GameBtn, recordGameHistory, ageBandFromProfile } from "./_shared";
 
 // ─── FISH GAME ───────────────────────────────────────────────────────────────
-export default function FishGame({ profile, kidsData, fbSet, addStars, transitionTo, curriculum }) {
-  const { mathDifficulty } = curriculum;
+export default function FishGame({ profile, kidsData, fbSet, addStars, transitionTo, curriculum, learningStats, rewardsConfig }) {
+  const { mathDifficulty } = curriculum || { mathDifficulty: "easy" };
+  const activeSubjects = curriculum?.activeSubjects || [];
   const isLucaMode = ageBandFromProfile(profile) === "luca";
+
+  // ── Answer-fish subject rotator (alternates multiplication/division if both active) ──
+  const subjectToggleRef = useRef(0);
+  const pickMathSubject = () => {
+    const hasMul = activeSubjects.includes("multiplication");
+    const hasDiv = activeSubjects.includes("division");
+    if (hasMul && hasDiv) {
+      subjectToggleRef.current = (subjectToggleRef.current + 1) % 2;
+      return subjectToggleRef.current === 0 ? "multiplication" : "division";
+    }
+    if (hasMul) return "multiplication";
+    if (hasDiv) return "division";
+    return "arithmetic";
+  };
 
   // ── Core state ──────────────────────────────────────────────────────────────
   const [fishSize, setFishSize]       = useState(5);
@@ -17,6 +32,11 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
   const [fishMathBubble, setFishMathBubble] = useState(null);
   const [fishFlashRed, setFishFlashRed] = useState(false);
   const [fishPowerMsg, setFishPowerMsg] = useState(null);
+
+  // ── Answer fish (fish-as-answers mechanic) ─────────────────────────────────
+  // Populated when fishMathBubble becomes non-null. Each: { id, x, y, vx, value, isCorrect, pausedUntil, spawnedAt }
+  const [answerFish, setAnswerFish] = useState([]);
+  const answerCooldownRef = useRef(0);
 
   // ── Lives ─────────────────────────────────────────────────────────────────────
   const MAX_LIVES = isLucaMode ? 3 : 2;
@@ -169,20 +189,126 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
     return () => clearInterval(iv);
   }, [fishActive, fishGameOver, victory]);
 
-  // ─── Math bonus bubble (hidden while boss is active) ──────────────────────
+  // ─── Math bonus trigger — now spawns answer-fish instead of popup bubble ──
   useEffect(() => {
     if (!fishActive || fishGameOver || victory || boss) return;
     const show = () => {
       // Functional form avoids stale closure on fishMathBubble
-      setFishMathBubble(prev => prev ?? {
-        ...generateMathProblem(mathDifficulty),
-        x: Math.random() * 60 + 20, y: Math.random() * 50 + 15,
+      setFishMathBubble(prev => {
+        if (prev) return prev;
+        const subject = pickMathSubject();
+        const prob = generateMathProblem(mathDifficulty, subject);
+        // Spawn answer fish: 2 in Luca mode, 3 otherwise. Use the problem's choices.
+        const numFish = isLucaMode ? 2 : 3;
+        // Pick distinct choices: correct answer + enough wrong ones
+        const wrongs = prob.choices.filter(c => c !== prob.answer);
+        const chosen = [prob.answer, ...wrongs.slice(0, numFish - 1)];
+        // Shuffle (Fisher-Yates)
+        for (let i = chosen.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [chosen[i], chosen[j]] = [chosen[j], chosen[i]];
+        }
+        // Spread start positions across screen width, random y, random drift
+        const now = Date.now();
+        const newAnswerFish = chosen.map((value, idx) => {
+          const fromLeft = idx % 2 === 0;
+          const yBand = 20 + (idx * (55 / Math.max(1, numFish - 1 || 1)));
+          const vx = (Math.random() * 0.2 + 0.15) * (fromLeft ? 1 : -1) * (isLucaMode ? 0.6 : 1.0);
+          return {
+            id: now + idx + Math.random(),
+            x: fromLeft ? Math.random() * 20 + 5 : Math.random() * 20 + 75,
+            y: yBand + (Math.random() * 10 - 5),
+            vx,
+            value,
+            isCorrect: value === prob.answer,
+            pausedUntil: 0,
+            spawnedAt: now,
+          };
+        });
+        setAnswerFish(newAnswerFish);
+        answerCooldownRef.current = 0;
+        return { ...prob };
       });
     };
     const iv      = setInterval(show, 12000);
     const timeout = setTimeout(show, 3000);
     return () => { clearInterval(iv); clearTimeout(timeout); };
-  }, [fishActive, fishGameOver, victory, mathDifficulty, boss]);
+  }, [fishActive, fishGameOver, victory, mathDifficulty, boss, isLucaMode]);
+
+  // ─── Answer-fish movement, collision, and 12s despawn ─────────────────────
+  useEffect(() => {
+    if (!fishActive || fishGameOver || victory || boss) return;
+    if (!fishMathBubble || answerFish.length === 0) return;
+
+    const iv = setInterval(() => {
+      const pos = fishPosRef.current;
+      const sz  = fishSizeRef.current;
+      const now = Date.now();
+
+      setAnswerFish(prev => {
+        const updated = [];
+        let collidedCorrect = false;
+        for (const af of prev) {
+          // Despawn after 12s since spawn
+          if (now - af.spawnedAt > 12000) continue;
+          // Move unless paused
+          const isPaused = af.pausedUntil > now;
+          const newX = isPaused ? af.x : af.x + af.vx;
+          // Wrap / bounce lightly at edges
+          let wrappedX = newX;
+          if (newX < -10) wrappedX = 108;
+          else if (newX > 110) wrappedX = -8;
+
+          // Collision check against player fish (similar radius to enemy collision)
+          const dx = wrappedX - pos.x;
+          const dy = af.y - pos.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          // Answer fish are fixed ~size 4 for collision
+          if (dist < 6 + 4 * 1.2 && now > answerCooldownRef.current) {
+            if (af.isCorrect) {
+              collidedCorrect = true;
+              // Skip pushing — it's eaten
+              continue;
+            } else {
+              // Wrong: flash red, short cooldown, pause this fish for 1s.
+              // NO life lost. Keep wrong fish on screen (paused).
+              setFishFlashRed(true);
+              setTimeout(() => setFishFlashRed(false), 300);
+              setFishPowerMsg("Try another!");
+              setTimeout(() => setFishPowerMsg(null), 700);
+              answerCooldownRef.current = now + 500;
+              updated.push({ ...af, x: wrappedX, pausedUntil: now + 1000 });
+              continue;
+            }
+          }
+          updated.push({ ...af, x: wrappedX });
+        }
+
+        if (collidedCorrect) {
+          // Bonus score + celebration, clear bubble + all answer fish
+          const bonus = doubleStarsRef.current ? 20 : 10;
+          setFishScore(s => s + bonus);
+          setFishPowerMsg(`Correct! +${bonus} ✨`);
+          setTimeout(() => setFishPowerMsg(null), 800);
+          setFishMathBubble(null);
+          return [];
+        }
+
+        return updated;
+      });
+    }, 50);
+    return () => clearInterval(iv);
+  }, [fishActive, fishGameOver, victory, boss, fishMathBubble, answerFish.length]);
+
+  // ─── Clear answer fish + bubble if all despawn (gives a fresh problem) ────
+  useEffect(() => {
+    if (!fishMathBubble) return;
+    if (answerFish.length === 0) {
+      // Give a short breather before next problem
+      const t = setTimeout(() => setFishMathBubble(null), 300);
+      return () => clearTimeout(t);
+    }
+  }, [fishMathBubble, answerFish.length]);
 
   // ─── Power-up applicator ─────────────────────────────────────────────────
   const POWER_UPS = ["size", "speed", "shield", "doubleStars"];
@@ -277,11 +403,32 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
   const resetGame = () => {
     setFishSize(5); setFishPos({ x: 50, y: 50 }); setFishEnemies([]); setFishScore(0);
     setFishActive(true); setFishGameOver(false); setFishMathBubble(null);
+    setAnswerFish([]);
     setLevel(1); setBoss(null); setBossesDefeated(0); setVictory(false);
     setShield(false); setSpeedBoost(false); setDoubleStars(false);
     fishInvincibleUntilRef.current = 0;
+    answerCooldownRef.current = 0;
     setLives(isLucaMode ? 3 : 2);
   };
+
+  // ─── Award stars on level advance (level clear) ───────────────────────────
+  // Per S04 plan: stars on level clear, NOT per math problem solved.
+  // Kids earn for showing up and progressing, not for correctness.
+  const lastAwardedLevelRef = useRef(1);
+  useEffect(() => {
+    if (level > lastAwardedLevelRef.current && !fishGameOver && !victory) {
+      lastAwardedLevelRef.current = level;
+      // 1 star per level advance — the in-game game-end bundle is the big reward.
+      if (typeof addStars === "function") {
+        try {
+          addStars(1, `FishGame level ${level} cleared`);
+        } catch (_) {
+          // addStars signature may be just (amount) in older RPGCore — fall back
+          try { addStars(1); } catch (_) { /* non-fatal */ }
+        }
+      }
+    }
+  }, [level, fishGameOver, victory, addStars]);
 
   return (
     <div style={{
@@ -466,53 +613,45 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
             </div>
           )}
 
-          {/* Math bonus bubble — hidden during boss fights */}
+          {/* ── Math question banner (fish-as-answers mechanic) ── */}
           {fishMathBubble && !fishDone && !boss && (
             <div style={{
-              position:"absolute", left:`${fishMathBubble.x}%`, top:`${fishMathBubble.y}%`,
-              transform:"translate(-50%,-50%)", zIndex:10,
-              display:"flex", flexDirection:"column", alignItems:"center", gap:6,
+              position:"absolute", top:6, left:"50%", transform:"translateX(-50%)",
+              background:"rgba(251,191,36,0.45)", borderRadius:12, padding:"4px 14px",
+              color:"#fff", fontWeight:800, fontSize: isLucaMode ? 16 : 14,
+              border:"2px solid rgba(251,191,36,0.8)",
+              textShadow:"0 1px 3px rgba(0,0,0,0.8)",
+              boxShadow:"0 0 20px rgba(251,191,36,0.3)",
+              whiteSpace:"nowrap", zIndex:11,
             }}>
-              <div style={{
-                background:"rgba(251,191,36,0.4)", borderRadius:14, padding:"6px 14px",
-                color:"#fbbf24", fontWeight:800, fontSize:14,
-                border:"2px solid rgba(251,191,36,0.7)",
-                animation:"ll-pulse 1.2s ease-in-out infinite", whiteSpace:"nowrap",
-                boxShadow:"0 0 20px rgba(251,191,36,0.3)",
-              }}>
-                BONUS: {fishMathBubble.question} = ?
-              </div>
-              <div style={{ display:"flex", gap:8 }}>
-                {fishMathBubble.choices.map((c, ci) => (
-                  <button key={ci}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (c === fishMathBubble.answer) {
-                        applyPowerUp(POWER_UPS[Math.floor(Math.random() * POWER_UPS.length)]);
-                      } else {
-                        setFishSize(s => Math.max(1, s - 1));
-                        setLives(l => { const n = l - 1; if (n <= 0) setFishGameOver(true); return Math.max(0, n); });
-                        setFishFlashRed(true);
-                        setTimeout(() => setFishFlashRed(false), 300);
-                      }
-                      setFishMathBubble(null);
-                    }}
-                    style={{
-                      minWidth:60, minHeight:60, borderRadius:14,
-                      border:"3px solid rgba(251,191,36,0.7)",
-                      background:"rgba(59,130,246,0.8)", color:"#fff",
-                      fontSize:20, fontWeight:800, cursor:"pointer",
-                    }}>
-                    {c}
-                  </button>
-                ))}
-              </div>
-              {/* Power-up legend */}
-              <div style={{ fontSize:10, color:"rgba(251,191,36,0.7)", textAlign:"center", maxWidth:200 }}>
-                Correct = random power-up: Size / Speed / Shield / Double Stars
-              </div>
+              🍽️ Eat the fish with: {verifyMath(`${fishMathBubble.question} = ?`)}
             </div>
           )}
+
+          {/* ── Answer fish — hidden during boss fights ── */}
+          {fishMathBubble && !fishDone && !boss && answerFish.map(af => (
+            <div key={af.id} style={{
+              position:"absolute", left:`${af.x}%`, top:`${af.y}%`,
+              transform:`translateX(-50%) translateY(-50%) scaleX(${af.vx >= 0 ? 1 : -1})`,
+              zIndex:4, pointerEvents:"none",
+              filter: af.isCorrect
+                ? "drop-shadow(0 0 8px rgba(251,191,36,0.6))"
+                : "drop-shadow(0 0 6px rgba(59,130,246,0.4))",
+              animation:"ll-swim 1.2s ease-in-out infinite",
+              display:"flex", flexDirection:"column", alignItems:"center",
+            }}>
+              <div style={{ fontSize: isLucaMode ? 44 : 36 }}>🐠</div>
+              <div style={{
+                fontSize: isLucaMode ? 24 : 20, fontWeight:900, color:"#fff",
+                textShadow:"0 1px 3px rgba(0,0,0,1), 0 0 2px rgba(0,0,0,1)",
+                background:"rgba(0,0,0,0.45)", padding:"2px 8px", borderRadius:6,
+                marginTop:-4, whiteSpace:"nowrap",
+                transform: af.vx < 0 ? "scaleX(-1)" : "none",
+              }}>
+                {af.value}
+              </div>
+            </div>
+          ))}
 
           {/* Victory overlay — level 15 boss defeated */}
           {victory && (
@@ -528,7 +667,7 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
           )}
 
           {/* Game over overlay */}
-          {fishGameOver && fishSize < 10 && !victory && (
+          {fishGameOver && !victory && (
             <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center",
               background:"rgba(0,0,0,0.6)", zIndex:20 }}>
               <div style={{ textAlign:"center" }}>
@@ -542,7 +681,7 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
 
         {/* Touch hint */}
         <div style={{ textAlign:"center", color:"rgba(255,255,255,0.5)", fontSize:11, marginTop:4 }}>
-          Tap or drag to swim! Eat smaller fish (EAT) — avoid bigger (DANGER). Solve math for power-ups!
+          Tap or drag to swim! Eat smaller fish (EAT) — avoid bigger (DANGER). When a math question appears, eat the fish with the right answer!
         </div>
 
         {/* D-pad controls */}
