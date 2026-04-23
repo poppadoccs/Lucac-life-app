@@ -1,10 +1,24 @@
 import { useState, useEffect, useRef } from "react";
 import { getDatabase, ref, onValue } from "firebase/database";
 import { generateMathProblem, GameBtn, recordGameHistory, ageBandFromProfile } from "./_shared";
+import { verifyMath } from "../utils";
 
 // ─── CONSTANTS ───────────────────────────────────────────
 
 const CARS = ["🏎️", "🏁", "🚗", "🚙", "🚕", "🚓"];
+
+// S04-A5: Car color customization — 6 presets, persists per-kid to
+// kidsData/{name}/favoriteCarColor. "default" = no tint (original emoji look).
+// Each entry carries a text label so the picker stays colorblind-safe — Alex
+// is deutan colorblind, so the UI always shows the label alongside the swatch.
+const CAR_COLORS = [
+  { id: "red",     label: "Red",     hex: "#ef4444" },
+  { id: "blue",    label: "Blue",    hex: "#3b82f6" },
+  { id: "green",   label: "Green",   hex: "#22c55e" },
+  { id: "purple",  label: "Purple",  hex: "#a855f7" },
+  { id: "gold",    label: "Gold",    hex: "#f59e0b" },
+  { id: "default", label: "Default", hex: null },
+];
 
 const TRACKS = {
   highway: {
@@ -51,6 +65,10 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
   const [selectedCar, setSelectedCar] = useState(savedCar);
   const [selectedTrack, setSelectedTrack] = useState("highway");
   const [leaderboard, setLeaderboard] = useState({ yana: [], luca: [] });
+  // S04-A5: Car color selection persists per-kid. Defaults to "default"
+  // (no tint) when the kid hasn't picked one yet.
+  const initialColor = kidsData?.[profile?.name]?.favoriteCarColor || "default";
+  const [selectedCarColor, setSelectedCarColor] = useState(initialColor);
 
   // ─── Race state ───────────────────────────────────────
   const [raceLane, setRaceLane] = useState(1);
@@ -91,6 +109,10 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
   const nitroRef = useRef(false);
   const slowRef = useRef(false);
   const hitInvincibleUntilRef = useRef(0);
+  // S04-A5: Math barrier safety-net timeout. If the kid freezes on a math
+  // barrier for any reason (bug, distraction, walked away), auto-clear the
+  // barrier after 5s so the car is never permanently stuck.
+  const barrierTimeoutRef = useRef(null);
 
   // Keep refs in sync with state
   useEffect(() => { raceSpeedRef.current = raceSpeed; }, [raceSpeed]);
@@ -299,10 +321,30 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
       // Math barrier
       if (now - lastBarrierTimeRef.current > 20000 && spd > 2 && !raceMathBarrier) {
         lastBarrierTimeRef.current = now;
-        const prob = generateMathProblem(mathDifficulty);
+        // Curriculum-aware subject: honour activeSubjects when the kid is
+        // drilling multiplication or division; otherwise default arithmetic.
+        const active = curriculum?.activeSubjects || [];
+        let subject = "arithmetic";
+        if (active.includes("multiplication") && active.includes("division")) {
+          subject = Math.random() > 0.5 ? "multiplication" : "division";
+        } else if (active.includes("multiplication")) {
+          subject = "multiplication";
+        } else if (active.includes("division")) {
+          subject = "division";
+        }
+        const prob = generateMathProblem(mathDifficulty, subject);
         setRaceMathBarrier(prob);
         setRaceFrozen(true);
         setRaceSpeed(0);
+        // S04-A5 safety net: auto-clear after 5s so the car is never
+        // permanently stuck. Tracked in a ref so correct-answer path
+        // can clear it on dismiss.
+        if (barrierTimeoutRef.current) clearTimeout(barrierTimeoutRef.current);
+        barrierTimeoutRef.current = setTimeout(() => {
+          setRaceMathBarrier(null);
+          setRaceFrozen(false);
+          barrierTimeoutRef.current = null;
+        }, 5000);
       }
 
       raceAnimRef.current = requestAnimationFrame(loop);
@@ -314,6 +356,11 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
 
   // ─── Math barrier answer ──────────────────────────────
   const handleMathAnswer = (c) => {
+    // Clear the 5s safety-net timeout — kid answered, no auto-dismiss needed.
+    if (barrierTimeoutRef.current) {
+      clearTimeout(barrierTimeoutRef.current);
+      barrierTimeoutRef.current = null;
+    }
     if (c === raceMathBarrier.answer) {
       setRaceScore(s => s + 100);
       setRaceSpeed(5);
@@ -324,23 +371,36 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
         showToast("⚡ Auto-Nitro! Great job!");
       }
     } else {
-      // Wrong: speed drops 50% for 3s, no permanent freeze
+      // Wrong: speed drops 50% for 3s, no permanent freeze. No shame language.
       setRaceSpeed(s => s * 0.5);
       setSlowPenalty(true); slowRef.current = true;
       setTimeout(() => { setSlowPenalty(false); slowRef.current = false; }, 3000);
+      showToast("Try again — you got this!");
     }
     setRaceMathBarrier(null);
     setRaceFrozen(false);
   };
 
+  // S04-A5: Unmount cleanup for the barrier safety-net timeout.
+  useEffect(() => {
+    return () => {
+      if (barrierTimeoutRef.current) {
+        clearTimeout(barrierTimeoutRef.current);
+        barrierTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   // ─── Collect stars + save history ────────────────────
   const raceStarsEarned = raceScore <= 100 ? 1 : raceScore <= 300 ? 2 : 3;
 
   const handleCollect = () => {
-    addStars(raceStarsEarned);
+    // S04-A5: stars earned on race finish only, never per math barrier.
+    addStars(raceStarsEarned, "RacingGame finished");
     recordGameHistory(fbSet, profile, "racing", raceScore, raceStarsEarned, {
       track: selectedTrack,
       car: selectedCar,
+      carColor: selectedCarColor,
       distance: Math.round(distance),
     });
     setScreen("menu");
@@ -380,6 +440,44 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
                 {selectedCar === car && <div style={{ fontSize: 9, color: "#fbbf24", fontWeight: 700, marginTop: 1 }}>PICK!</div>}
               </button>
             ))}
+          </div>
+        </div>
+
+        {/* Car color picker (S04-A5) — each swatch has a text label AND a
+            "Selected" indicator for colorblind safety. Persists on tap. */}
+        <div style={{ background: "#1e293b", borderRadius: 12, padding: "12px", marginBottom: 10 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, color: "#94a3b8" }}>CAR COLOR</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+            {CAR_COLORS.map(c => {
+              const isActive = selectedCarColor === c.id;
+              return (
+                <button
+                  key={c.id}
+                  onClick={() => {
+                    setSelectedCarColor(c.id);
+                    if (fbSet && profile?.name) {
+                      fbSet(`kidsData/${profile.name}/favoriteCarColor`, c.id);
+                    }
+                  }}
+                  style={{
+                    minHeight: 56, minWidth: 44, padding: "8px 6px",
+                    borderRadius: 10, cursor: "pointer", textAlign: "center",
+                    border: `3px solid ${isActive ? "#fbbf24" : "rgba(255,255,255,0.15)"}`,
+                    background: isActive ? "rgba(251,191,36,0.18)" : "rgba(255,255,255,0.05)",
+                    color: "#fff", fontWeight: 700,
+                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
+                  }}
+                >
+                  <div style={{
+                    width: 22, height: 22, borderRadius: "50%",
+                    background: c.hex || "transparent",
+                    border: c.hex ? "2px solid rgba(255,255,255,0.5)" : "2px dashed rgba(255,255,255,0.5)",
+                  }} />
+                  <div style={{ fontSize: 11 }}>{c.label}</div>
+                  {isActive && <div style={{ fontSize: 9, color: "#fbbf24", fontWeight: 800 }}>SELECTED</div>}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -515,15 +613,28 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
           <div style={{ position: "absolute", left: "33.3%", top: 0, bottom: 0, width: 1, background: "rgba(255,255,255,0.15)" }} />
           <div style={{ position: "absolute", left: "66.6%", top: 0, bottom: 0, width: 1, background: "rgba(255,255,255,0.15)" }} />
 
-          {/* Player car */}
-          <div style={{
-            position: "absolute", bottom: 20, left: `${LANE_X[raceLane]}%`,
-            transform: "translateX(-50%)", fontSize: 36,
-            transition: "left 0.15s ease-out", zIndex: 5,
-            filter: shieldActive
+          {/* Player car (S04-A5: color tint layered via drop-shadow + textShadow).
+              Power-up glow (shield/nitro) takes precedence — it's critical
+              feedback, so it must not be masked by the cosmetic color tint. */}
+          {(() => {
+            const colorObj = CAR_COLORS.find(c => c.id === selectedCarColor);
+            const tintStyle = colorObj?.hex ? {
+              filter: `drop-shadow(0 0 8px ${colorObj.hex}) drop-shadow(0 0 4px ${colorObj.hex})`,
+              textShadow: `0 0 8px ${colorObj.hex}`,
+            } : {};
+            const powerupFilter = shieldActive
               ? "drop-shadow(0 0 8px #3b82f6)"
-              : nitroActive ? "drop-shadow(0 0 8px #f59e0b)" : "none",
-          }}>{selectedCar}</div>
+              : nitroActive ? "drop-shadow(0 0 8px #f59e0b)" : null;
+            const style = {
+              position: "absolute", bottom: 20, left: `${LANE_X[raceLane]}%`,
+              transform: "translateX(-50%)", fontSize: 36,
+              transition: "left 0.15s ease-out", zIndex: 5,
+              ...tintStyle,
+              // Power-up glow wins when active
+              ...(powerupFilter ? { filter: powerupFilter } : {}),
+            };
+            return <div style={style}>{selectedCar}</div>;
+          })()}
 
           {/* Obstacles — soft ones shown slightly faded */}
           {raceObstacles.map(o => (
@@ -559,24 +670,30 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
             }}>{toast}</div>
           )}
 
-          {/* Math barrier overlay */}
+          {/* Math barrier overlay — verifyMath() wraps every displayed math
+              string per CLAUDE.md 5x10=40 lesson. No LLM is in this path (math
+              is generated by generateMathProblem), but we still route through
+              verifyMath as a belt-and-braces guarantee in case generator math
+              ever regresses. */}
           {raceMathBarrier && (
             <div style={{
               position: "absolute", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 10,
               display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12,
             }}>
               <div style={{ fontSize: 14, color: "#fbbf24", fontWeight: 700 }}>MATH BARRIER!</div>
-              <div style={{ fontSize: 26, fontWeight: 900, color: "#fff" }}>{raceMathBarrier.question} = ?</div>
+              <div style={{ fontSize: 26, fontWeight: 900, color: "#fff" }}>
+                {verifyMath(`${raceMathBarrier.question} = ?`)}
+              </div>
               <div style={{ display: "flex", gap: 10 }}>
                 {raceMathBarrier.choices.map((c, i) => (
                   <button key={i} onClick={() => handleMathAnswer(c)} style={{
-                    minWidth: 64, minHeight: 64, borderRadius: 14,
+                    minWidth: isLucaMode ? 80 : 64, minHeight: isLucaMode ? 80 : 64, borderRadius: 14,
                     border: "3px solid #fbbf24", background: "rgba(59,130,246,0.85)",
-                    color: "#fff", fontSize: 22, fontWeight: 800, cursor: "pointer",
+                    color: "#fff", fontSize: isLucaMode ? 28 : 22, fontWeight: 800, cursor: "pointer",
                   }}>{c}</button>
                 ))}
               </div>
-              <div style={{ fontSize: 11, color: "#94a3b8" }}>Wrong = 3s speed drop</div>
+              <div style={{ fontSize: 11, color: "#94a3b8" }}>Auto-continues in 5s</div>
             </div>
           )}
 
@@ -595,16 +712,18 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
           )}
         </div>
 
-        {/* Controls — ≥ 80px height per spec */}
+        {/* Controls (S04-A5: Luca mode scales all buttons to ≥80px for small hands) */}
         {screen !== "gameover" && !raceMathBarrier && (
           <>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "8px 12px" }}>
               <button onClick={() => setRaceLane(l => Math.max(0, l - 1))} style={{
-                minHeight: 64, fontSize: 20, fontWeight: 700,
+                minHeight: isLucaMode ? 80 : 48, minWidth: isLucaMode ? 80 : 48,
+                fontSize: isLucaMode ? 32 : 24, fontWeight: 700,
                 background: "#3b82f6", color: "#fff", border: "none", borderRadius: 12, cursor: "pointer",
               }}>⬅ Left</button>
               <button onClick={() => setRaceLane(l => Math.min(2, l + 1))} style={{
-                minHeight: 64, fontSize: 20, fontWeight: 700,
+                minHeight: isLucaMode ? 80 : 48, minWidth: isLucaMode ? 80 : 48,
+                fontSize: isLucaMode ? 32 : 24, fontWeight: 700,
                 background: "#3b82f6", color: "#fff", border: "none", borderRadius: 12, cursor: "pointer",
               }}>➡ Right</button>
             </div>
@@ -616,7 +735,8 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
                 onMouseUp={() => { gasRef.current = false; }}
                 onMouseLeave={() => { gasRef.current = false; }}
                 style={{
-                  minHeight: 80, fontSize: 22, fontWeight: 800,
+                  minHeight: isLucaMode ? 80 : 48, minWidth: isLucaMode ? 80 : 48,
+                  fontSize: isLucaMode ? 32 : 24, fontWeight: 800,
                   background: "linear-gradient(135deg, #16a34a, #22c55e)",
                   color: "#fff", border: "none", borderRadius: 14, cursor: "pointer",
                   boxShadow: "0 4px 12px rgba(34,197,94,0.4)", touchAction: "none",
@@ -628,7 +748,8 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
                 onMouseUp={() => { brakeRef.current = false; }}
                 onMouseLeave={() => { brakeRef.current = false; }}
                 style={{
-                  minHeight: 80, fontSize: 22, fontWeight: 800,
+                  minHeight: isLucaMode ? 80 : 48, minWidth: isLucaMode ? 80 : 48,
+                  fontSize: isLucaMode ? 32 : 24, fontWeight: 800,
                   background: "linear-gradient(135deg, #dc2626, #ef4444)",
                   color: "#fff", border: "none", borderRadius: 14, cursor: "pointer",
                   boxShadow: "0 4px 12px rgba(239,68,68,0.4)", touchAction: "none",
