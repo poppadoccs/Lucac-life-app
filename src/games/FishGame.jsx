@@ -18,6 +18,10 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
   const [fishFlashRed, setFishFlashRed] = useState(false);
   const [fishPowerMsg, setFishPowerMsg] = useState(null);
 
+  // ── Lives ─────────────────────────────────────────────────────────────────────
+  const MAX_LIVES = isLucaMode ? 3 : 2;
+  const [lives, setLives]              = useState(isLucaMode ? 3 : 2);
+
   // ── Level system ─────────────────────────────────────────────────────────────
   const [level, setLevel]             = useState(1);
   const levelRef                      = useRef(1);
@@ -54,7 +58,7 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
   useEffect(() => { doubleStarsRef.current = doubleStars; },   [doubleStars]);
   useEffect(() => { bossesDefeatedRef.current = bossesDefeated; }, [bossesDefeated]);
 
-  // ─── Level timer — tick every 60s ─────────────────────────────────────────
+  // ─── Level timer — tick every 30s ─────────────────────────────────────────
   useEffect(() => {
     if (!fishActive || fishGameOver || victory) return;
     const iv = setInterval(() => {
@@ -73,13 +77,13 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
         }
         return newLevel;
       });
-    }, 60000);
+    }, 30000);
     return () => clearInterval(iv);
   }, [fishActive, fishGameOver, victory, isLucaMode, mathDifficulty]);
 
   // ─── Enemy spawner — rate and max enemies scale with level ────────────────
   useEffect(() => {
-    if (!fishActive || fishSize >= 10 || fishGameOver || victory) return;
+    if (!fishActive || fishGameOver || victory) return;
     const FISH_EMOJIS = ["🐠","🐡","🐟","🐠","🐡","🐟","🦈"];
     const spawn = () => {
       setFishEnemies(enemies => {
@@ -148,13 +152,10 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
                 surviving.push({ ...enemy, x: movedX });
                 continue;
               }
-              fishInvincibleUntilRef.current = Date.now() + 1000;
+              fishInvincibleUntilRef.current = Date.now() + 1500;
               setFishScore(s => Math.max(0, s - 20));
-              setFishSize(s => {
-                const newSz = s - 1;
-                if (newSz <= 0) setFishGameOver(true);
-                return Math.max(0.5, newSz);
-              });
+              setFishSize(s => Math.max(1, s - 1));
+              setLives(l => { const n = l - 1; if (n <= 0) setFishGameOver(true); return Math.max(0, n); });
               setFishFlashRed(true);
               setTimeout(() => setFishFlashRed(false), 300);
               continue;
@@ -170,7 +171,7 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
 
   // ─── Math bonus bubble (hidden while boss is active) ──────────────────────
   useEffect(() => {
-    if (!fishActive || fishSize >= 10 || fishGameOver || victory || boss) return;
+    if (!fishActive || fishGameOver || victory || boss) return;
     const show = () => {
       // Functional form avoids stale closure on fishMathBubble
       setFishMathBubble(prev => prev ?? {
@@ -235,7 +236,8 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
         setFishPowerMsg("SHIELD BLOCKED! 🛡️");
         setTimeout(() => setFishPowerMsg(null), 800);
       } else {
-        setFishSize(s => { const n = s - 1; if (n <= 0) setFishGameOver(true); return Math.max(0.5, n); });
+        setFishSize(s => Math.max(1, s - 1));
+        setLives(l => { const n = l - 1; if (n <= 0) setFishGameOver(true); return Math.max(0, n); });
         setFishFlashRed(true);
         setTimeout(() => setFishFlashRed(false), 300);
       }
@@ -244,7 +246,7 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
   };
 
   // ─── Input handlers ───────────────────────────────────────────────────────
-  const canMove = fishActive && !fishGameOver && fishSize < 10 && !victory;
+  const canMove = fishActive && !fishGameOver && !victory;
 
   const handleFishMove = (clientX, clientY, rect) => {
     if (!canMove) return;
@@ -270,7 +272,7 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
   const sizeRounded   = Math.round(fishSize);
   const baseStars     = fishScore <= 100 ? 1 : fishScore <= 300 ? 2 : 3;
   const fishStarsEarned = doubleStars ? Math.min(6, baseStars * 2) : baseStars;
-  const fishDone      = fishSize >= 10 || fishGameOver || victory;
+  const fishDone      = fishGameOver || victory;
 
   const resetGame = () => {
     setFishSize(5); setFishPos({ x: 50, y: 50 }); setFishEnemies([]); setFishScore(0);
@@ -278,6 +280,7 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
     setLevel(1); setBoss(null); setBossesDefeated(0); setVictory(false);
     setShield(false); setSpeedBoost(false); setDoubleStars(false);
     fishInvincibleUntilRef.current = 0;
+    setLives(isLucaMode ? 3 : 2);
   };
 
   return (
@@ -313,7 +316,12 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
             {shield     && <span style={{ fontSize:18 }} aria-label="Shield active">🛡️</span>}
             {speedBoost && <span style={{ fontSize:18 }} aria-label="Speed boost active">⚡</span>}
             {doubleStars && <span style={{ fontSize:14, fontWeight:700, color:"#fbbf24" }} aria-label="Double stars active">×2⭐</span>}
-            <div style={{ color:"#22d3ee", fontWeight:700, fontSize:14 }}>Size: {sizeRounded}/10</div>
+            <div style={{ display:"flex", gap:2 }} aria-label={`${lives} lives remaining`}>
+              {Array.from({ length: MAX_LIVES }).map((_, i) => (
+                <span key={i} style={{ fontSize:16 }}>{i < lives ? "❤️" : "🖤"}</span>
+              ))}
+            </div>
+            <div style={{ color:"#22d3ee", fontWeight:700, fontSize:14 }}>Size: {sizeRounded}/20</div>
           </div>
         </div>
 
@@ -322,8 +330,8 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
           <span style={{ color:"#22d3ee", fontSize:12, fontWeight:600 }}>Size:</span>
           <div style={{ flex:1, height:12, background:"rgba(0,0,0,0.3)", borderRadius:6, overflow:"hidden" }}>
             <div style={{
-              width:`${(fishSize/10)*100}%`, height:"100%", borderRadius:6, transition:"width 0.3s",
-              background: fishSize > 7 ? "linear-gradient(90deg, #22c55e, #fbbf24)" : "linear-gradient(90deg, #22d3ee, #22c55e)",
+              width:`${(fishSize/20)*100}%`, height:"100%", borderRadius:6, transition:"width 0.3s",
+              background: fishSize > 15 ? "linear-gradient(90deg, #22c55e, #fbbf24)" : "linear-gradient(90deg, #22d3ee, #22c55e)",
             }} />
           </div>
           <span style={{ color:"#fff", fontSize:13, fontWeight:700 }}>{sizeRounded}</span>
@@ -482,7 +490,8 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
                       if (c === fishMathBubble.answer) {
                         applyPowerUp(POWER_UPS[Math.floor(Math.random() * POWER_UPS.length)]);
                       } else {
-                        setFishSize(s => { const n = s - 1; if (n <= 0) setFishGameOver(true); return Math.max(0.5, n); });
+                        setFishSize(s => Math.max(1, s - 1));
+                        setLives(l => { const n = l - 1; if (n <= 0) setFishGameOver(true); return Math.max(0, n); });
                         setFishFlashRed(true);
                         setTimeout(() => setFishFlashRed(false), 300);
                       }
@@ -514,18 +523,6 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
                 <div style={{ fontSize:28, fontWeight:800 }}>OCEAN CHAMPION!</div>
                 <div style={{ fontSize:18, marginTop:4 }}>Score: {fishScore} | ⭐ {fishStarsEarned} Stars!</div>
                 <div style={{ fontSize:14, marginTop:4, color:"#a78bfa" }}>Bosses defeated: {bossesDefeated}</div>
-              </div>
-            </div>
-          )}
-
-          {/* Win overlay — reached size 10 */}
-          {fishSize >= 10 && !victory && (
-            <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center",
-              background:"rgba(0,0,0,0.6)", zIndex:20 }}>
-              <div style={{ textAlign:"center", color:"#fbbf24" }}>
-                <div style={{ fontSize:48 }}>🎉🐠</div>
-                <div style={{ fontSize:28, fontWeight:800 }}>BIGGEST FISH!</div>
-                <div style={{ fontSize:18, marginTop:4 }}>Score: {fishScore} | ⭐ {fishStarsEarned} Stars!</div>
               </div>
             </div>
           )}

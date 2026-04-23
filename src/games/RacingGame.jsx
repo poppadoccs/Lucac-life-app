@@ -40,7 +40,7 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
   const { mathDifficulty } = curriculum;
   const ageBand = ageBandFromProfile(profile);
   const isLucaMode = ageBand === "luca";
-  const MAX_HITS = isLucaMode ? 5 : 3;
+  const MAX_HITS = isLucaMode ? 8 : 5;
   const SPEED_MAX = isLucaMode ? 4 : 6;
 
   // ─── Screen ───────────────────────────────────────────
@@ -90,6 +90,7 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
   const magnetRef = useRef(false);
   const nitroRef = useRef(false);
   const slowRef = useRef(false);
+  const hitInvincibleUntilRef = useRef(0);
 
   // Keep refs in sync with state
   useEffect(() => { raceSpeedRef.current = raceSpeed; }, [raceSpeed]);
@@ -151,6 +152,7 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
     lastObstacleTimeRef.current = Date.now();
     lastStarTimeRef.current = Date.now();
     lastPowerupTimeRef.current = Date.now() - 8000;
+    hitInvincibleUntilRef.current = 0;
     setRaceActive(true);
     setScreen("race");
   };
@@ -177,9 +179,9 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
       } else if (brakeRef.current) {
         setRaceSpeed(s => Math.max(0, s - 0.3));
       } else if (!isFrozen) {
-        // Drag down to slow cap if penalty active
+        // Auto-accelerate to a base speed; drag more if slow penalty
         const drag = isSlow ? 0.2 : 0.03;
-        const floor = 0;
+        const floor = isSlow ? 0 : 1.5; // car always rolls at min 1.5
         setRaceSpeed(s => Math.max(floor, s - drag));
       }
 
@@ -204,7 +206,12 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
               setRaceScore(sc => sc + 5);
               continue;
             } else {
-              // Rocks / trees — slow penalty
+              // Rocks / trees — slow penalty (skip if invincible)
+              if (Date.now() < hitInvincibleUntilRef.current) {
+                next.push({ ...o, y: ny });
+                continue;
+              }
+              hitInvincibleUntilRef.current = Date.now() + 1500;
               const dur = isLucaMode ? 1500 : 3000;
               setSlowPenalty(true); slowRef.current = true;
               setTimeout(() => { setSlowPenalty(false); slowRef.current = false; }, dur);
@@ -265,7 +272,7 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
       const now = Date.now();
 
       // Spawn obstacle
-      if (now - lastObstacleTimeRef.current > 2000 && spd > 1) {
+      if (now - lastObstacleTimeRef.current > 2800 && spd > 1) {
         lastObstacleTimeRef.current = now;
         const lane = Math.floor(Math.random() * 3);
         const isSoftSpawn = Math.random() > 0.4;
@@ -459,8 +466,10 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
             onClick={() => { setRaceActive(false); transitionTo("mini_games"); }}
             style={{ width: "auto", padding: "8px 14px", minHeight: 44 }}>← Back</GameBtn>
           <div style={{ color: "#fbbf24", fontWeight: 700, fontSize: 13 }}>Score: {raceScore}</div>
-          <div style={{ color: "#fff", fontWeight: 700, fontSize: 13 }}>
-            Hits: {raceHits}/{MAX_HITS}
+          <div style={{ display: "flex", gap: 2 }} aria-label={`${MAX_HITS - raceHits} lives remaining`}>
+            {Array.from({ length: MAX_HITS }).map((_, i) => (
+              <span key={i} style={{ fontSize: 14 }}>{i < MAX_HITS - raceHits ? "❤️" : "🖤"}</span>
+            ))}
           </div>
         </div>
 
