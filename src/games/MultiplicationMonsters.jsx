@@ -1,34 +1,68 @@
-// ─── MULTIPLICATION MONSTERS (EDU-02) ────────────────────────────────────────
-// 12 worlds (one per times table 2×–12×).
-// Each world: 10 monsters defeated by answering multiplication correctly.
-// Boss fight at the end: 10 problems in 30 seconds.
-// Worlds unlock when the previous table accuracy ≥ 60% OR was cleared this session.
+// ─── MATH MONSTERS (EDU-02, S04-A1) ──────────────────────────────────────────
+// Merged multiplication + division (fact families) monster battler.
+// 11 worlds, one per times table, ordered by STRATEGY not sequentially:
+//   x2 (doubles) → x4 → x8 → x10 (anchor) → x5 → x9 (trick) → x3 → x6 → x11 → x7 → x12
+// Each world: 10 monsters + boss fight. Problems mix × and ÷ as fact families.
+// After correct answers there's a 20% chance of a fact-family hint
+// (e.g. solved 12÷4=3 → "Did you know? 4 × 3 = 12 too!").
+// Worlds unlock when previous table accuracy ≥ 60% OR cleared this session.
+// NOTE: File name stays MultiplicationMonsters.jsx — RPGCore imports by path.
+//       Wave 3 (W1) will rename the file and update the import.
 
 import { useState, useEffect, useRef } from "react";
-import { GameBtn, recordGameHistory, ageBandFromProfile, generateMathProblem } from "./_shared";
-import { recordAttempt } from "../LearningEngine";
+import { GameBtn, recordGameHistory, ageBandFromProfile } from "./_shared";
+import { recordAttempt, nextProblem } from "../LearningEngine";
+import { verifyMath } from "../utils";
 
+// Strategy-first ordering. Each world keeps its original art/theme.
 const WORLDS = [
-  { table: 2,  emoji: "🟢", name: "Slime Swamp",    bg: "linear-gradient(135deg, #064e3b, #059669)", color: "#34d399" },
-  { table: 3,  emoji: "👺", name: "Goblin Grove",   bg: "linear-gradient(135deg, #1a1a2e, #16213e)", color: "#60a5fa" },
-  { table: 4,  emoji: "💀", name: "Skeleton Crypt", bg: "linear-gradient(135deg, #1f2937, #374151)", color: "#d1d5db" },
-  { table: 5,  emoji: "🐲", name: "Dragon Peak",    bg: "linear-gradient(135deg, #7f1d1d, #ef4444)", color: "#fca5a5" },
-  { table: 6,  emoji: "🧙", name: "Witch's Wood",   bg: "linear-gradient(135deg, #312e81, #7c3aed)", color: "#a78bfa" },
-  { table: 7,  emoji: "🧛", name: "Vampire Vault",  bg: "linear-gradient(135deg, #4c0519, #be123c)", color: "#fb7185" },
-  { table: 8,  emoji: "🐺", name: "Werewolf Wastes",bg: "linear-gradient(135deg, #1c1917, #78350f)", color: "#fbbf24" },
-  { table: 9,  emoji: "🗿", name: "Giant's Gorge",  bg: "linear-gradient(135deg, #0f172a, #1e3a5f)", color: "#7dd3fc" },
-  { table: 10, emoji: "⚔️", name: "Dark Citadel",   bg: "linear-gradient(135deg, #1e1b4b, #4338ca)", color: "#818cf8" },
-  { table: 11, emoji: "👤", name: "Shadow Realm",   bg: "linear-gradient(135deg, #0f0f0f, #1f2937)", color: "#9ca3af" },
+  { table: 2,  emoji: "🟢", name: "Slime Swamp",     bg: "linear-gradient(135deg, #064e3b, #059669)", color: "#34d399" },
+  { table: 4,  emoji: "💀", name: "Skeleton Crypt",  bg: "linear-gradient(135deg, #1f2937, #374151)", color: "#d1d5db" },
+  { table: 8,  emoji: "🐺", name: "Werewolf Wastes", bg: "linear-gradient(135deg, #1c1917, #78350f)", color: "#fbbf24" },
+  { table: 10, emoji: "⚔️", name: "Dark Citadel",    bg: "linear-gradient(135deg, #1e1b4b, #4338ca)", color: "#818cf8" },
+  { table: 5,  emoji: "🐲", name: "Dragon Peak",     bg: "linear-gradient(135deg, #7f1d1d, #ef4444)", color: "#fca5a5" },
+  { table: 9,  emoji: "🗿", name: "Giant's Gorge",   bg: "linear-gradient(135deg, #0f172a, #1e3a5f)", color: "#7dd3fc" },
+  { table: 3,  emoji: "👺", name: "Goblin Grove",    bg: "linear-gradient(135deg, #1a1a2e, #16213e)", color: "#60a5fa" },
+  { table: 6,  emoji: "🧙", name: "Witch's Wood",    bg: "linear-gradient(135deg, #312e81, #7c3aed)", color: "#a78bfa" },
+  { table: 11, emoji: "👤", name: "Shadow Realm",    bg: "linear-gradient(135deg, #0f0f0f, #1f2937)", color: "#9ca3af" },
+  { table: 7,  emoji: "🧛", name: "Vampire Vault",   bg: "linear-gradient(135deg, #4c0519, #be123c)", color: "#fb7185" },
   { table: 12, emoji: "👑", name: "Final Fortress",  bg: "linear-gradient(135deg, #78350f, #d97706)", color: "#fcd34d" },
 ];
 const MONSTERS_PER_WORLD = 10;
-const BOSS_PROBLEMS     = 10;
-const BOSS_SECONDS      = 30;
+const BOSS_PROBLEMS      = 10;
+const BOSS_SECONDS       = 30;
 
-function makeProblem(table) {
+// makeProblem — generates a multiplication OR division problem for this table.
+// curriculum.activeSubjects weights the mix:
+//   - "multiplication" only → 80/20 favor multiplication
+//   - "division" only       → 80/20 favor division
+//   - both or neither       → 50/50
+function makeProblem(table, curriculum) {
+  const active = Array.isArray(curriculum?.activeSubjects) ? curriculum.activeSubjects : [];
+  const hasMult = active.includes("multiplication");
+  const hasDiv = active.includes("division");
+
+  let multBias = 0.5;
+  if (hasMult && !hasDiv) multBias = 0.8;
+  else if (hasDiv && !hasMult) multBias = 0.2;
+
+  const isMultiplication = Math.random() < multBias;
   const b = Math.floor(Math.random() * 12) + 1;
-  const answer = table * b;
-  const question = `${table} × ${b} = ?`;
+
+  let question, answer, subjectId;
+  if (isMultiplication) {
+    answer = table * b;
+    question = `${table} × ${b} = ?`;
+    subjectId = "multiplication";
+  } else {
+    // Division: (table * b) ÷ table = b. Uses the fact-family partner so the
+    // answer is always a clean whole number the kid can solve from their table.
+    const dividend = table * b;
+    answer = b;
+    question = `${dividend} ÷ ${table} = ?`;
+    subjectId = "division";
+  }
+
   const choices = [answer];
   while (choices.length < 4) {
     const delta = (Math.floor(Math.random() * 8) + 1) * (Math.random() > 0.5 ? 1 : -1);
@@ -39,7 +73,20 @@ function makeProblem(table) {
     const j = Math.floor(Math.random() * (i + 1));
     [choices[i], choices[j]] = [choices[j], choices[i]];
   }
-  return { question, answer, choices };
+  return { question, answer, choices, subjectId, table, operand: b, isMultiplication };
+}
+
+// Build the fact-family partner sentence for a just-solved problem.
+// e.g. solved "12 ÷ 4 = 3" → "Did you know? 4 × 3 = 12 too!"
+//      solved "4 × 3 = 12" → "Did you know? 12 ÷ 4 = 3 too!"
+// Runs through verifyMath so a JS check confirms correctness before display.
+function factFamilyHint(problem) {
+  if (!problem || typeof problem.table !== "number" || typeof problem.operand !== "number") return null;
+  const { table, operand, isMultiplication } = problem;
+  const raw = isMultiplication
+    ? `Did you know? ${table * operand} ÷ ${table} = ${operand} too!`
+    : `Did you know? ${table} × ${operand} = ${table * operand} too!`;
+  return verifyMath(raw);
 }
 
 function subjectAccuracy(attempts) {
@@ -49,15 +96,15 @@ function subjectAccuracy(attempts) {
   return list.filter(a => a.correct).length / list.length;
 }
 
-export default function MultiplicationMonsters({
+export default function MathMonsters({
   profile, kidsData, fbSet, addStars, transitionTo, curriculum,
   learningStats = {},
 }) {
   const isLuca = ageBandFromProfile(profile) === "luca";
 
   const [phase, setPhase] = useState("select"); // select | battle | boss | bossResult | complete | victory
-  const [worldIdx, setWorldIdx] = useState(0);  // index into WORLDS
-  const [monNum, setMonNum]     = useState(0);   // 0-9 current monster
+  const [worldIdx, setWorldIdx] = useState(0);
+  const [monNum, setMonNum]     = useState(0);
   const [monHp, setMonHp]       = useState(3);
   const [problem, setProblem]   = useState(null);
   const [flash, setFlash]       = useState(null); // "hit" | "miss" | null
@@ -67,28 +114,68 @@ export default function MultiplicationMonsters({
   const [bossProbs, setBossProbs] = useState([]);
   const [bossIdx, setBossIdx]   = useState(0);
   const [bossCorrect, setBossCorrect] = useState(0);
-  const [sessionWins, setSessionWins] = useState(new Set()); // world indices cleared this session
+  const [sessionWins, setSessionWins] = useState(new Set());
+  const [hint, setHint]         = useState(null); // short fact-family hint string
 
   const flashingRef     = useRef(false);
   const starsRef        = useRef(0);
   const scoreRef        = useRef(0);
   const startTimeRef    = useRef(0);
-  const bossCorrectRef  = useRef(0); // tracks correct count without stale closure
-  const bossEndedRef    = useRef(false); // prevents double-endBoss from timer+answer race
+  const bossCorrectRef  = useRef(0);
+  const bossEndedRef    = useRef(false);
+  const battleCountRef  = useRef(0); // counts problems served in current world (for every-3rd adaptive pull)
 
   useEffect(() => { starsRef.current = stars; }, [stars]);
   useEffect(() => { scoreRef.current = score; }, [score]);
   useEffect(() => { bossCorrectRef.current = bossCorrect; }, [bossCorrect]);
 
+  // hasAdaptiveData — true when this kid has any recorded attempts.
+  function hasAdaptiveData() {
+    const kid = profile?.name;
+    if (!kid || !learningStats?.[kid]) return false;
+    return Object.keys(learningStats[kid]).length > 0;
+  }
+
+  // pickProblem — every 3rd problem use LearningEngine.nextProblem() to surface
+  // weak areas (when we have data); otherwise fall back to table-specific makeProblem.
+  // Falls back gracefully if nextProblem returns something unusable (e.g. fractions
+  // placeholder, per _shared.js safety note).
+  function pickProblem(table) {
+    battleCountRef.current += 1;
+    const useAdaptive = hasAdaptiveData() && battleCountRef.current % 3 === 0;
+    if (useAdaptive) {
+      const p = nextProblem(curriculum, learningStats, profile?.name);
+      if (p && typeof p.answer === "number" && Array.isArray(p.choices) && p.choices.length >= 2) {
+        // Normalize shape. Adaptive problems don't know the table, mark isMultiplication
+        // from subjectId so we skip the fact-family hint if subject isn't ×/÷.
+        return {
+          question: p.question?.endsWith("=") || p.question?.endsWith("?") ? p.question : `${p.question} = ?`,
+          answer: p.answer,
+          choices: p.choices,
+          subjectId: p.subjectId || "multiplication",
+          table: null,
+          operand: null,
+          isMultiplication: p.subjectId === "multiplication",
+        };
+      }
+    }
+    return makeProblem(table, curriculum);
+  }
+
   // ── Unlock logic ──────────────────────────────────────────────────────────
   function isUnlocked(idx) {
-    if (idx === 0) return true; // 2× always open
+    if (idx === 0) return true;
     if (sessionWins.has(idx - 1)) return true;
     const prevTable = WORLDS[idx - 1].table;
-    const prevStats = learningStats?.[profile?.name]?.[`multiplication_${prevTable}`]
-                   || learningStats?.[profile?.name]?.multiplication;
-    const acc = subjectAccuracy(prevStats);
-    return acc !== null && acc >= 0.6;
+    const kid = profile?.name;
+    const stats = learningStats?.[kid];
+    // Unlock if either mult or div for the previous table shows ≥ 60% accuracy.
+    const multAcc = subjectAccuracy(stats?.[`multiplication_${prevTable}`])
+                 ?? subjectAccuracy(stats?.multiplication);
+    const divAcc  = subjectAccuracy(stats?.[`division_${prevTable}`])
+                 ?? subjectAccuracy(stats?.division);
+    const best = Math.max(multAcc ?? 0, divAcc ?? 0);
+    return best >= 0.6;
   }
 
   // ── Start battle ──────────────────────────────────────────────────────────
@@ -96,8 +183,10 @@ export default function MultiplicationMonsters({
     setWorldIdx(idx);
     setMonNum(0);
     setMonHp(isLuca ? 2 : 3);
-    const prob = makeProblem(WORLDS[idx].table);
+    battleCountRef.current = 0;
+    const prob = pickProblem(WORLDS[idx].table);
     setProblem(prob);
+    setHint(null);
     startTimeRef.current = Date.now();
     flashingRef.current = false;
     setPhase("battle");
@@ -108,19 +197,29 @@ export default function MultiplicationMonsters({
     if (flashingRef.current || phase !== "battle") return;
     const correct = choice === problem.answer;
     const timeMs = Date.now() - startTimeRef.current;
-    recordAttempt(fbSet, profile?.name, "multiplication", correct, timeMs);
+    const subjectForRecord = problem.isMultiplication ? "multiplication" : "division";
+    recordAttempt(fbSet, profile?.name, subjectForRecord, correct, timeMs);
     flashingRef.current = true;
 
     if (correct) {
       setFlash("hit");
+
+      // 20% chance of fact-family hint — only when we have a real table/operand
+      // from the local makeProblem (adaptive problems may not have them).
+      if (problem.table != null && problem.operand != null && Math.random() < 0.2) {
+        const hintText = factFamilyHint(problem);
+        if (hintText) {
+          setHint(hintText);
+          setTimeout(() => setHint(null), 2000);
+        }
+      }
+
       const newHp = monHp - 1;
       setMonHp(newHp);
 
       if (newHp <= 0) {
-        // Monster defeated
         const nextMon = monNum + 1;
         if (nextMon >= MONSTERS_PER_WORLD) {
-          // All monsters down — start boss fight
           setTimeout(() => {
             setFlash(null);
             flashingRef.current = false;
@@ -135,27 +234,26 @@ export default function MultiplicationMonsters({
           flashingRef.current = false;
           setMonNum(nextMon);
           setMonHp(isLuca ? 2 : 3);
-          const prob = makeProblem(WORLDS[worldIdx].table);
+          const prob = pickProblem(WORLDS[worldIdx].table);
           setProblem(prob);
           startTimeRef.current = Date.now();
         }, 500);
       } else {
-        // Monster hit but still alive
         setTimeout(() => {
           setFlash(null);
           flashingRef.current = false;
-          const prob = makeProblem(WORLDS[worldIdx].table);
+          const prob = pickProblem(WORLDS[worldIdx].table);
           setProblem(prob);
           startTimeRef.current = Date.now();
         }, 400);
       }
     } else {
+      // Neutral "Try again" feedback — no shame, no punishment.
       setFlash("miss");
       setTimeout(() => {
         setFlash(null);
         flashingRef.current = false;
-        // Same monster, new problem
-        const prob = makeProblem(WORLDS[worldIdx].table);
+        const prob = pickProblem(WORLDS[worldIdx].table);
         setProblem(prob);
         startTimeRef.current = Date.now();
       }, 600);
@@ -164,7 +262,7 @@ export default function MultiplicationMonsters({
 
   // ── Boss fight ────────────────────────────────────────────────────────────
   function startBoss() {
-    const probs = Array.from({ length: BOSS_PROBLEMS }, () => makeProblem(WORLDS[worldIdx].table));
+    const probs = Array.from({ length: BOSS_PROBLEMS }, () => makeProblem(WORLDS[worldIdx].table, curriculum));
     setBossProbs(probs);
     setBossIdx(0);
     setBossCorrect(0);
@@ -174,7 +272,6 @@ export default function MultiplicationMonsters({
     setPhase("boss");
   }
 
-  // Boss countdown timer — uses bossCorrectRef to avoid stale closure
   useEffect(() => {
     if (phase !== "boss") return;
     if (bossTime <= 0) {
@@ -187,8 +284,10 @@ export default function MultiplicationMonsters({
 
   function answerBoss(choice) {
     if (phase !== "boss" || bossIdx >= BOSS_PROBLEMS) return;
-    const correct = choice === bossProbs[bossIdx]?.answer;
-    recordAttempt(fbSet, profile?.name, "multiplication", correct, 0);
+    const bp = bossProbs[bossIdx];
+    const correct = choice === bp?.answer;
+    const subjectForRecord = bp?.isMultiplication ? "multiplication" : "division";
+    recordAttempt(fbSet, profile?.name, subjectForRecord, correct, 0);
     const newCorrect = bossCorrectRef.current + (correct ? 1 : 0);
     bossCorrectRef.current = newCorrect;
     setBossCorrect(newCorrect);
@@ -204,7 +303,10 @@ export default function MultiplicationMonsters({
     bossEndedRef.current = true;
     const won = correctCount >= Math.ceil(BOSS_PROBLEMS * 0.6);
     if (won) {
-      addStars?.(3);
+      // S04 policy: stars awarded ONLY on world clear, not per-problem. The math
+      // is the reward; stars are for showing up + completing chunks.
+      const clearedTable = WORLDS[worldIdx].table;
+      addStars?.(3, `MathMonsters table ${clearedTable} world cleared`);
       const newStars = starsRef.current + 3;
       setStars(newStars); starsRef.current = newStars;
       const newScore = scoreRef.current + correctCount * 15;
@@ -212,7 +314,7 @@ export default function MultiplicationMonsters({
 
       setSessionWins(sw => new Set([...sw, worldIdx]));
       recordGameHistory(fbSet, profile, "monsters", scoreRef.current, starsRef.current, {
-        world: WORLDS[worldIdx].table, bossScore: correctCount,
+        world: clearedTable, bossScore: correctCount,
       });
       if (worldIdx >= WORLDS.length - 1) {
         setPhase("victory");
@@ -235,8 +337,8 @@ export default function MultiplicationMonsters({
   if (phase === "select") return (
     <div style={{ ...wrapBase, background: "#0f172a", padding: 16 }}>
       <div style={{ textAlign: "center", marginBottom: 16 }}>
-        <div style={{ fontSize: 28, fontWeight: 900, color: "#fbbf24" }}>👾 Multiplication Monsters</div>
-        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>Pick a world to battle!</div>
+        <div style={{ fontSize: 28, fontWeight: 900, color: "#fbbf24" }}>👾 Math Monsters</div>
+        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>Multiply AND divide to battle!</div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
         {WORLDS.map((w, i) => {
@@ -313,6 +415,21 @@ export default function MultiplicationMonsters({
             </GameBtn>
           ))}
         </div>
+        {/* Neutral retry hint on miss, fact-family hint on hit */}
+        {flash === "miss" && (
+          <div style={{ marginTop: 10, fontSize: 14, color: "#fde68a", fontWeight: 600 }}>
+            Try again — you've got this!
+          </div>
+        )}
+        {hint && (
+          <div style={{
+            marginTop: 10, fontSize: 14, color: "#a7f3d0", fontWeight: 600,
+            background: "rgba(6, 78, 59, 0.6)", borderRadius: 10, padding: "6px 10px",
+            display: "inline-block",
+          }}>
+            💡 {hint}
+          </div>
+        )}
       </div>
 
       <div style={{ padding: "12px 16px 20px" }}>
@@ -405,7 +522,7 @@ export default function MultiplicationMonsters({
         <div style={{ fontSize: 64 }}>👑</div>
         <div style={{ fontSize: 26, fontWeight: 900, color: "#fcd34d" }}>ALL MONSTERS DEFEATED!</div>
         <div style={{ fontSize: 16, color: "rgba(255,255,255,0.8)", marginTop: 8 }}>
-          Multiplication MASTER!
+          Math MASTER!
         </div>
         <div style={{ fontSize: 14, color: "rgba(255,255,255,0.6)", marginTop: 4, marginBottom: 24 }}>
           ⭐ {stars} stars · Score: {score}
