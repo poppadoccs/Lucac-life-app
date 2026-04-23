@@ -8,6 +8,11 @@ import React from "react";
 // subject parameter added for EDU-01 learning engine hookup (Wave C).
 // Supported subjects: "arithmetic" (default), "multiplication", "division",
 //   "fractions" (placeholder — returns arithmetic until C1 wires EDU subjects)
+//
+// ⚠️ S04 SAFETY NOTE: The "fractions" branch returns arithmetic, NOT real
+// fraction problems. FractionLine generates its own problems from FRACTION_SETS
+// and never calls this function with subject="fractions". Do NOT call
+// generateMathProblem(_, "fractions") expecting real fraction content.
 export function generateMathProblem(difficulty = "easy", subject = "arithmetic") {
   let a, b, op, answer, question;
 

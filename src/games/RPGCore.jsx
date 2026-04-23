@@ -488,7 +488,7 @@ function InventoryBar({ inventory }) {
 
 // ─── RPG CORE ────────────────────────────────────────────
 
-export default function RPGCore({ profile, kidsData, fbSet, addStars, transitionTo, curriculum, initialScreen }) {
+export default function RPGCore({ profile, kidsData, fbSet, addStars, transitionTo, curriculum, learningStats = {}, rewardsConfig = [], initialScreen }) {
   const { isLucaMode, mathDifficulty } = curriculum;
   // Avatar canvas drawn by AvatarCreator lives in kidsData, not profile (canWrite fix)
   const avatarDataUrl = kidsData?.[profile?.name]?.avatarDataUrl || null;
@@ -811,7 +811,7 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
   };
 
   // ─── Mini-game delegation ─────────────────────────────
-  const gameProps = { profile, kidsData, fbSet, addStars, transitionTo: localTransitionTo, curriculum };
+  const gameProps = { profile, kidsData, fbSet, addStars, transitionTo: localTransitionTo, curriculum, learningStats, rewardsConfig };
   if (screen === "fish") return <><style>{KEYFRAMES_CSS}</style><FishGame {...gameProps} /></>;
   if (screen === "racing") return <><style>{KEYFRAMES_CSS}</style><RacingGame {...gameProps} /></>;
   if (screen === "board") return <><style>{KEYFRAMES_CSS}</style><BoardGame {...gameProps} /></>;

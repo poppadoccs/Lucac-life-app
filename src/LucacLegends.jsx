@@ -46,18 +46,23 @@ function GameBtn({ children, onClick, color, big, style: extra }) {
 //   menu screen, curriculum, addStars, transitionTo, RPGCore delegation
 // ═══════════════════════════════════════════════════════════
 
-export default function LucacLegends({ profile, kidsData, fbSet }) {
+export default function LucacLegends({ profile, kidsData, fbSet, learningStats = {}, curriculumData = {}, rewardsConfig = [] }) {
   const [screen, setScreen] = useState("menu");
   const [fadeIn, setFadeIn] = useState(true);
   const [starsEarned, setStarsEarned] = useState(0);
   const [totalStarsSession, setTotalStarsSession] = useState(0);
   const [worldsCompleted, setWorldsCompleted] = useState([]);
 
-  // ─── Curriculum (D-04: computed once in shell, passed to games) ──
+  // ─── Curriculum (D-04 + S04: shell-computed metadata + Firebase parent-set focus) ──
   const kidAge = profile?.name === "Luca" ? 6 : profile?.name === "Yana" ? 8 : 7;
   const isLucaMode = kidAge <= 7;
   const mathDifficulty = isLucaMode ? "easy" : "hard";
-  const curriculum = { isLucaMode, mathDifficulty, kidAge };
+  const kidCurriculum = curriculumData?.[profile?.name] || {};
+  const curriculum = {
+    isLucaMode, mathDifficulty, kidAge,
+    activeSubjects: kidCurriculum.activeSubjects || [],
+    mastery: kidCurriculum.mastery || {},
+  };
 
   const playerName = profile?.name || "Hero";
   const playerEmoji = profile?.emoji || "🦸";
@@ -65,12 +70,17 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
   const currentPoints = kd.points || 0;
 
   // ─── addStars: shell owns the Firebase write ────────────
-  function addStars(n) {
+  // S04: optional `reason` is logged to kidsData/{name}/starLog/{ts} so the
+  // Parent Dashboard can show "this week" earnings + reasons. Earning is
+  // tied to session/page/level completion, NOT per correct answer.
+  function addStars(n, reason = "") {
     if (!n) return;
     setStarsEarned(s => s + n);
     setTotalStarsSession(s => s + n);
     if (fbSet && kidsData && profile?.name) {
-      const updated = { ...kd, points: (kd.points || 0) + n };
+      const ts = Date.now();
+      const newLog = { ...(kd.starLog || {}), [ts]: { amount: n, reason: reason || "session" } };
+      const updated = { ...kd, points: (kd.points || 0) + n, starLog: newLog };
       fbSet("kidsData", { ...kidsData, [profile.name]: updated });
     }
   }
@@ -145,7 +155,7 @@ export default function LucacLegends({ profile, kidsData, fbSet }) {
   }
 
   // ─── Everything else delegates to RPGCore ────────────────
-  const rpgProps = { profile, kidsData, fbSet, addStars, transitionTo, curriculum, initialScreen: screen };
+  const rpgProps = { profile, kidsData, fbSet, addStars, transitionTo, curriculum, learningStats, rewardsConfig, initialScreen: screen };
   return (
     <>
       <style>{KEYFRAMES_CSS}</style>

@@ -342,6 +342,14 @@ export default function App() {
   const [selectedTaskEmoji, setSelectedTaskEmoji] = useState("📝");
   const TASK_EMOJIS = ["🧹","🍽️","🛏️","📚","🐕","🧺","🪥","🎒","🧸","🎨","🏃","🚿","🗑️","🪴","📝","👕","🧤","🥤","🍎","✏️","🎵","🐱","🚗","💤","🪣","📖","🎮","🧹","🪥","⭐"];
 
+  // Learning (S04 pre-flight) — adaptive learning + parent-set curriculum focus
+  //   learningStats:  { [kidName]: { [subjectId]: { [ts]: { correct, timeMs, ts } } } }
+  //   curriculumData: { [kidName]: { activeSubjects: string[], mastery: { [id]: 0-1 } } }
+  //   rewardsConfig:  [{ id, cost, label, enabled }]  — admin-set real-world reward menu
+  const [learningStats, setLearningStats] = useState({});
+  const [curriculumData, setCurriculumData] = useState({});
+  const [rewardsConfig, setRewardsConfig] = useState([]);
+
   // Family
   const [custodySchedule, setCustodySchedule] = useState({});
   const [custodyPattern, setCustodyPattern] = useState(null); // {pattern: ["D","D","M","M",...], startDate: "2026-01-05", preset: "2-2-5-5"}
@@ -492,7 +500,9 @@ export default function App() {
     "exchangeLog","foodLog","myFoods","nutritionGoals","trackedMacros","contacts","alertMinutes","themeName","widgetPrefs",
     "budgetData","shoppingList","weightLog","homeworkSessions","callButtons","quoteMode","customQuotePrompt","jrHistory","themeOverrides",
     "custodyPattern","custodyOverrides","ruleProposals","spotlightResponse","calendarSize","chores",
-    "routineState","boardGames"];
+    "routineState","boardGames",
+    // S04: Learning + parent-set curriculum + rewards menu
+    "learningStats","curriculum","rewardsConfig"];
 
   const fbSetters = {
     events: setEvents, eventStyles: setEventStyles, routines: setRoutines,
@@ -537,6 +547,10 @@ export default function App() {
     chores: v => setChores(v || []),
     routineState: v => setRoutineState(v || {}),
     boardGames: v => setBoardGames(v || {}),
+    // S04: Learning + curriculum + rewards setters
+    learningStats: v => setLearningStats(v || {}),
+    curriculum: v => setCurriculumData(v || {}),
+    rewardsConfig: v => setRewardsConfig(Array.isArray(v) ? v : []),
   };
 
   // Pre-populate from localStorage cache on mount
@@ -1491,7 +1505,7 @@ export default function App() {
               {showGame ? (
                 <div>
                   <button onClick={()=>setShowGame(false)} style={{...btnSecondary,marginBottom:12}}>← Back</button>
-                  <LucacLegends profile={currentProfile} kidsData={kidsData} fbSet={fbSet} />
+                  <LucacLegends profile={currentProfile} kidsData={kidsData} fbSet={fbSet} learningStats={learningStats} curriculumData={curriculumData} rewardsConfig={rewardsConfig} />
                 </div>
               ) : (
                 <div>
@@ -1688,9 +1702,13 @@ export default function App() {
           btnPrimary={btnPrimary} btnSecondary={btnSecondary} inputStyle={inputStyle}
           alertMinutes={alertMinutes} setAlertMinutes={setAlertMinutes}
           callButtons={callButtons} setCallButtons={setCallButtons}
-          contactDad={contactDad} contactMom={contactMom} />}
-        {tab === "parentdash" && <ParentDashboard V={V} profiles={profiles} kidsData={kidsData}
-          GROQ_KEY={GROQ_KEY} cardStyle={cardStyle} btnPrimary={btnPrimary} />}
+          contactDad={contactDad} contactMom={contactMom}
+          curriculum={curriculumData} learningStats={learningStats}
+          rewardsConfig={rewardsConfig} />}
+        {tab === "parentdash" && <ParentDashboard V={V} profiles={profiles}
+          learningStats={learningStats}
+          readingStats={Object.fromEntries(Object.entries(kidsData||{}).map(([n,d])=>[n,d?.readingStats||{}]))}
+          groqKey={GROQ_KEY} />}
       </div>
 
       {/* Bottom nav */}

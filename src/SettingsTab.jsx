@@ -2,7 +2,7 @@ import { useState } from "react";
 import { testGroqConnection } from "./aiAgent";
 import { LEARNING_SUBJECTS, getCurriculum, getELI5 } from "./LearningEngine";
 
-export default function SettingsTab({ V, THEMES, themeName, setThemeName, profiles, currentProfile, setCurrentProfile, widgetPrefs, setWidgetPref, fbSet, showToast, isAdmin, isParent, GROQ_KEY, cardStyle, btnPrimary, btnSecondary, inputStyle, alertMinutes, setAlertMinutes, callButtons, setCallButtons, contactDad, contactMom, curriculum = {}, learningStats = {} }) {
+export default function SettingsTab({ V, THEMES, themeName, setThemeName, profiles, currentProfile, setCurrentProfile, widgetPrefs, setWidgetPref, fbSet, showToast, isAdmin, isParent, GROQ_KEY, cardStyle, btnPrimary, btnSecondary, inputStyle, alertMinutes, setAlertMinutes, callButtons, setCallButtons, contactDad, contactMom, curriculum = {}, learningStats = {}, rewardsConfig = [] }) {
   const [settingsSubTab, setSettingsSubTab] = useState("profiles");
   const [profileNameEdit, setProfileNameEdit] = useState("");
   const [pinEdit, setPinEdit] = useState("");
@@ -13,6 +13,9 @@ export default function SettingsTab({ V, THEMES, themeName, setThemeName, profil
   const [saveFeedback, setSaveFeedback] = useState("");
   const [eliModal, setEliModal] = useState(null); // { subjectLabel, text } | null
   const [eliLoading, setEliLoading] = useState(false);
+  // S04: Rewards — admin/parents configure star-redeemable real-world rewards
+  const [newRewardCost, setNewRewardCost] = useState("");
+  const [newRewardLabel, setNewRewardLabel] = useState("");
 
   function showSave(msg) { setSaveFeedback(msg); setTimeout(() => setSaveFeedback(""), 2000); }
 
@@ -26,11 +29,11 @@ export default function SettingsTab({ V, THEMES, themeName, setThemeName, profil
       <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
         {["profiles","theme",
           ...(isAdmin ? ["alerts","learning"] : []),
-          ...((isAdmin || isParent) ? ["widgets","contacts"] : [])
+          ...((isAdmin || isParent) ? ["widgets","contacts","rewards"] : [])
         ].map(t=>(
           <button key={t} onClick={()=>setSettingsSubTab(t)}
             style={{...settingsSubTab===t?btnPrimary:btnSecondary,padding:"6px 12px",fontSize:12}}>
-            {t==="profiles"?"👤 Profiles":t==="theme"?"🎨 Theme":t==="widgets"?"📦 Widgets":t==="contacts"?"📞 Contacts":t==="learning"?"📚 Learning":"🔔 Alerts"}
+            {t==="profiles"?"👤 Profiles":t==="theme"?"🎨 Theme":t==="widgets"?"📦 Widgets":t==="contacts"?"📞 Contacts":t==="learning"?"📚 Learning":t==="rewards"?"🎁 Rewards":"🔔 Alerts"}
           </button>
         ))}
       </div>
@@ -402,6 +405,74 @@ export default function SettingsTab({ V, THEMES, themeName, setThemeName, profil
               else showToast(`Groq failed: ${r.status || r.error}`,"error");
             }} style={{...btnSecondary,width:"100%",marginBottom:6}}>Test AI Connection</button>
             <div style={{fontSize:10,color:V.textDim}}>Key: {GROQ_KEY ? `${GROQ_KEY.slice(0,8)}... (${GROQ_KEY.length} chars)` : "MISSING"}</div>
+          </div>
+        </div>
+      )}
+
+      {(isAdmin || isParent) && settingsSubTab === "rewards" && (
+        <div style={cardStyle}>
+          <div style={{fontWeight:700,color:"#f59e0b",marginBottom:8}}>🎁 Real-World Rewards</div>
+          <div style={{fontSize:13,color:V.textMuted,marginBottom:14}}>
+            Set what kids can earn with their stars. Stars come from playing games and finishing routines — you and mom give the actual reward when they redeem.
+          </div>
+
+          {rewardsConfig.length > 0 && (
+            <div style={{marginBottom:14}}>
+              {rewardsConfig.map((r, i) => (
+                <div key={r.id || i} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6,padding:"8px 10px",background:"rgba(0,0,0,0.06)",borderRadius:8,opacity:r.enabled===false?0.55:1}}>
+                  <span style={{minWidth:54,fontSize:14,fontWeight:700,color:"#f59e0b"}}>⭐ {r.cost}</span>
+                  <span style={{flex:1,color:V.textPrimary,fontSize:14}}>{r.label}</span>
+                  <button
+                    aria-label={r.enabled===false?"Disabled — tap to enable":"Enabled — tap to disable"}
+                    onClick={()=>{
+                      const next = rewardsConfig.map(x => x.id === r.id ? {...x, enabled: !(x.enabled !== false)} : x);
+                      fbSet("rewardsConfig", next);
+                    }}
+                    style={{...btnSecondary,padding:"4px 10px",fontSize:11,minHeight:32}}
+                  >{r.enabled===false?"Off":"On"}</button>
+                  <button
+                    aria-label="Delete reward"
+                    onClick={()=>{
+                      if (!window.confirm(`Delete "${r.label}"?`)) return;
+                      fbSet("rewardsConfig", rewardsConfig.filter(x => x.id !== r.id));
+                      showSave("Reward removed");
+                    }}
+                    style={{...btnSecondary,padding:"4px 10px",fontSize:13,minHeight:32}}
+                  >🗑</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{display:"flex",gap:6,alignItems:"flex-end"}}>
+            <div style={{width:90}}>
+              <div style={{fontSize:11,color:V.textMuted,marginBottom:3}}>Stars cost</div>
+              <input type="number" min="1" value={newRewardCost}
+                onChange={e=>setNewRewardCost(e.target.value)}
+                placeholder="10"
+                style={{...inputStyle,width:"100%"}} />
+            </div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:11,color:V.textMuted,marginBottom:3}}>Reward</div>
+              <input type="text" value={newRewardLabel}
+                onChange={e=>setNewRewardLabel(e.target.value)}
+                placeholder="e.g. Movie night"
+                style={{...inputStyle,width:"100%"}} />
+            </div>
+            <button
+              onClick={()=>{
+                const cost = Number(newRewardCost);
+                const label = newRewardLabel.trim();
+                if (!cost || cost < 1) { showToast("Cost must be at least 1 star","error"); return; }
+                if (!label) { showToast("Reward needs a label","error"); return; }
+                const next = [...rewardsConfig, { id:`r_${Date.now()}`, cost, label, enabled:true }];
+                fbSet("rewardsConfig", next);
+                setNewRewardCost("");
+                setNewRewardLabel("");
+                showSave("Reward added!");
+              }}
+              style={{...btnPrimary,padding:"8px 14px",fontSize:13,minHeight:42}}
+            >Add</button>
           </div>
         </div>
       )}
