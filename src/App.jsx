@@ -1708,7 +1708,7 @@ export default function App() {
         {tab === "parentdash" && <ParentDashboard V={V} profiles={profiles}
           learningStats={learningStats}
           readingStats={Object.fromEntries(Object.entries(kidsData||{}).map(([n,d])=>[n,d?.readingStats||{}]))}
-          groqKey={GROQ_KEY} />}
+          groqKey={GROQ_KEY} kidsData={kidsData} rewardsConfig={rewardsConfig} fbSet={fbSet} />}
       </div>
 
       {/* Bottom nav */}
