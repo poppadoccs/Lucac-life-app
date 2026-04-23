@@ -144,15 +144,26 @@ export default function MathMonsters({
     battleCountRef.current += 1;
     const useAdaptive = hasAdaptiveData() && battleCountRef.current % 3 === 0;
     if (useAdaptive) {
-      const p = nextProblem(curriculum, learningStats, profile?.name);
-      if (p && typeof p.answer === "number" && Array.isArray(p.choices) && p.choices.length >= 2) {
-        // Normalize shape. Adaptive problems don't know the table, mark isMultiplication
-        // from subjectId so we skip the fact-family hint if subject isn't ×/÷.
+      // LearningEngine.nextProblem expects {[kidName]: {activeSubjects, mastery}}.
+      // LucacLegends passes a per-kid flattened `curriculum` object — wrap it back
+      // into the engine's expected kid-keyed shape.
+      const curriculumForEngine = {
+        [profile?.name]: {
+          activeSubjects: curriculum.activeSubjects || [],
+          mastery: curriculum.mastery || {},
+        },
+      };
+      const p = nextProblem(curriculumForEngine, learningStats, profile?.name);
+      // Only accept multiplication/division in this game. Cross-domain adaptive
+      // pulls (e.g. addition) would confuse a kid in a ×/÷ world and would get
+      // mis-recorded — fall through to makeProblem(table) instead.
+      const isMathMonstersSubject = p?.subjectId === "multiplication" || p?.subjectId === "division";
+      if (p && typeof p.answer === "number" && Array.isArray(p.choices) && p.choices.length >= 2 && isMathMonstersSubject) {
         return {
           question: p.question?.endsWith("=") || p.question?.endsWith("?") ? p.question : `${p.question} = ?`,
           answer: p.answer,
           choices: p.choices,
-          subjectId: p.subjectId || "multiplication",
+          subjectId: p.subjectId,
           table: null,
           operand: null,
           isMultiplication: p.subjectId === "multiplication",
@@ -197,7 +208,9 @@ export default function MathMonsters({
     if (flashingRef.current || phase !== "battle") return;
     const correct = choice === problem.answer;
     const timeMs = Date.now() - startTimeRef.current;
-    const subjectForRecord = problem.isMultiplication ? "multiplication" : "division";
+    // Prefer subjectId from the problem (set on both adaptive and local paths).
+    // Fall back to the legacy boolean only if subjectId is somehow missing.
+    const subjectForRecord = problem.subjectId || (problem.isMultiplication ? "multiplication" : "division");
     recordAttempt(fbSet, profile?.name, subjectForRecord, correct, timeMs);
     flashingRef.current = true;
 

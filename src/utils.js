@@ -290,6 +290,8 @@ const PARENT_WRITE_PATHS = [
   "sparkReaction",
   // S04: parents can write learningStats too (for agent-seeded data / imports)
   "learningStats",
+  // S04: admin and parents both configure the real-world reward menu
+  "rewardsConfig",
 ];
 
 const KID_WRITE_PATHS = [
@@ -350,6 +352,12 @@ export function canWrite(profile, path) {
     }
     // boardGames: shared multi-kid tree — any kid can create/join rooms
     if (topPath === "boardGames") return true;
+    // S04: learningStats is keyed by kid name — kids can only write their own
+    // subtree. Prevents kid client from corrupting another kid's stats.
+    if (topPath === "learningStats") {
+      const nameSegment = path.split("/")[1];
+      return !nameSegment || nameSegment === profile.name;
+    }
     return true;
   }
 
