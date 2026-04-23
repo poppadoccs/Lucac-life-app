@@ -255,6 +255,8 @@ const ADMIN_ONLY_PATHS = [
   "customQuotePrompt",
   "themeOverrides",
   "calendarSize",
+  // S04: curriculum (parent-set subject focus per kid) — admin configures only
+  "curriculum",
 ];
 
 const PARENT_WRITE_PATHS = [
@@ -286,6 +288,8 @@ const PARENT_WRITE_PATHS = [
   "contacts",
   "spotlightResponse",
   "sparkReaction",
+  // S04: parents can write learningStats too (for agent-seeded data / imports)
+  "learningStats",
 ];
 
 const KID_WRITE_PATHS = [
@@ -294,6 +298,10 @@ const KID_WRITE_PATHS = [
   "jrHistory",
   "routineState",  // A0: kid completion state for daily routines
   "boardGames",    // B0: shared multiplayer board game rooms
+  // S04: kids write their own attempts via LearningEngine.recordAttempt
+  // Path is learningStats/{kidName}/{subjectId}/{ts} — top-level key is scoped
+  // by {kidName} segment and records are append-only timestamps
+  "learningStats",
 ];
 
 export function canWrite(profile, path) {

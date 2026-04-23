@@ -344,10 +344,11 @@ export default function StoryQuest({ profile, kidsData, fbSet, addStars, transit
     recordGameHistory(fbSet, profile, "story_quest", choicesMade.length * 100, stars, { storyTopic, choicesMade });
     if (fbSet && profile?.name) {
       const prev = (kidsData || {})[profile.name]?.readingStats || {};
+      // S04 canonical shape: { storiesRead, wordsRead, lastPlayed }
       fbSet(`kidsData/${profile.name}/readingStats`, {
         ...prev,
-        totalStories: (prev.totalStories || 0) + 1,
-        totalWordsRead: (prev.totalWordsRead || 0) + wordCount,
+        storiesRead: (prev.storiesRead || 0) + 1,
+        wordsRead: (prev.wordsRead || 0) + wordCount,
         lastPlayed: new Date().toISOString(),
       });
     }

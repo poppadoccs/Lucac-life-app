@@ -1705,10 +1705,9 @@ export default function App() {
           contactDad={contactDad} contactMom={contactMom}
           curriculum={curriculumData} learningStats={learningStats}
           rewardsConfig={rewardsConfig} />}
-        {tab === "parentdash" && <ParentDashboard V={V} profiles={profiles}
-          learningStats={learningStats}
-          readingStats={Object.fromEntries(Object.entries(kidsData||{}).map(([n,d])=>[n,d?.readingStats||{}]))}
-          groqKey={GROQ_KEY} kidsData={kidsData} rewardsConfig={rewardsConfig} fbSet={fbSet} />}
+        {tab === "parentdash" && <ParentDashboard V={V} profiles={profiles} kidsData={kidsData}
+          learningStats={learningStats} GROQ_KEY={GROQ_KEY}
+          rewardsConfig={rewardsConfig} fbSet={fbSet} />}
       </div>
 
       {/* Bottom nav */}

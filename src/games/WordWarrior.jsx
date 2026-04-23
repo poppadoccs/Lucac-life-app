@@ -204,8 +204,11 @@ export default function WordWarrior({ profile, kidsData, fbSet, addStars, transi
     recordGameHistory(fbSet, profile, "word_warrior", kills * 10, finalStars, { level });
     const prev = (kidsData || {})[profile.name]?.readingStats || {};
     if (fbSet && profile?.name) {
+      // S04 canonical shape: { storiesRead, wordsRead, lastPlayed }
+      // WordWarrior doesn't complete "stories" per se — preserve existing count.
       fbSet(`kidsData/${profile.name}/readingStats`, {
         ...prev,
+        storiesRead: prev.storiesRead || 0,
         wordsRead: (prev.wordsRead || 0) + kills,
         lastPlayed: new Date().toISOString(),
       });

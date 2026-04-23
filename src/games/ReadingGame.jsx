@@ -295,16 +295,14 @@ export default function ReadingGame({
     setSessionStars(s => s + 1);
     setCompletedTitles(prev => [...prev, passageSource]);
 
-    // Update kidsData.readingStats
+    // Update kidsData.readingStats — canonical shape per S04 spec:
+    // { storiesRead, wordsRead, lastPlayed } — shared with StoryQuest + WordWarrior
     if (fbSet && profile?.name) {
-      const prev = kidsData?.[profile.name]?.readingStats || kidsData?.readingStats?.[profile.name] || {};
-      const wordsMastered = (prev.wordsMastered || 0) + tokens.length;
-      const storiesRead = (prev.storiesRead || 0) + 1;
-      const level = isLucaMode ? lucaLevel : (prev.level || 1);
+      const prev = (kidsData || {})[profile.name]?.readingStats || {};
       fbSet(`kidsData/${profile.name}/readingStats`, {
-        level,
-        wordsMastered,
-        storiesRead,
+        ...prev,
+        storiesRead: (prev.storiesRead || 0) + 1,
+        wordsRead: (prev.wordsRead || 0) + tokens.length,
         lastPlayed: new Date().toISOString(),
       });
     }

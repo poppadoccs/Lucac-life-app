@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { getDatabase, ref, onValue } from "firebase/database";
 import { callAI } from "./utils";
+import { LEARNING_SUBJECTS, getWeakAreas } from "./LearningEngine";
 
 // Humanize game ids used in gameHistory writes (e.g. "math_monsters" → "Math Monsters")
 function humanizeGameId(id) {
@@ -44,30 +45,20 @@ function relTime(tsMs) {
   return `${w}w ago`;
 }
 
-// Display names for subject IDs written by LearningEngine (C1)
-const SUBJECT_LABELS = {
-  arithmetic: "Arithmetic",
-  multiplication: "Multiplication",
-  division: "Division",
-  fractions: "Fractions",
-  reading: "Reading",
-};
+// Display labels derived from LearningEngine's LEARNING_SUBJECTS catalog.
+// Single source of truth — add a subject there, it shows up here for free.
+const SUBJECT_LABELS = Object.fromEntries(LEARNING_SUBJECTS.map(s => [s.id, s.label]));
 
-// Return top-3 weak items across all subjects, sorted by lowest accuracy
-function getWeakAreas(subjectStats) {
-  const areas = [];
-  for (const [subjectId, stats] of Object.entries(subjectStats || {})) {
-    for (const [item, ws] of Object.entries(stats?.weakItems || {})) {
-      if ((ws.attempts || 0) >= 2) {
-        areas.push({
-          item,
-          subject: SUBJECT_LABELS[subjectId] || subjectId,
-          pct: Math.round((ws.correct / ws.attempts) * 100),
-        });
-      }
-    }
-  }
-  return areas.sort((a, b) => a.pct - b.pct).slice(0, 3);
+// Aggregate per-subject timestamped attempt records into displayable totals.
+// recordAttempt writes learningStats/{kid}/{subj}/{ts}: {correct, timeMs, ts}.
+// Dashboard rendering needs {attempts, correct, avgTimeMs} — this is the bridge.
+// View-concern helper, lives here (not in LearningEngine).
+function aggregate(subjectAttempts) {
+  const list = Object.values(subjectAttempts || {});
+  if (!list.length) return { attempts: 0, correct: 0, avgTimeMs: 0 };
+  const correct = list.filter(a => a.correct).length;
+  const avgTimeMs = Math.round(list.reduce((n, a) => n + (a.timeMs || 0), 0) / list.length);
+  return { attempts: list.length, correct, avgTimeMs };
 }
 
 // Horizontal accuracy bar with numeric label — colorblind-safe (text label + bar fill)
@@ -95,14 +86,18 @@ function AccuracyBar({ label, correct, attempts, avgTimeMs }) {
 // ─── PARENT DASHBOARD ────────────────────────────────────────────────────────
 // Props:
 //   profiles      — array of profile objects (App.jsx state)
-//   learningStats — { [kidName]: { [subjectId]: { attempts, correct, avgTimeMs, weakItems } } }
-//                   Written by LearningEngine.recordAttempt (C1). May be empty.
-//   readingStats  — { [kidName]: { level, wordsMastered, storiesRead } }
-//                   Written by WordWarrior (C2). May be empty.
-//   groqKey       — string, import.meta.env.VITE_GROQ_KEY passed from App.jsx
+//   kidsData      — { [kidName]: { points, starLog, readingStats, ... } }
+//                   ReadingGame/StoryQuest/WordWarrior all write to
+//                   kidsData/{name}/readingStats with shape { storiesRead, wordsRead, lastPlayed }
+//   learningStats — { [kidName]: { [subjectId]: { [tsMs]: { correct, timeMs, ts } } } }
+//                   Written by LearningEngine.recordAttempt (append-only timestamps).
+//                   aggregate() reduces this to {attempts, correct, avgTimeMs} for display.
+//   GROQ_KEY      — import.meta.env.VITE_GROQ_KEY passed from App.jsx
+//   rewardsConfig — [{ id, cost, label, enabled }] — admin-set real-world rewards
+//   fbSet         — Firebase setter (for redemption writes)
 //   V             — active theme variables object
 // Hidden from kid profiles — App.jsx shows this tab only when isAdmin || isParent.
-export default function ParentDashboard({ profiles, learningStats, readingStats, groqKey, V, kidsData = {}, rewardsConfig = [], fbSet }) {
+export default function ParentDashboard({ profiles, kidsData = {}, learningStats, GROQ_KEY, V, rewardsConfig = [], fbSet }) {
   const kids = (profiles || []).filter(p => p.type === "kid");
   const [selectedKidName, setSelectedKidName] = useState(() => kids[0]?.name || "");
   const [report, setReport] = useState("");
@@ -131,21 +126,24 @@ export default function ParentDashboard({ profiles, learningStats, readingStats,
   }, [selectedKidName]);
 
   async function handleGenerateReport() {
-    if (!groqKey) { setReportError("No AI key configured."); return; }
+    if (!GROQ_KEY) { setReportError("No AI key configured."); return; }
     setLoadingReport(true);
     setReport("");
     setReportError("");
 
     const kidStats = learningStats?.[selectedKidName] || {};
-    const rStats = readingStats?.[selectedKidName] || {};
+    const rStats = (kidsData || {})[selectedKidName]?.readingStats || {};
 
     // Pass real numbers to the prompt — AI narrates, JS supplies the facts
-    const subjectSummary = Object.entries(kidStats).map(([subj, s]) => {
-      const pct = (s.attempts || 0) > 0 ? Math.round(((s.correct || 0) / s.attempts) * 100) : null;
-      return `${SUBJECT_LABELS[subj] || subj}: ${pct !== null ? pct + "% correct" : "not attempted"} (${s.attempts || 0} tries)`;
+    const subjectSummary = Object.entries(kidStats).map(([subjId, raw]) => {
+      const { attempts, correct } = aggregate(raw);
+      const pct = attempts > 0 ? Math.round((correct / attempts) * 100) : null;
+      return `${SUBJECT_LABELS[subjId] || subjId}: ${pct !== null ? pct + "% correct" : "not attempted"} (${attempts} tries)`;
     }).join("; ") || "no learning data yet";
 
-    const weakAreas = getWeakAreas(kidStats).map(a => `${a.item} (${a.pct}%)`).join(", ") || "none identified";
+    const weakAreas = getWeakAreas(learningStats, selectedKidName)
+      .map(a => `${a.label} (${Math.round((a.accuracy || 0) * 100)}%)`)
+      .join(", ") || "none identified";
 
     const prompt = `You are a warm, encouraging parent assistant for a family learning app.
 Write a brief weekly learning summary for ${selectedKidName}.
@@ -153,14 +151,14 @@ Write a brief weekly learning summary for ${selectedKidName}.
 Data:
 - Subject accuracy: ${subjectSummary}
 - Weak areas: ${weakAreas}
-- Reading level: ${rStats.level || "not started"}
-- Words mastered: ${rStats.wordsMastered || 0}
-- Stories read: ${rStats.storiesRead || 0}
+- Stories completed: ${rStats.storiesRead || 0}
+- Words read: ${rStats.wordsRead || 0}
+- Last read: ${rStats.lastPlayed ? new Date(rStats.lastPlayed).toLocaleDateString() : "never"}
 
 Write 3–4 sentences max. Be specific and encouraging. Mention one clear strength and one area to practice. Suggest one fun activity they can try this week.`;
 
     try {
-      const result = await callAI(groqKey, [{ role: "user", content: prompt }], {
+      const result = await callAI(GROQ_KEY, [{ role: "user", content: prompt }], {
         maxTokens: 200, temperature: 0.7, timeout: 15000,
       });
       if (result.ok) {
@@ -185,9 +183,9 @@ Write 3–4 sentences max. Be specific and encouraging. Mention one clear streng
 
   const kid = kids.find(k => k.name === selectedKidName) || kids[0];
   const kidStats = learningStats?.[kid.name] || {};
-  const rStats = readingStats?.[kid.name] || {};
-  const weakAreas = getWeakAreas(kidStats);
-  const hasAnyData = Object.keys(kidStats).length > 0 || rStats.level || rStats.wordsMastered;
+  const rStats = (kidsData || {})[kid.name]?.readingStats || {};
+  const weakAreas = getWeakAreas(learningStats, kid.name);
+  const hasAnyData = Object.keys(kidStats).length > 0 || rStats.storiesRead || rStats.wordsRead;
 
   const accent = V?.accent || "#3b82f6";
 
@@ -283,36 +281,39 @@ Write 3–4 sentences max. Be specific and encouraging. Mention one clear streng
       {Object.keys(kidStats).length > 0 && (
         <div style={{ background: "#1f2937", borderRadius: 14, padding: 16, marginBottom: 16 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: "#e5e7eb", marginBottom: 14 }}>Subject Accuracy</div>
-          {Object.entries(kidStats).map(([subj, s]) => (
-            <AccuracyBar
-              key={subj}
-              label={SUBJECT_LABELS[subj] || subj}
-              correct={s.correct || 0}
-              attempts={s.attempts || 0}
-              avgTimeMs={s.avgTimeMs || 0}
-            />
-          ))}
+          {Object.entries(kidStats).map(([subjId, raw]) => {
+            const { attempts, correct, avgTimeMs } = aggregate(raw);
+            return (
+              <AccuracyBar
+                key={subjId}
+                label={SUBJECT_LABELS[subjId] || subjId}
+                correct={correct}
+                attempts={attempts}
+                avgTimeMs={avgTimeMs}
+              />
+            );
+          })}
         </div>
       )}
 
-      {/* Weak areas */}
+      {/* Weak areas — engine returns { id, label, gradeLevel, accuracy } (accuracy 0-1) */}
       {weakAreas.length > 0 && (
         <div style={{ background: "#1f2937", borderRadius: 14, padding: 16, marginBottom: 16 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: "#e5e7eb", marginBottom: 10 }}>Needs Practice (Top 3)</div>
-          {weakAreas.map((a, i) => (
-            <div key={i} style={{
-              display: "flex", justifyContent: "space-between", alignItems: "center",
-              marginBottom: 8, background: "#374151", borderRadius: 8, padding: "10px 14px",
-            }}>
-              <span style={{ color: "#e5e7eb", fontSize: 14 }}>
-                <span style={{ color: "#9ca3af", fontSize: 12 }}>{a.subject} · </span>
-                {a.item}
-              </span>
-              <span style={{ fontWeight: 700, fontSize: 14, color: a.pct < 50 ? "#ef4444" : "#f59e0b" }}>
-                {a.pct}% correct
-              </span>
-            </div>
-          ))}
+          {weakAreas.map((a, i) => {
+            const pct = Math.round((a.accuracy || 0) * 100);
+            return (
+              <div key={a.id || i} style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                marginBottom: 8, background: "#374151", borderRadius: 8, padding: "10px 14px",
+              }}>
+                <span style={{ color: "#e5e7eb", fontSize: 14 }}>{a.label}</span>
+                <span style={{ fontWeight: 700, fontSize: 14, color: pct < 50 ? "#ef4444" : "#f59e0b" }}>
+                  {pct}% correct
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -456,15 +457,15 @@ Write 3–4 sentences max. Be specific and encouraging. Mention one clear streng
         )}
       </div>
 
-      {/* Reading stats */}
-      {(rStats.level || rStats.wordsMastered || rStats.storiesRead) && (
+      {/* Reading stats — canonical shape: { storiesRead, wordsRead, lastPlayed } */}
+      {(rStats.storiesRead || rStats.wordsRead || rStats.lastPlayed) && (
         <div style={{ background: "#1f2937", borderRadius: 14, padding: 16, marginBottom: 16 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: "#e5e7eb", marginBottom: 12 }}>Reading Progress</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
             {[
-              { label: "Reading Level", value: rStats.level || 1 },
-              { label: "Words Mastered", value: rStats.wordsMastered || 0 },
-              { label: "Stories Read",   value: rStats.storiesRead   || 0 },
+              { label: "Stories Read", value: rStats.storiesRead || 0 },
+              { label: "Words Read",   value: rStats.wordsRead   || 0 },
+              { label: "Last Read",    value: rStats.lastPlayed ? new Date(rStats.lastPlayed).toLocaleDateString() : "—" },
             ].map(stat => (
               <div key={stat.label} style={{ background: "#374151", borderRadius: 10, padding: "12px 8px", textAlign: "center" }}>
                 <div style={{ fontSize: 24, fontWeight: 800, color: "#60a5fa" }}>{stat.value}</div>
