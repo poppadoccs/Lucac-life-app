@@ -137,6 +137,19 @@ export function cacheSet(key, val) {
   }
 }
 
+// --- Per-kid per-subject difficulty (S04) ---
+// Parent-controlled via Settings → Learning. Drives problem scaling in games.
+// Decoupled from ageBand (which only affects UI ergonomics). A gifted 6yo can
+// be ageBand=early (big buttons) + difficulty=hard (challenging problems).
+// Path: kidsData/{kidName}/difficulty/{subjectId} → "easy"|"medium"|"hard"|"extreme"
+export const DIFFICULTY_LEVELS = ["easy", "medium", "hard", "extreme"];
+
+export function getKidDifficulty(kidsData, kidName, subjectId) {
+  if (!kidName || !subjectId) return "easy";
+  const diff = kidsData?.[kidName]?.difficulty?.[subjectId];
+  return DIFFICULTY_LEVELS.includes(diff) ? diff : "easy";
+}
+
 // --- Color swatch presets ---
 export const SWATCH_COLORS = [
   { hex: "#ef4444", label: "Red" },

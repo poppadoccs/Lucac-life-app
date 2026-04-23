@@ -1,5 +1,6 @@
 import { useState } from "react";
 import RPGCore from "./games/RPGCore";
+import { isEarlyLearner } from "./games/_shared";
 
 // ─── KEYFRAMES CSS (used by menu screen animations) ──────
 const KEYFRAMES_CSS = `
@@ -54,8 +55,12 @@ export default function LucacLegends({ profile, kidsData, fbSet, learningStats =
   const [worldsCompleted, setWorldsCompleted] = useState([]);
 
   // ─── Curriculum (D-04 + S04: shell-computed metadata + Firebase parent-set focus) ──
-  const kidAge = profile?.name === "Luca" ? 6 : profile?.name === "Yana" ? 8 : 7;
-  const isLucaMode = kidAge <= 7;
+  // S04: isLucaMode now derives from profile.ageBand (parent-set in Settings)
+  // instead of name-matching. Rename Yana → "Janet" and difficulty no longer
+  // breaks silently. kidAge is rough; games that need real age should add a
+  // birthday field later.
+  const isLucaMode = isEarlyLearner(profile);
+  const kidAge = isLucaMode ? 6 : 8;
   const mathDifficulty = isLucaMode ? "easy" : "hard";
   const kidCurriculum = curriculumData?.[profile?.name] || {};
   const curriculum = {

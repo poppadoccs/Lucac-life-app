@@ -589,6 +589,27 @@ export default function App() {
 
   // showSave moved to SettingsTab.jsx
 
+  // ═══ S04 ageBand migration ═══
+  // Seeds profile.ageBand on kid profiles that don't have it yet so games can
+  // derive UI ergonomics from a stable field instead of matching on the kid's
+  // name. Name-based initial guess: Yana → "standard", everyone else → "early"
+  // (conservative default — bigger tap targets are more universally safe).
+  // Parent flips in Settings → Learning → Age mode. Admin-gated (profiles is
+  // ADMIN_ONLY_PATHS); the needsSeed guard prevents the effect from looping.
+  useEffect(() => {
+    if (!isAdmin || !profiles || !profiles.length) return;
+    const needsSeed = profiles.some(p => p?.type === "kid" && !p?.ageBand);
+    if (!needsSeed) return;
+    const seeded = profiles.map(p => {
+      if (p?.type !== "kid" || p?.ageBand) return p;
+      const name = (p?.name || "").toLowerCase();
+      const ageBand = name === "yana" ? "standard" : "early";
+      return { ...p, ageBand };
+    });
+    fbSet("profiles", seeded);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profiles, isAdmin]);
+
   // ═══ EVENT ALERT NOTIFICATIONS ═══
   useEffect(() => {
     if (!events || typeof Notification === "undefined") return;
@@ -1704,7 +1725,7 @@ export default function App() {
           callButtons={callButtons} setCallButtons={setCallButtons}
           contactDad={contactDad} contactMom={contactMom}
           curriculum={curriculumData} learningStats={learningStats}
-          rewardsConfig={rewardsConfig} />}
+          rewardsConfig={rewardsConfig} kidsData={kidsData} />}
         {tab === "parentdash" && <ParentDashboard V={V} profiles={profiles} kidsData={kidsData}
           learningStats={learningStats} GROQ_KEY={GROQ_KEY}
           rewardsConfig={rewardsConfig} fbSet={fbSet} />}

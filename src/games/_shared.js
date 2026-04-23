@@ -88,11 +88,33 @@ export function recordGameHistory(fbSet, profile, game, score, stars, extra = {}
 // ─── AGE BAND FROM PROFILE ───────────────────────────────────────────────────
 // Maps profile to an age band used for difficulty splitting (GAME-06).
 // Returns: "luca" (youngest / easiest), "yana" (middle), "other" (unknown/adult)
-// C1 may extend this with birthday-based logic; names are the reliable signal now.
+//
+// S04: prefers the explicit `profile.ageBand` field ("early"|"standard") set by
+// parents in Settings — name-matching is a fallback. Rename a kid profile and
+// difficulty no longer breaks silently. Return values are preserved for
+// backward compatibility with games that check `ageBand === "luca"`.
 export function ageBandFromProfile(profile) {
-  if (!profile?.name) return "other";
+  if (!profile) return "other";
+  // Prefer explicit ageBand (set by parent in Settings → Learning)
+  if (profile.ageBand === "early") return "luca";
+  if (profile.ageBand === "standard") return "yana";
+  // Legacy fallback: name match
+  if (!profile.name) return "other";
   const name = profile.name.toLowerCase();
   if (name === "luca") return "luca";
   if (name === "yana") return "yana";
   return "other";
+}
+
+// ─── IS EARLY LEARNER ────────────────────────────────────────────────────────
+// Preferred going forward. Explicit boolean check that doesn't leak legacy
+// "luca"/"yana" strings into game logic. Drives UI ergonomics (tap target
+// size, font size, simpler UI) — NOT math difficulty. Math difficulty comes
+// from kidsData/{name}/difficulty/{subjectId} via getKidDifficulty in utils.
+export function isEarlyLearner(profile) {
+  if (!profile) return false;
+  if (profile.ageBand === "early") return true;
+  if (profile.ageBand === "standard") return false;
+  // Legacy fallback: name match
+  return (profile?.name || "").toLowerCase() === "luca";
 }

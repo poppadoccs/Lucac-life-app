@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { testGroqConnection } from "./aiAgent";
 import { LEARNING_SUBJECTS, getCurriculum, getELI5 } from "./LearningEngine";
+import { DIFFICULTY_LEVELS, getKidDifficulty } from "./utils";
 
-export default function SettingsTab({ V, THEMES, themeName, setThemeName, profiles, currentProfile, setCurrentProfile, widgetPrefs, setWidgetPref, fbSet, showToast, isAdmin, isParent, GROQ_KEY, cardStyle, btnPrimary, btnSecondary, inputStyle, alertMinutes, setAlertMinutes, callButtons, setCallButtons, contactDad, contactMom, curriculum = {}, learningStats = {}, rewardsConfig = [] }) {
+export default function SettingsTab({ V, THEMES, themeName, setThemeName, profiles, currentProfile, setCurrentProfile, widgetPrefs, setWidgetPref, fbSet, showToast, isAdmin, isParent, GROQ_KEY, cardStyle, btnPrimary, btnSecondary, inputStyle, alertMinutes, setAlertMinutes, callButtons, setCallButtons, contactDad, contactMom, curriculum = {}, learningStats = {}, rewardsConfig = [], kidsData = {} }) {
   const [settingsSubTab, setSettingsSubTab] = useState("profiles");
   const [profileNameEdit, setProfileNameEdit] = useState("");
   const [pinEdit, setPinEdit] = useState("");
@@ -334,12 +335,33 @@ export default function SettingsTab({ V, THEMES, themeName, setThemeName, profil
               if (attempts.length < 3) return null;
               return attempts.filter(a=>a.correct).length / attempts.length;
             }
+            const currentAgeBand = p.ageBand || "early";
             return (
               <div key={p.id} style={{...cardStyle,marginBottom:12}}>
                 <div style={{fontWeight:700,color:V.accent,marginBottom:10,fontSize:15}}>{p.emoji} {p.name}</div>
+
+                {/* S04: Age mode — UI ergonomics only (tap targets, fonts). Decoupled from difficulty. */}
+                <div style={{marginBottom:12,padding:"10px 12px",background:"rgba(0,0,0,0.04)",borderRadius:8}}>
+                  <div style={{fontSize:11,color:V.textMuted,fontWeight:600,marginBottom:6}}>Age mode — UI size only (not difficulty)</div>
+                  <div style={{display:"flex",gap:6}}>
+                    {[{id:"early",label:"👶 Early learner"},{id:"standard",label:"🎓 Standard"}].map(opt => {
+                      const active = currentAgeBand === opt.id;
+                      return (
+                        <button key={opt.id} onClick={()=>{
+                          const updated = (profiles||[]).map(x => x.id === p.id ? {...x, ageBand: opt.id} : x);
+                          if (fbSet) { fbSet("profiles", updated); showSave(`${p.name}: ${opt.label}`); }
+                        }} style={{...(active ? btnPrimary : btnSecondary),padding:"6px 10px",fontSize:11,flex:1,minHeight:36}}>
+                          {active ? "✓ " : ""}{opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 {LEARNING_SUBJECTS.map(subj => {
                   const active = (config.activeSubjects||[]).includes(subj.id);
                   const acc = accuracy(subj.id);
+                  const currentDiff = getKidDifficulty(kidsData, p.name, subj.id);
                   return (
                     <div key={subj.id} style={{borderBottom:`1px solid ${V.borderDefault}`,paddingBottom:8,marginBottom:8}}>
                       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
@@ -365,14 +387,33 @@ export default function SettingsTab({ V, THEMES, themeName, setThemeName, profil
                         </button>
                       </div>
                       {acc !== null && (
-                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
                           <div style={{flex:1,height:6,background:V.bgElevated,borderRadius:3,overflow:"hidden"}}>
                             <div style={{height:"100%",width:`${Math.round(acc*100)}%`,background:acc>=0.7?V.success:acc>=0.4?"#f59e0b":V.danger,borderRadius:3,transition:"width 0.4s"}} />
                           </div>
                           <span style={{fontSize:11,color:V.textMuted,fontWeight:700,minWidth:32}}>{Math.round(acc*100)}%</span>
                         </div>
                       )}
-                      {acc === null && <div style={{fontSize:11,color:V.textDim}}>No data yet (need 3+ attempts)</div>}
+                      {acc === null && <div style={{fontSize:11,color:V.textDim,marginBottom:6}}>No data yet (need 3+ attempts)</div>}
+
+                      {/* S04: Per-subject difficulty — parent-tuned, decoupled from age */}
+                      <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                        <span style={{fontSize:10,color:V.textMuted,fontWeight:600,minWidth:58}}>Difficulty:</span>
+                        {DIFFICULTY_LEVELS.map(lvl => {
+                          const isActive = currentDiff === lvl;
+                          return (
+                            <button key={lvl} onClick={()=>{
+                              if (fbSet) fbSet(`kidsData/${p.name}/difficulty/${subj.id}`, lvl);
+                            }} style={{
+                              background: isActive ? V.accent : "rgba(0,0,0,0.06)",
+                              color: isActive ? "#fff" : V.textPrimary,
+                              border:"none",borderRadius:4,padding:"4px 6px",
+                              fontSize:10,fontWeight:700,flex:1,cursor:"pointer",
+                              minHeight:28,textTransform:"capitalize",
+                            }} aria-label={`Set ${subj.label} difficulty to ${lvl}`}>{lvl}</button>
+                          );
+                        })}
+                      </div>
                     </div>
                   );
                 })}
