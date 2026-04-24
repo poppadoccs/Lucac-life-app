@@ -297,7 +297,9 @@ Write 3–4 sentences max. Be specific and encouraging. Mention one clear streng
         </div>
       )}
 
-      {/* Weak areas — engine returns { id, label, gradeLevel, accuracy } (accuracy 0-1) */}
+      {/* Weak areas — engine returns the full subject record spread with { accuracy } appended.
+          Fields available: id, label, strand, gradeIntroduced, gradeMastered, prerequisites,
+          testedOn, gameMechanic, notes, accuracy (0-1). Keep rendering minimal. */}
       {weakAreas.length > 0 && (
         <div style={{ background: "#1f2937", borderRadius: 14, padding: 16, marginBottom: 16 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: "#e5e7eb", marginBottom: 10 }}>Needs Practice (Top 3)</div>

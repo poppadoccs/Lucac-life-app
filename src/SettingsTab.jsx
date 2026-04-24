@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { testGroqConnection } from "./aiAgent";
 import { LEARNING_SUBJECTS, getCurriculum, getELI5, getSubjectsForGrade, getSubjectLabel } from "./LearningEngine";
-import { DIFFICULTY_LEVELS, getKidDifficulty } from "./utils";
+import { DIFFICULTY_LEVELS, getKidDifficulty, verifyMath } from "./utils";
 
 export default function SettingsTab({ V, THEMES, themeName, setThemeName, profiles, currentProfile, setCurrentProfile, widgetPrefs, setWidgetPref, fbSet, showToast, isAdmin, isParent, GROQ_KEY, cardStyle, btnPrimary, btnSecondary, inputStyle, alertMinutes, setAlertMinutes, callButtons, setCallButtons, contactDad, contactMom, curriculum = {}, learningStats = {}, rewardsConfig = [], kidsData = {} }) {
   const [settingsSubTab, setSettingsSubTab] = useState("profiles");
@@ -412,7 +412,9 @@ export default function SettingsTab({ V, THEMES, themeName, setThemeName, profil
                           setEliLoading(true);
                           const text = await getELI5(GROQ_KEY, p.name, subj.id);
                           setEliLoading(false);
-                          setEliModal({subjectLabel:subj.label,text});
+                          // S04: verifyMath post-checks any arithmetic in the AI explanation
+                          // before a parent reads it (5×10=40 lesson — code supplies truth, not LLM)
+                          setEliModal({subjectLabel:subj.label,text:verifyMath(text)});
                         }} disabled={eliLoading}
                           style={{...btnSecondary,padding:"6px 12px",fontSize:12,minHeight:36}}>
                           {eliLoading?"...":"💡 Refresh"}
