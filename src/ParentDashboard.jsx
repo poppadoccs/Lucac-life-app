@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { getDatabase, ref, onValue } from "firebase/database";
 import { callAI } from "./utils";
-import { LEARNING_SUBJECTS, getWeakAreas } from "./LearningEngine";
+import { getWeakAreas, getSubjectLabel } from "./LearningEngine";
 
 // Humanize game ids used in gameHistory writes (e.g. "math_monsters" → "Math Monsters")
 function humanizeGameId(id) {
@@ -47,7 +47,8 @@ function relTime(tsMs) {
 
 // Display labels derived from LearningEngine's LEARNING_SUBJECTS catalog.
 // Single source of truth — add a subject there, it shows up here for free.
-const SUBJECT_LABELS = Object.fromEntries(LEARNING_SUBJECTS.map(s => [s.id, s.label]));
+// SUBJECT_LABELS deduped — use getSubjectLabel(id) from ./LearningEngine directly.
+// Single source of truth: add a subject there, it appears here for free.
 
 // Aggregate per-subject timestamped attempt records into displayable totals.
 // recordAttempt writes learningStats/{kid}/{subj}/{ts}: {correct, timeMs, ts}.
@@ -138,7 +139,7 @@ export default function ParentDashboard({ profiles, kidsData = {}, learningStats
     const subjectSummary = Object.entries(kidStats).map(([subjId, raw]) => {
       const { attempts, correct } = aggregate(raw);
       const pct = attempts > 0 ? Math.round((correct / attempts) * 100) : null;
-      return `${SUBJECT_LABELS[subjId] || subjId}: ${pct !== null ? pct + "% correct" : "not attempted"} (${attempts} tries)`;
+      return `${getSubjectLabel(subjId)}: ${pct !== null ? pct + "% correct" : "not attempted"} (${attempts} tries)`;
     }).join("; ") || "no learning data yet";
 
     const weakAreas = getWeakAreas(learningStats, selectedKidName)
@@ -286,7 +287,7 @@ Write 3–4 sentences max. Be specific and encouraging. Mention one clear streng
             return (
               <AccuracyBar
                 key={subjId}
-                label={SUBJECT_LABELS[subjId] || subjId}
+                label={getSubjectLabel(subjId)}
                 correct={correct}
                 attempts={attempts}
                 avgTimeMs={avgTimeMs}

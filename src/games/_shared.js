@@ -13,7 +13,14 @@ import React from "react";
 // fraction problems. FractionLine generates its own problems from FRACTION_SETS
 // and never calls this function with subject="fractions". Do NOT call
 // generateMathProblem(_, "fractions") expecting real fraction content.
+// S04: subjects this generator actually knows how to make problems for.
+// Anything else (decimals, fractions-equiv, coordinate-plane, etc.) — the
+// catalog can grow ahead of the generators. Silent fallback to arithmetic
+// keeps games playable while the extended subjects wait for real generators.
+const SUPPORTED_SUBJECTS = new Set(["arithmetic", "multiplication", "division"]);
+
 export function generateMathProblem(difficulty = "easy", subject = "arithmetic") {
+  if (!SUPPORTED_SUBJECTS.has(subject)) subject = "arithmetic";
   let a, b, op, answer, question;
 
   if (subject === "multiplication" || (subject === "arithmetic" && difficulty === "hard" && Math.random() > 0.5)) {

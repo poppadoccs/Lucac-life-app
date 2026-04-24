@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { testGroqConnection } from "./aiAgent";
-import { LEARNING_SUBJECTS, getCurriculum, getELI5 } from "./LearningEngine";
+import { LEARNING_SUBJECTS, getCurriculum, getELI5, getSubjectsForGrade, getSubjectLabel } from "./LearningEngine";
 import { DIFFICULTY_LEVELS, getKidDifficulty } from "./utils";
 
 export default function SettingsTab({ V, THEMES, themeName, setThemeName, profiles, currentProfile, setCurrentProfile, widgetPrefs, setWidgetPref, fbSet, showToast, isAdmin, isParent, GROQ_KEY, cardStyle, btnPrimary, btnSecondary, inputStyle, alertMinutes, setAlertMinutes, callButtons, setCallButtons, contactDad, contactMom, curriculum = {}, learningStats = {}, rewardsConfig = [], kidsData = {} }) {
@@ -133,6 +133,24 @@ export default function SettingsTab({ V, THEMES, themeName, setThemeName, profil
                       <option value="">Day...</option>
                       {Array.from({length:31},(_,i)=>{const d=String(i+1).padStart(2,"0"); return <option key={d} value={d}>{i+1}</option>;})}
                     </select>
+                    {/* S04: grade selector (kids only) — filters Learning subtab topics */}
+                    {p.type === "kid" && (
+                      <select value={p.grade ?? ""} onChange={e=>{
+                        const g = e.target.value;
+                        const updated=(profiles||[]).map(pp=>pp.id===p.id?{...pp,grade: g || null}:pp);
+                        fbSet("profiles",updated);
+                        if (g) showSave(`${p.name}: Grade ${g}`);
+                      }} aria-label="Grade level"
+                        style={{...inputStyle,width:"auto",flex:"0 0 auto",padding:"4px 8px",fontSize:12}}>
+                        <option value="">Grade...</option>
+                        <option value="K">K</option>
+                        <option value="1">1st</option>
+                        <option value="2">2nd</option>
+                        <option value="3">3rd</option>
+                        <option value="4">4th</option>
+                        <option value="5">5th</option>
+                      </select>
+                    )}
                     {p.type !== "admin" && (
                       <button onClick={()=>{
                         if(confirm(`Remove ${p.name} from your family?`)){
@@ -358,10 +376,17 @@ export default function SettingsTab({ V, THEMES, themeName, setThemeName, profil
                   </div>
                 </div>
 
-                {LEARNING_SUBJECTS.map(subj => {
+                {/* S04: filter catalog by kid's grade (shows current + 1 back + 1 ahead). */}
+                {/* If grade is unset, shows the full catalog (backward-compatible). */}
+                {getSubjectsForGrade(p.grade).map(subj => {
                   const active = (config.activeSubjects||[]).includes(subj.id);
                   const acc = accuracy(subj.id);
                   const currentDiff = getKidDifficulty(kidsData, p.name, subj.id);
+                  // S04: prereq warning — flag if any prereq below 70% mastery with 3+ attempts
+                  const weakPrereqs = (subj.prerequisites || []).filter(pid => {
+                    const pAcc = accuracy(pid);
+                    return pAcc !== null && pAcc < 0.7;
+                  });
                   return (
                     <div key={subj.id} style={{borderBottom:`1px solid ${V.borderDefault}`,paddingBottom:8,marginBottom:8}}>
                       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
@@ -375,6 +400,13 @@ export default function SettingsTab({ V, THEMES, themeName, setThemeName, profil
                           style={{width:18,height:18,cursor:"pointer",accentColor:V.accent}} />
                         <label htmlFor={`${p.id}-${subj.id}`} style={{fontSize:13,color:V.textPrimary,fontWeight:600,cursor:"pointer",flex:1}}>
                           {subj.label}
+                          {/* S04: state-test badge — text not color (Alex is colorblind) */}
+                          {subj.testedOn && subj.testedOn.length > 0 && (
+                            <span aria-label={`Tested on ${subj.testedOn.join(", ")}`}
+                              style={{marginLeft:6,fontSize:9,fontWeight:700,color:V.textMuted,padding:"1px 5px",background:"rgba(0,0,0,0.08)",borderRadius:3,letterSpacing:0.3}}>
+                              📋 Tested
+                            </span>
+                          )}
                         </label>
                         <button onClick={async()=>{
                           setEliLoading(true);
@@ -386,6 +418,12 @@ export default function SettingsTab({ V, THEMES, themeName, setThemeName, profil
                           {eliLoading?"...":"💡 Refresh"}
                         </button>
                       </div>
+                      {/* S04: prereq-not-mastered warning (shows above accuracy bar) */}
+                      {weakPrereqs.length > 0 && (
+                        <div style={{fontSize:11,color:"#f59e0b",fontWeight:600,marginBottom:6,lineHeight:1.4}}>
+                          ⚠ Prereq: {weakPrereqs.map(pid => getSubjectLabel(pid)).join(", ")} (not yet mastered)
+                        </div>
+                      )}
                       {acc !== null && (
                         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
                           <div style={{flex:1,height:6,background:V.bgElevated,borderRadius:3,overflow:"hidden"}}>

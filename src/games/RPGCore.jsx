@@ -8,6 +8,7 @@ import ReadingGame from "./ReadingGame";
 import MathRacer from "./MathRacer";
 import MultiplicationMonsters from "./MultiplicationMonsters";
 import FractionLine from "./FractionLine";
+import { recommendGames } from "../LearningEngine";
 
 // ─── CONSTANTS ───────────────────────────────────────────
 
@@ -1188,10 +1189,22 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
               <Avatar emoji={playerEmoji} emotion="happy" anim="bounce" size={50} avatarDataUrl={avatarDataUrl} />
               <div style={{ fontSize:14, color:"#fbbf24", marginTop:4 }}>⭐ {currentPoints} Total Stars</div>
             </div>
+            {/* S04 Wave 3 + catalog: two visual nudges, mutually exclusive per tile.
+                - ⭐ FOCUS: subject in kid's curriculum.activeSubjects (parent-set)
+                - ✨ RECOMMENDED: top pick from recommendGames (weak ∩ active → weakest → active)
+                  Recommended wins when both apply. All games remain playable regardless. */}
+            {(() => {
+              // Wrap flattened curriculum into engine's kid-keyed shape
+              const curriculumForRec = profile?.name ? {
+                [profile.name]: {
+                  activeSubjects: curriculum?.activeSubjects || [],
+                  mastery: curriculum?.mastery || {},
+                },
+              } : {};
+              const rec = recommendGames(curriculumForRec, learningStats, profile?.name);
+              const recScreen = rec?.screen;
+              return (
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, maxWidth:400, margin:"0 auto" }}>
-              {/* S04 Wave 3: curriculum.activeSubjects (parent-set per kid) flags games
-                  with overlapping subjects as "Focus" — pure visual nudge, all games
-                  remain playable. */}
               {[
                 { emoji:"🐟", name:"Fish Eater", desc:"Eat the right answer!", bg:"linear-gradient(135deg, #0369a1, #22d3ee)", screen:"fish", subjects:["multiplication","division","addition","subtraction"] },
                 { emoji:"🏎️", name:"Racing", desc:"Dodge & drive!", bg:"linear-gradient(135deg, #dc2626, #f97316)", screen:"racing", subjects:["multiplication","division","addition","subtraction"] },
@@ -1203,10 +1216,19 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
               ].map((g, i) => {
                 const activeSubjects = curriculum?.activeSubjects || [];
                 const focus = g.subjects && g.subjects.some(s => activeSubjects.includes(s));
+                const recommended = g.screen === recScreen;
+                // Recommended beats focus when both apply (it's the more specific signal)
+                const borderColor = recommended ? "#a855f7" : focus ? "#fbbf24" : "transparent";
                 return (
                   <div key={i} onClick={() => localTransitionTo(g.screen)}
-                    style={{ background:g.bg, borderRadius:16, padding:20, textAlign:"center", cursor:"pointer", minHeight:120, position:"relative", border: focus ? "2px solid #fbbf24" : "2px solid transparent" }}>
-                    {focus && (
+                    style={{ background:g.bg, borderRadius:16, padding:20, textAlign:"center", cursor:"pointer", minHeight:120, position:"relative", border: `2px solid ${borderColor}` }}>
+                    {recommended && (
+                      <div aria-label={`Recommended — ${rec.subjectLabel || "practice this"}`}
+                        style={{ position:"absolute", top:6, right:6, background:"#a855f7", color:"#fff", fontSize:10, fontWeight:800, padding:"2px 6px", borderRadius:6, letterSpacing:0.3 }}>
+                        ✨ RECOMMENDED
+                      </div>
+                    )}
+                    {!recommended && focus && (
                       <div aria-label="Today's focus subject"
                         style={{ position:"absolute", top:6, right:6, background:"#fbbf24", color:"#422006", fontSize:10, fontWeight:800, padding:"2px 6px", borderRadius:6, letterSpacing:0.3 }}>
                         ⭐ FOCUS
@@ -1219,6 +1241,8 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
                 );
               })}
             </div>
+              );
+            })()}
             <div style={{ marginTop:16, maxWidth:340, margin:"16px auto 0", display:"flex", flexDirection:"column", gap:8 }}>
               <GameBtn color="#f59e0b" onClick={() => { setCoopScoreLeft(0); setCoopScoreRight(0); setCoopRound(0); setCoopVersus(false); setCoopProblemLeft(null); setCoopProblemRight(null); localTransitionTo("coop"); }}>
                 👫 Play Together (Co-op)
