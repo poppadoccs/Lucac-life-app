@@ -26,8 +26,9 @@ const FRACTION_SETS = [
 ];
 
 const QUESTIONS_PER_LEVEL = 8;
-const TOLERANCE = 0.05; // 5% of line length
+const TOLERANCE = 0.06; // 6% of line length — bumped from 0.05 after Alex playtest 2026-04-24
 const LINE_PADDING = 20; // px inset on each end for the marker
+const LIVES_MAX = 5; // default starting hearts — wrong answers cost 1, lives=0 → game over
 
 // ─── MATH HELPERS ────────────────────────────────────────────────────────────
 function gcd(a, b) {
@@ -49,14 +50,46 @@ function fractionValue(f) {
 }
 
 // Pick a random fraction from the current level (+ optional prior-level pool for variety).
-function pickFraction(level, isLuca) {
+// `recent` is a list of recently-shown fractions to AVOID picking again — prevents the
+// "1/2 → 3/4 → 3/4 → 1/2 → 1/2" repeat clusters Alex hit during the 2026-04-24 playtest.
+//
+// Luca-mode: K-age (CC: thirds is a Grade 3 concept, NOT kindergarten). Pool restricted
+// to halves + fourths so the constant tick scaffold (1/4, 1/2, 3/4) always cleanly
+// represents the question. Per persona-review (Luca): "dad why do the sticks change."
+function pickFraction(level, isLuca, recent = []) {
   // Luca never auto-advances; always pull from L1 pool.
   const effectiveLevel = isLuca ? 1 : level;
-  const pool = [];
+  let pool = [];
   for (let i = 0; i < effectiveLevel; i++) {
     pool.push(...FRACTION_SETS[i].fractions);
   }
-  return pool[Math.floor(Math.random() * pool.length)];
+  if (isLuca) {
+    // Halves + fourths only — keeps tick scaffold constant per question.
+    pool = pool.filter(f => f.d === 2 || f.d === 4);
+  }
+  const filtered = pool.filter(f => !recent.some(r => r.n === f.n && r.d === f.d));
+  let actualPool = filtered;
+  if (actualPool.length === 0) {
+    // Pool exhausted by recency buffer (common for Luca: 3-item pool + 3-deep buffer).
+    // Fall back to excluding ONLY the most recent fraction, so we never immediately
+    // repeat the just-shown one even when we have to relax the rule. (Codex LOW 2026-04-25)
+    const last = recent[recent.length - 1];
+    actualPool = last
+      ? pool.filter(f => f.n !== last.n || f.d !== last.d)
+      : pool;
+    if (actualPool.length === 0) actualPool = pool;
+  }
+  return actualPool[Math.floor(Math.random() * actualPool.length)];
+}
+
+// Random marker start position that won't accidentally land on the answer.
+// If random pick is within 2× tolerance of the answer, push it to the opposite end.
+function randomStartPos(answer) {
+  let pos = Math.random();
+  if (Math.abs(pos - answer) < TOLERANCE * 2) {
+    pos = answer < 0.5 ? 0.85 + Math.random() * 0.1 : 0.05 + Math.random() * 0.1;
+  }
+  return pos;
 }
 
 // Pick plausible wrong-answer fractions for multiple-choice variant mode.
@@ -100,11 +133,15 @@ export default function FractionLine({
   const MARKER_SIZE = isLuca ? 80 : 56;
 
   // ── Phase & session state ──────────────────────────────────────────────────
-  const [phase, setPhase] = useState("intro"); // intro | play | complete | victory
+  const [phase, setPhase] = useState("intro"); // intro | play | complete | victory | gameOver
   const [level, setLevel] = useState(1);
   const [levelCorrect, setLevelCorrect] = useState(0);
   const [totalCorrect, setTotalCorrect] = useState(0);
   const [questionsAnswered, setQuestionsAnswered] = useState(0);
+  const [lives, setLives] = useState(LIVES_MAX); // hearts — wrong answer costs 1; 0 → game over
+  const [streak, setStreak] = useState(0); // current correct-in-a-row count — resets on wrong
+  const [bestStreak, setBestStreak] = useState(0); // peak streak this session — persists for Game Over screen
+  const [usedFreeThisQuestion, setUsedFreeThisQuestion] = useState(false); // shows "free try" banner
 
   // ── Current question state ────────────────────────────────────────────────
   const [mode, setMode] = useState("drag"); // "drag" or "identify" (variant)
@@ -123,18 +160,25 @@ export default function FractionLine({
   const markerPosRef = useRef(0.5);
   const starsEarnedRef = useRef(0);
   const sessionEndedRef = useRef(false);
+  const recentFractionsRef = useRef([]); // last 3 fractions shown — pickFraction filters these out
+  const freeRetryUsedRef = useRef(false); // first wrong of session is "free" — no heart loss, retry same Q
+  const lockedRef = useRef(false); // synchronous double-tap guard — `locked` state is async (Codex MEDIUM 2026-04-25)
 
   useEffect(() => { markerPosRef.current = markerPos; }, [markerPos]);
 
   // ── New question setup ────────────────────────────────────────────────────
   function newQuestion(currentLevel) {
-    const f = pickFraction(currentLevel, isLuca);
+    const f = pickFraction(currentLevel, isLuca, recentFractionsRef.current);
+    recentFractionsRef.current = [...recentFractionsRef.current, f].slice(-3);
     setTargetFraction(f);
-    setMarkerPos(0.5);
-    markerPosRef.current = 0.5;
+    const startPos = randomStartPos(fractionValue(f));
+    setMarkerPos(startPos);
+    markerPosRef.current = startPos;
     setFeedback(null);
     setShowTruth(false);
     setLocked(false);
+    lockedRef.current = false;
+    setUsedFreeThisQuestion(false);
 
     // Luca never sees identify-mode (per plan). Otherwise ~35% identify, 65% drag.
     const useIdentify = !isLuca && Math.random() < 0.35;
@@ -163,14 +207,23 @@ export default function FractionLine({
     setLevelCorrect(0);
     setTotalCorrect(0);
     setQuestionsAnswered(0);
+    setLives(LIVES_MAX);
+    setStreak(0);
+    setBestStreak(0);
     starsEarnedRef.current = 0;
     sessionEndedRef.current = false;
+    recentFractionsRef.current = [];
+    freeRetryUsedRef.current = false;
+    lockedRef.current = false;
     newQuestion(1);
     setPhase("play");
   }
 
   // ── End session → stars + history (called once) ───────────────────────────
-  function endSession(victoryBonus = false) {
+  // `stats` parameter is REQUIRED at every deferred (setTimeout) call site because
+  // closure-captured questionsAnswered/totalCorrect/level are stale after their
+  // setX() calls inside finishQuestion (per Codex MEDIUM 2026-04-25).
+  function endSession(victoryBonus = false, stats = null) {
     if (sessionEndedRef.current) return;
     sessionEndedRef.current = true;
     const baseStars = 3;
@@ -180,16 +233,22 @@ export default function FractionLine({
     addStars?.(total, victoryBonus
       ? "FractionLine full victory — all 3 levels"
       : "FractionLine session complete");
-    recordGameHistory(fbSet, profile, "fraction_line", totalCorrect, total, {
-      level,
-      questionsAnswered,
+    const finalCorrect = stats?.totalCorrect ?? totalCorrect;
+    const finalQA = stats?.questionsAnswered ?? questionsAnswered;
+    const finalLevel = stats?.level ?? level;
+    recordGameHistory(fbSet, profile, "fraction_line", finalCorrect, total, {
+      level: finalLevel,
+      questionsAnswered: finalQA,
       victory: victoryBonus,
     });
   }
 
   // ── Answer submission (drag mode) ─────────────────────────────────────────
+  // Synchronous lockedRef guard prevents double-tap re-entry; setLocked() is async
+  // so checking only the state value lets a fast second tap pass before re-render.
   function submitDragAnswer() {
-    if (locked || mode !== "drag") return;
+    if (lockedRef.current || mode !== "drag") return;
+    lockedRef.current = true;
     const truePos = fractionValue(targetFraction);
     const kidPos = markerPosRef.current;
     const diff = Math.abs(kidPos - truePos);
@@ -199,7 +258,8 @@ export default function FractionLine({
 
   // ── Answer submission (identify mode) ─────────────────────────────────────
   function submitIdentifyAnswer(choice) {
-    if (locked || mode !== "identify") return;
+    if (lockedRef.current || mode !== "identify") return;
+    lockedRef.current = true;
     // Correct if the chosen fraction equals the shown-at fraction
     // (equivalents count — e.g. if shown at 0.5 and kid picks 2/4, that's fine).
     const shownAsFrac = targetFraction; // target IS what's shown at that position
@@ -223,23 +283,30 @@ export default function FractionLine({
     if (correct) {
       const newLevelCorrect = levelCorrect + 1;
       const newTotal = totalCorrect + 1;
+      const newStreak = streak + 1;
       setLevelCorrect(newLevelCorrect);
       setTotalCorrect(newTotal);
+      setStreak(newStreak);
+      if (newStreak > bestStreak) setBestStreak(newStreak);
 
       // Luca: never auto-advance. All 3 kids eventually, but Luca stays on L1 forever.
       const canAdvance = !isLuca;
 
+      // Bumped to 1300ms (from 900) per persona-review finding: "green sparkle too brief,
+      // cat's eye left immediately = kid won't feel the win." Extra time lets the win land.
       setTimeout(() => {
+        // Snapshot of fresh stats — pass to endSession to avoid closure staleness.
+        const freshStats = { totalCorrect: newTotal, questionsAnswered: newQA, level };
         if (newLevelCorrect >= QUESTIONS_PER_LEVEL) {
           // Level clear
           if (level >= 3 || !canAdvance) {
             // Full victory (or Luca completing an L1 batch → count as complete)
             if (level >= 3) {
-              endSession(true);
+              endSession(true, freshStats);
               setPhase("victory");
             } else {
               // Luca hit 8 in L1 → gentle complete screen, no advance
-              endSession(false);
+              endSession(false, freshStats);
               setPhase("complete");
             }
           } else {
@@ -251,19 +318,48 @@ export default function FractionLine({
         } else {
           newQuestion(level);
         }
-      }, 900);
-    } else {
-      // Wrong: gentle shake, show truth, auto-retry same question after a beat
+      }, 1300);
+      return;
+    }
+
+    // Wrong path
+    setStreak(0);
+
+    // First wrong of session is a "free try" — show truth + retry same question, no
+    // heart loss. Per persona-review (Yana): the heart cascade itself is the worst part
+    // ("by heart 3 i already knew"). One soft entry lets her settle in without the
+    // first miss feeling like a death sentence. Subsequent wrongs cost a heart normally.
+    if (!freeRetryUsedRef.current) {
+      freeRetryUsedRef.current = true;
+      setUsedFreeThisQuestion(true);
       setTimeout(() => {
         setFeedback(null);
         setShowTruth(false);
         setLocked(false);
-        // Keep same targetFraction so kid can try again — reset marker center.
-        setMarkerPos(0.5);
-        markerPosRef.current = 0.5;
+        lockedRef.current = false;
+        const startPos = randomStartPos(fractionValue(targetFraction));
+        setMarkerPos(startPos);
+        markerPosRef.current = startPos;
         questionStartRef.current = Date.now();
       }, 1500);
+      return;
     }
+
+    // Subsequent wrongs: lose a heart, advance to a new fraction (or game over).
+    // recordAttempt above feeds the adaptive weak-area system in LearningEngine,
+    // so missed fractions resurface naturally without us forcing repetition here.
+    const newLives = lives - 1;
+    setLives(newLives);
+    setTimeout(() => {
+      if (newLives <= 0) {
+        // Game over — pass fresh stats explicitly (questionsAnswered was just bumped
+        // to newQA above; totalCorrect/level unchanged in wrong path).
+        endSession(false, { totalCorrect, questionsAnswered: newQA, level });
+        setPhase("gameOver");
+      } else {
+        newQuestion(level);
+      }
+    }, 1500);
   }
 
   // ── Pointer Events for drag (touch + mouse + stylus uniform) ──────────────
@@ -413,6 +509,37 @@ export default function FractionLine({
     </div>
   );
 
+  // ─── GAME OVER SCREEN ─────────────────────────────────────────────────────
+  // POSITIVE-ONLY framing — per persona-review (Yana): "the 7 is louder than the 3 …
+  // out loud where Luca could hear." Every visible number was a deficit indicator.
+  // Now: only show what she EARNED (stars + correct count). No ratio, no "reached
+  // level" (which read as condescending when she was already at that level).
+  if (phase === "gameOver") return (
+    <div style={{ ...wrapBase, alignItems: "center", justifyContent: "center" }}>
+      <div style={{ textAlign: "center", padding: 32 }}>
+        <div style={{ fontSize: 64 }}>💔</div>
+        <div style={{ fontSize: 26, fontWeight: 900, color: "#fbbf24" }}>Out of Hearts</div>
+        {totalCorrect > 0 && (
+          <div style={{ fontSize: 17, color: "#a7f3d0", fontWeight: 700, marginTop: 14 }}>
+            {totalCorrect} {totalCorrect === 1 ? "fraction" : "fractions"} placed ✓
+          </div>
+        )}
+        {bestStreak >= 3 && (
+          <div style={{ fontSize: 14, color: "#fb923c", fontWeight: 700, marginTop: 4 }}>
+            Best streak: 🔥 {bestStreak} in a row
+          </div>
+        )}
+        <div style={{ fontSize: 18, color: "#fbbf24", fontWeight: 800, marginTop: 14, marginBottom: 28 }}>
+          ⭐ +{starsEarnedRef.current} stars
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 260, margin: "0 auto" }}>
+          <GameBtn big color="#0ea5e9" onClick={startPlay}>Try Again</GameBtn>
+          <GameBtn color="#475569" onClick={() => transitionTo("mini_games")}>← Back to Menu</GameBtn>
+        </div>
+      </div>
+    </div>
+  );
+
   // ─── PLAY PHASE ───────────────────────────────────────────────────────────
   const truePos = fractionValue(targetFraction); // deterministic JS truth
   const displayPos = mode === "identify" ? shownPosition : markerPos;
@@ -423,10 +550,18 @@ export default function FractionLine({
 
   return (
     <div style={{ ...wrapBase, padding: 16 }}>
-      {/* HUD */}
+      {/* HUD — level on left, hearts in center, level-correct count on right */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", fontWeight: 600 }}>
           {isLuca ? "Level 1" : levelLabel}
+        </div>
+        <div role="status" aria-live="polite" aria-atomic="true"
+             aria-label={`${lives} ${lives === 1 ? "life" : "lives"} remaining`}
+             style={{ fontSize: 14, color: "#fca5a5", fontWeight: 800, letterSpacing: 1 }}>
+          <span aria-hidden="true">{"❤️".repeat(Math.max(0, lives))}</span>
+          <span aria-hidden="true" style={{ color: "#fff", fontSize: 12, marginLeft: 4, fontWeight: 700 }}>
+            ×{lives}
+          </span>
         </div>
         <div style={{ fontSize: 13, color: "#fde68a", fontWeight: 700 }}>
           {levelCorrect}/{QUESTIONS_PER_LEVEL}
@@ -494,12 +629,50 @@ export default function FractionLine({
           1
         </div>
 
-        {/* Subtle mid tick */}
-        <div style={{
-          position: "absolute", left: `calc(50% )`, top: 54, width: 2, height: 18,
-          background: "rgba(255,255,255,0.25)", borderRadius: 1,
-          transform: "translateX(-1px)",
-        }} />
+        {/* Tick marks — visual scaffolding so kid can count segments.
+            LUCA: CONSTANT scaffold (1/4, 2/4, 3/4) — pool is restricted to halves+fourths
+                  so these ticks always cleanly represent the current question. Line never
+                  appears to "mutate" between questions. Per persona-review fix.
+            L1 (Yana standard): per-question target denominator ticks (visible).
+            L2: per-question target denominator ticks (subtle).
+            L3: no scaffolding — pure magnitude estimation. */}
+        {(() => {
+          if (isLuca) {
+            const constantTicks = [0.25, 0.5, 0.75];
+            return constantTicks.map((pos, i) => (
+              <div key={`luca-tick-${i}`} style={{
+                position: "absolute",
+                left: `calc(${LINE_PADDING}px + ${pos} * (100% - ${LINE_PADDING * 2}px))`,
+                top: 54, width: 2, height: 14,
+                background: "rgba(255,255,255,0.7)",
+                transform: "translateX(-1px)",
+                borderRadius: 1,
+                pointerEvents: "none",
+              }} />
+            ));
+          }
+          const visibility = level === 1 ? "strong"
+                           : level === 2 ? "subtle"
+                           : "none";
+          if (visibility === "none") return null;
+          const isStrong = visibility === "strong";
+          return Array.from({ length: targetFraction.d - 1 }, (_, i) => {
+            const pos = (i + 1) / targetFraction.d;
+            return (
+              <div key={`tick-${i}`} style={{
+                position: "absolute",
+                left: `calc(${LINE_PADDING}px + ${pos} * (100% - ${LINE_PADDING * 2}px))`,
+                top: isStrong ? 54 : 56,
+                width: 2,
+                height: isStrong ? 14 : 10,
+                background: isStrong ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.3)",
+                transform: "translateX(-1px)",
+                borderRadius: 1,
+                pointerEvents: "none",
+              }} />
+            );
+          });
+        })()}
 
         {/* Truth marker — shown when kid is wrong */}
         {showTruth && (
@@ -612,6 +785,31 @@ export default function FractionLine({
           textAlign: "center", marginTop: 14, fontSize: 16, color: "#a7f3d0", fontWeight: 700,
         }}>
           Nice work! ✓
+        </div>
+      )}
+
+      {/* Free-try banner — shows on the first wrong of session.
+          Per persona-review (Yana): heart cascade is the painful part. One free entry. */}
+      {locked && feedback === "incorrect" && usedFreeThisQuestion && (
+        <div style={{
+          textAlign: "center", marginTop: 14, fontSize: 15, color: "#fde68a", fontWeight: 700,
+        }}>
+          ✨ Free try! Heart safe — careful next time.
+        </div>
+      )}
+
+      {/* Streak counter — appears at 3+ in a row. Per persona-review (cat): the
+          single green sparkle is too brief; per Yana's competitive vibe streaks
+          accumulate visible pride without amplifying losses. */}
+      {streak >= 3 && !locked && (
+        <div style={{
+          textAlign: "center", marginTop: 12,
+          fontSize: streak >= 10 ? 22 : streak >= 5 ? 18 : 15,
+          fontWeight: 800,
+          color: streak >= 10 ? "#fcd34d" : streak >= 5 ? "#fb923c" : "#f87171",
+          textShadow: streak >= 10 ? "0 0 12px rgba(252,211,77,0.55)" : "none",
+        }}>
+          🔥 {streak} in a row!
         </div>
       )}
 
