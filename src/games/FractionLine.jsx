@@ -421,6 +421,13 @@ export default function FractionLine({
     color: "#fff",
   };
 
+  // Play-phase wrap: pond profile — sky at top, water deepening to murky bottom.
+  // Intro/complete/victory/gameOver still use the dark wrapBase.
+  const wrapPlay = {
+    ...wrapBase,
+    background: "linear-gradient(180deg, #87ceeb 0%, #4ba8d8 28%, #1e6091 60%, #0c3a5e 100%)",
+  };
+
   // ─── INTRO SCREEN ─────────────────────────────────────────────────────────
   if (phase === "intro") return (
     <div style={{ ...wrapBase, padding: 16, alignItems: "center", justifyContent: "center" }}>
@@ -549,7 +556,7 @@ export default function FractionLine({
   const levelLabel = verifyMath(`Level ${level} of 3`);
 
   return (
-    <div style={{ ...wrapBase, padding: 16 }}>
+    <div style={{ ...wrapPlay, padding: 16 }}>
       {/* HUD — level on left, hearts in center, level-correct count on right */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", fontWeight: 600 }}>
@@ -572,8 +579,8 @@ export default function FractionLine({
       <div style={{ textAlign: "center", marginTop: 12, marginBottom: 18 }}>
         {mode === "drag" ? (
           <>
-            <div style={{ fontSize: 14, color: "rgba(255,255,255,0.7)", marginBottom: 8 }}>
-              Drag the marker to:
+            <div style={{ fontSize: 14, color: "rgba(255,255,255,0.85)", marginBottom: 8 }}>
+              Hop the frog to:
             </div>
             <div style={{ display: "inline-block" }}>
               <StackedFraction n={targetFraction.n} d={targetFraction.d} size={42} />
@@ -581,14 +588,16 @@ export default function FractionLine({
           </>
         ) : (
           <>
-            <div style={{ fontSize: 14, color: "rgba(255,255,255,0.7)", marginBottom: 4 }}>
-              What fraction is shown?
+            <div style={{ fontSize: 14, color: "rgba(255,255,255,0.85)", marginBottom: 4 }}>
+              What lilypad is the frog sitting on?
             </div>
           </>
         )}
       </div>
 
-      {/* Number line */}
+      {/* Pond — number line lives inside as the lilypad row.
+          Container height bumped from 120 → 170 to give the fish room to swim in
+          the water below the lily row. */}
       <div
         ref={lineRef}
         onPointerDown={handlePointerDown}
@@ -598,19 +607,27 @@ export default function FractionLine({
         onClick={handleLineTap}
         style={{
           position: "relative",
-          height: 120,
+          height: 170,
           margin: "20px 0",
           padding: `0 ${LINE_PADDING}px`,
           touchAction: "none",
           cursor: mode === "drag" && !locked ? "pointer" : "default",
         }}
       >
-        {/* Line */}
+        {/* Water surface — subtle pale stripe at the lily row's height */}
         <div style={{
           position: "absolute",
-          top: 60, left: LINE_PADDING, right: LINE_PADDING,
-          height: 6, background: "#7dd3fc", borderRadius: 3,
-          boxShadow: "0 0 12px rgba(125,211,252,0.5)",
+          top: 62, left: LINE_PADDING, right: LINE_PADDING,
+          height: 2, background: "rgba(255,255,255,0.25)", borderRadius: 1,
+          pointerEvents: "none",
+        }} />
+        {/* Sandy bottom — gives the pond depth */}
+        <div style={{
+          position: "absolute",
+          bottom: 0, left: 0, right: 0,
+          height: 14,
+          background: "linear-gradient(180deg, rgba(140,98,55,0.0) 0%, rgba(140,98,55,0.6) 100%)",
+          pointerEvents: "none",
         }} />
 
         {/* 0 and 1 endpoint ticks */}
@@ -629,46 +646,49 @@ export default function FractionLine({
           1
         </div>
 
-        {/* Tick marks — visual scaffolding so kid can count segments.
-            LUCA: CONSTANT scaffold (1/4, 2/4, 3/4) — pool is restricted to halves+fourths
-                  so these ticks always cleanly represent the current question. Line never
-                  appears to "mutate" between questions. Per persona-review fix.
-            L1 (Yana standard): per-question target denominator ticks (visible).
-            L2: per-question target denominator ticks (subtle).
-            L3: no scaffolding — pure magnitude estimation. */}
+        {/* Lilypads — replace the abstract tick marks with concrete pads the frog
+            can land on. Visually communicates "fractions = equal divisions" without
+            requiring the kid to interpret tick semantics. Banks at 0 and 1 are sandy
+            shore (where the frog starts / finishes). Interior pads are floating green
+            lily. L3 hides interior pads (banks only) to force magnitude estimation. */}
         {(() => {
+          let positions = [];
+          let strength = "strong";
           if (isLuca) {
-            const constantTicks = [0.25, 0.5, 0.75];
-            return constantTicks.map((pos, i) => (
-              <div key={`luca-tick-${i}`} style={{
-                position: "absolute",
-                left: `calc(${LINE_PADDING}px + ${pos} * (100% - ${LINE_PADDING * 2}px))`,
-                top: 54, width: 2, height: 14,
-                background: "rgba(255,255,255,0.7)",
-                transform: "translateX(-1px)",
-                borderRadius: 1,
-                pointerEvents: "none",
-              }} />
-            ));
+            positions = [0, 0.25, 0.5, 0.75, 1];
+            strength = "strong";
+          } else if (level === 1) {
+            positions = Array.from({ length: targetFraction.d + 1 }, (_, i) => i / targetFraction.d);
+            strength = "strong";
+          } else if (level === 2) {
+            positions = Array.from({ length: targetFraction.d + 1 }, (_, i) => i / targetFraction.d);
+            strength = "subtle";
+          } else {
+            positions = [0, 1]; // L3: banks only, no scaffolding
+            strength = "strong"; // banks are always visible regardless
           }
-          const visibility = level === 1 ? "strong"
-                           : level === 2 ? "subtle"
-                           : "none";
-          if (visibility === "none") return null;
-          const isStrong = visibility === "strong";
-          return Array.from({ length: targetFraction.d - 1 }, (_, i) => {
-            const pos = (i + 1) / targetFraction.d;
+          return positions.map((pos, i) => {
+            const isBank = pos === 0 || pos === 1;
+            const w = strength === "strong" ? (isBank ? 38 : 30) : (isBank ? 38 : 22);
+            const h = w * 0.55;
+            const opacity = strength === "subtle" && !isBank ? 0.55 : 1;
+            const bg = isBank
+              ? "linear-gradient(180deg, #d6a76c 0%, #a0764a 60%, #6b4d2e 100%)"  // sandy bank
+              : "linear-gradient(180deg, #84cc16 0%, #65a30d 55%, #3f6212 100%)"; // lily
             return (
-              <div key={`tick-${i}`} style={{
+              <div key={`pad-${i}`} style={{
                 position: "absolute",
                 left: `calc(${LINE_PADDING}px + ${pos} * (100% - ${LINE_PADDING * 2}px))`,
-                top: isStrong ? 54 : 56,
-                width: 2,
-                height: isStrong ? 14 : 10,
-                background: isStrong ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.3)",
-                transform: "translateX(-1px)",
-                borderRadius: 1,
+                top: 60 - h / 2 + 2, // sits centered on the line
+                width: w,
+                height: h,
+                transform: "translateX(-50%)",
+                background: bg,
+                borderRadius: "50%",
+                boxShadow: "0 3px 6px rgba(0,0,0,0.35), inset 0 -2px 3px rgba(0,0,0,0.25), inset 0 2px 3px rgba(255,255,255,0.4)",
+                opacity,
                 pointerEvents: "none",
+                zIndex: 1,
               }} />
             );
           });
@@ -704,40 +724,87 @@ export default function FractionLine({
           </div>
         )}
 
-        {/* Draggable / displayed marker */}
+        {/* The Frog — replaces the yellow marker. Position math unchanged.
+            On correct: frog leaps up high (escapes the fish below).
+            On incorrect: frog shakes (the fish reaches it). */}
         <div style={{
           position: "absolute",
           left: `calc(${LINE_PADDING}px + ${displayPos} * (100% - ${LINE_PADDING * 2}px))`,
-          top: 63 - MARKER_SIZE / 2,
-          width: MARKER_SIZE, height: MARKER_SIZE,
+          top: 60 - MARKER_SIZE / 2 - 4,
+          width: MARKER_SIZE,
+          height: MARKER_SIZE,
           transform: "translateX(-50%)",
-          borderRadius: "50%",
-          background: feedback === "correct" ? "#22c55e"
-                    : feedback === "incorrect" ? "#ef4444"
-                    : "#fbbf24",
-          border: "4px solid #fff",
-          boxShadow: "0 4px 16px rgba(0,0,0,0.4)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: MARKER_SIZE * 0.38, fontWeight: 900, color: "#1e293b",
-          transition: feedback ? "background 0.2s, transform 0.2s" : "none",
-          animation: feedback === "incorrect" ? "fractionShake 0.5s" : feedback === "correct" ? "fractionBounce 0.5s" : "none",
+          fontSize: MARKER_SIZE * 0.95,
+          textAlign: "center",
+          lineHeight: 1,
+          cursor: locked ? "default" : "grab",
+          userSelect: "none",
           pointerEvents: mode === "identify" ? "none" : "auto",
+          filter: feedback === "incorrect"
+            ? "grayscale(0.4) brightness(0.8)"
+            : feedback === "correct"
+              ? "drop-shadow(0 0 12px #fde68a)"
+              : "drop-shadow(0 3px 4px rgba(0,0,0,0.4))",
+          transition: feedback ? "filter 0.2s" : "none",
+          animation: feedback === "incorrect"
+            ? "frogShake 0.5s"
+            : feedback === "correct"
+              ? "frogLeap 1.1s ease-out"
+              : "none",
+          zIndex: 10,
         }}>
-          {feedback === "correct" ? "✓" : feedback === "incorrect" ? "✗" : "●"}
+          🐸
         </div>
 
-        {/* Shake + bounce animations (inject once) */}
+        {/* The Fish — lurks below the lilypad row. Swims back and forth idly.
+            On Check + wrong: lunges UP to the frog's position (chomp).
+            On Check + correct: stays low (frog leapt out of reach).
+            Hidden in identify mode where the frog isn't a moving target. */}
+        {mode === "drag" && (
+          <div style={{
+            position: "absolute",
+            left: `calc(${LINE_PADDING}px + ${
+              feedback === "incorrect" ? displayPos : 0.5
+            } * (100% - ${LINE_PADDING * 2}px))`,
+            top: 102,
+            fontSize: 30,
+            transform: "translateX(-50%)",
+            pointerEvents: "none",
+            filter: "drop-shadow(0 2px 3px rgba(0,0,0,0.4))",
+            animation: feedback === "incorrect"
+              ? "fishLunge 1.2s ease-in"
+              : "fishSwim 4.5s ease-in-out infinite",
+            zIndex: 5,
+          }}>
+            🐟
+          </div>
+        )}
+
+        {/* Animation keyframes (injected once per render — React dedupes) */}
         <style>{`
-          @keyframes fractionShake {
-            0%, 100% { transform: translateX(-50%) translateX(0); }
-            20% { transform: translateX(-50%) translateX(-10px); }
-            40% { transform: translateX(-50%) translateX(10px); }
-            60% { transform: translateX(-50%) translateX(-6px); }
-            80% { transform: translateX(-50%) translateX(6px); }
+          @keyframes frogShake {
+            0%, 100% { transform: translateX(-50%) rotate(0); }
+            25% { transform: translateX(-50%) rotate(-12deg); }
+            50% { transform: translateX(-50%) rotate(10deg); }
+            75% { transform: translateX(-50%) rotate(-6deg); }
           }
-          @keyframes fractionBounce {
-            0%, 100% { transform: translateX(-50%) scale(1); }
-            50% { transform: translateX(-50%) scale(1.2); }
+          @keyframes frogLeap {
+            0%   { transform: translateX(-50%) translateY(0)    scale(1); }
+            30%  { transform: translateX(-50%) translateY(-58px) scale(1.15); }
+            55%  { transform: translateX(-50%) translateY(-58px) scale(1.15); }
+            100% { transform: translateX(-50%) translateY(0)    scale(1); }
+          }
+          @keyframes fishSwim {
+            0%, 100% { transform: translateX(-50%) translateX(-12px) scaleX(1); }
+            48%      { transform: translateX(-50%) translateX(12px)  scaleX(1); }
+            50%      { transform: translateX(-50%) translateX(12px)  scaleX(-1); }
+            98%      { transform: translateX(-50%) translateX(-12px) scaleX(-1); }
+          }
+          @keyframes fishLunge {
+            0%   { transform: translateX(-50%) translateY(0); }
+            35%  { transform: translateX(-50%) translateY(-46px); }
+            55%  { transform: translateX(-50%) translateY(-46px); }
+            100% { transform: translateX(-50%) translateY(0); }
           }
         `}</style>
       </div>
