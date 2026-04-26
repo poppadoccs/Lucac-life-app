@@ -30,6 +30,41 @@ const TOLERANCE = 0.06; // 6% of line length — bumped from 0.05 after Alex pla
 const LINE_PADDING = 20; // px inset on each end for the marker
 const LIVES_MAX = 5; // default starting hearts — wrong answers cost 1, lives=0 → game over
 
+// ─── POWER-UP DROP CONFIG ────────────────────────────────────────────────────
+// Two icons fall from the top of the screen with math expressions. Kid taps the
+// HIGHER value → grabs power-up. Lower value → debuff. Ignoring is safe.
+// Per Alex's design 2026-04-24: "the math IS the bonus, not just the mechanic."
+const DROP_SPAWN_CHANCE = 0.25; // 25% per new question
+const DROP_FALL_DURATION_MS = 7000; // 7s to traverse top→bottom
+const POWERUP_NOTICE_MS = 2200; // toast lifetime
+
+// Pure math-expression generator. Returns [expressionText, numericValue].
+// v1: addition only, single-digit. Difficulty scaling (3.NBT.3 estimation tier
+// for the extreme bucket) lands in a follow-up commit.
+function generateMathExpr(_difficulty = "easy") {
+  const a = 1 + Math.floor(Math.random() * 9);
+  const b = 1 + Math.floor(Math.random() * 9);
+  return [`${a} + ${b}`, a + b];
+}
+
+// Generate a pair of drops with DIFFERENT values (so there's always a clear winner).
+function spawnDropPair() {
+  const [exprA, valA] = generateMathExpr();
+  let [exprB, valB] = generateMathExpr();
+  let attempts = 0;
+  while (valB === valA && attempts < 8) {
+    [exprB, valB] = generateMathExpr();
+    attempts++;
+  }
+  if (valB === valA) valB = valA + 1; // emergency tiebreak
+  const winnerIsA = valA > valB;
+  const baseId = Date.now();
+  return [
+    { id: baseId,     expr: exprA, value: valA, isWinner: winnerIsA,  leftPct: 22 },
+    { id: baseId + 1, expr: exprB, value: valB, isWinner: !winnerIsA, leftPct: 78 },
+  ];
+}
+
 // ─── MATH HELPERS ────────────────────────────────────────────────────────────
 function gcd(a, b) {
   a = Math.abs(a); b = Math.abs(b);
@@ -142,6 +177,8 @@ export default function FractionLine({
   const [streak, setStreak] = useState(0); // current correct-in-a-row count — resets on wrong
   const [bestStreak, setBestStreak] = useState(0); // peak streak this session — persists for Game Over screen
   const [usedFreeThisQuestion, setUsedFreeThisQuestion] = useState(false); // shows "free try" banner
+  const [drops, setDrops] = useState([]); // active falling power-up drops (0 or 2 at a time)
+  const [powerupNotice, setPowerupNotice] = useState(null); // { text, kind } toast for last applied effect
 
   // ── Current question state ────────────────────────────────────────────────
   const [mode, setMode] = useState("drag"); // "drag" or "identify" (variant)
@@ -180,6 +217,14 @@ export default function FractionLine({
     lockedRef.current = false;
     setUsedFreeThisQuestion(false);
 
+    // Power-up drop spawn — 25% chance per new question. Two icons fall, kid taps
+    // higher math value for a buff or lower for a debuff. Ignoring is safe.
+    if (Math.random() < DROP_SPAWN_CHANCE) {
+      setDrops(spawnDropPair());
+    } else {
+      setDrops([]);
+    }
+
     // Luca never sees identify-mode (per plan). Otherwise ~35% identify, 65% drag.
     const useIdentify = !isLuca && Math.random() < 0.35;
     if (useIdentify) {
@@ -215,6 +260,8 @@ export default function FractionLine({
     recentFractionsRef.current = [];
     freeRetryUsedRef.current = false;
     lockedRef.current = false;
+    setDrops([]);
+    setPowerupNotice(null);
     newQuestion(1);
     setPhase("play");
   }
@@ -407,10 +454,55 @@ export default function FractionLine({
   function exitSession() {
     if (!sessionEndedRef.current && questionsAnswered >= 3) {
       // Give the 3 stars if they put in real effort
-      endSession(false);
+      endSession(false, { totalCorrect, questionsAnswered, level });
     }
     transitionTo("mini_games");
   }
+
+  // ── Power-up drop tap handler ─────────────────────────────────────────────
+  // Kid tapped one of the falling icons. If they picked the higher-value math
+  // expression they get a buff; lower → debuff. v1 implements +1 Heart (buff)
+  // and -1 Heart (debuff) only — additional effects (Slow Time, Magnet, Reverse,
+  // Freeze, Rotate, Star Surge, Invincible, Frenzy, Thunder, Blind) land in
+  // a follow-up commit. Mechanic itself is the validated piece here.
+  function onTapDrop(drop) {
+    setDrops([]); // both icons disappear when one is tapped
+    if (drop.isWinner) {
+      // BUFF: +1 Heart (capped at LIVES_MAX)
+      setLives(prev => Math.min(LIVES_MAX, prev + 1));
+      setPowerupNotice({
+        text: `❤️ +1 Heart! (${drop.expr} = ${drop.value} was higher)`,
+        kind: "buff",
+      });
+    } else {
+      // DEBUFF: -1 Heart (but not below 0; if it'd hit 0, end the run)
+      setLives(prev => {
+        const next = Math.max(0, prev - 1);
+        return next;
+      });
+      setPowerupNotice({
+        text: `💀 -1 Heart (${drop.expr} = ${drop.value} was lower)`,
+        kind: "debuff",
+      });
+    }
+  }
+
+  // Auto-dismiss the power-up notice after POWERUP_NOTICE_MS.
+  useEffect(() => {
+    if (!powerupNotice) return;
+    const t = setTimeout(() => setPowerupNotice(null), POWERUP_NOTICE_MS);
+    return () => clearTimeout(t);
+  }, [powerupNotice]);
+
+  // If a debuff (or sequence of effects) drops lives to 0 outside the wrong-answer
+  // path, end the session here. sessionEndedRef guards against double-ending.
+  useEffect(() => {
+    if (lives <= 0 && phase === "play" && !sessionEndedRef.current) {
+      endSession(false, { totalCorrect, questionsAnswered, level });
+      setPhase("gameOver");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lives, phase]);
 
   // ── Styles ────────────────────────────────────────────────────────────────
   const wrapBase = {
@@ -806,6 +898,14 @@ export default function FractionLine({
             55%  { transform: translateX(-50%) translateY(-46px); }
             100% { transform: translateX(-50%) translateY(0); }
           }
+          @keyframes dropFall {
+            from { top: -10%; }
+            to   { top: 100%; }
+          }
+          @keyframes noticeIn {
+            from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+            to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+          }
         `}</style>
       </div>
 
@@ -884,6 +984,61 @@ export default function FractionLine({
       <div style={{ marginTop: "auto", paddingTop: 20 }}>
         <GameBtn color="#1e293b" onClick={exitSession}>← Exit</GameBtn>
       </div>
+
+      {/* Falling power-up drops — overlay layer. Two icons fall from the top with
+          math expressions; kid taps the higher value for a buff (lower → debuff).
+          Ignoring is safe: drops self-remove via onAnimationEnd if untapped. */}
+      {drops.length > 0 && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          pointerEvents: "none", zIndex: 100,
+        }}>
+          {drops.map(drop => (
+            <div key={drop.id}
+              onClick={() => onTapDrop(drop)}
+              onAnimationEnd={() => setDrops(prev => prev.filter(x => x.id !== drop.id))}
+              style={{
+                position: "absolute",
+                left: `${drop.leftPct}%`,
+                top: 0,
+                transform: "translateX(-50%)",
+                padding: "12px 18px",
+                background: "linear-gradient(135deg, #fbbf24 0%, #f59e0b 60%, #b45309 100%)",
+                border: "3px solid #fff",
+                borderRadius: 18,
+                boxShadow: "0 8px 22px rgba(0,0,0,0.45), inset 0 -2px 4px rgba(0,0,0,0.25)",
+                fontSize: 24, fontWeight: 800, color: "#1e293b",
+                fontFamily: "Georgia, serif",
+                cursor: "pointer",
+                pointerEvents: "auto",
+                animation: `dropFall ${DROP_FALL_DURATION_MS}ms linear forwards`,
+                userSelect: "none",
+                whiteSpace: "nowrap",
+              }}>
+              {drop.expr}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Toast banner — what just got applied. */}
+      {powerupNotice && (
+        <div style={{
+          position: "fixed", top: 80, left: "50%",
+          padding: "12px 22px", borderRadius: 16,
+          background: powerupNotice.kind === "buff"
+            ? "linear-gradient(135deg, rgba(34,197,94,0.97), rgba(21,128,61,0.97))"
+            : "linear-gradient(135deg, rgba(239,68,68,0.97), rgba(153,27,27,0.97))",
+          color: "#fff", fontSize: 15, fontWeight: 800,
+          boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
+          zIndex: 200, pointerEvents: "none",
+          animation: "noticeIn 0.3s ease-out",
+          maxWidth: "92vw", textAlign: "center",
+          transform: "translateX(-50%)",
+        }}>
+          {powerupNotice.text}
+        </div>
+      )}
     </div>
   );
 }
