@@ -384,6 +384,10 @@ export default function FractionLine({
         setShowTruth(false);
         setLocked(false);
         lockedRef.current = false;
+        // CLEAR free-try indicator at the END of the free-try moment — otherwise
+        // it persists into the next attempt and mis-renders "Heart safe!" while
+        // the heart actually drops on the 2nd wrong (Playwright finding 2026-04-26).
+        setUsedFreeThisQuestion(false);
         const startPos = randomStartPos(fractionValue(targetFraction));
         setMarkerPos(startPos);
         markerPosRef.current = startPos;
@@ -515,8 +519,18 @@ export default function FractionLine({
 
   // Play-phase wrap: pond profile — sky at top, water deepening to murky bottom.
   // Intro/complete/victory/gameOver still use the dark wrapBase.
+  // FIXED-POSITION OVERLAY: per Playwright playtest 2026-04-26, the app's bottom
+  // nav bar (Home / My Stuff) was bisecting the game UI between Check Answer and
+  // Exit. Making play phase a fullscreen overlay covers the nav bar; Exit button
+  // remains accessible inside the overlay. zIndex: 50 sits above the app shell.
   const wrapPlay = {
     ...wrapBase,
+    position: "fixed",
+    top: 0, left: 0, right: 0, bottom: 0,
+    minHeight: "auto",
+    height: "100vh",
+    overflowY: "auto",
+    zIndex: 50,
     background: "linear-gradient(180deg, #87ceeb 0%, #4ba8d8 28%, #1e6091 60%, #0c3a5e 100%)",
   };
 
@@ -826,8 +840,14 @@ export default function FractionLine({
           width: MARKER_SIZE,
           height: MARKER_SIZE,
           transform: "translateX(-50%)",
-          fontSize: MARKER_SIZE * 0.95,
+          // Frog font sized at 0.6× MARKER_SIZE (was 0.95×) so it visually fits ON
+          // a single lilypad instead of covering two. Container size stays for hit
+          // target (≥44px tap target). Playwright finding 2026-04-26.
+          fontSize: MARKER_SIZE * 0.6,
           textAlign: "center",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
           lineHeight: 1,
           cursor: locked ? "default" : "grab",
           userSelect: "none",
@@ -864,8 +884,8 @@ export default function FractionLine({
             pointerEvents: "none",
             filter: "drop-shadow(0 2px 3px rgba(0,0,0,0.4))",
             animation: feedback === "incorrect"
-              ? "fishLunge 1.2s ease-in"
-              : "fishSwim 4.5s ease-in-out infinite",
+              ? "fishLunge 1.4s ease-in"
+              : "fishSwim 3.2s ease-in-out infinite",
             zIndex: 5,
           }}>
             🐟
@@ -887,15 +907,15 @@ export default function FractionLine({
             100% { transform: translateX(-50%) translateY(0)    scale(1); }
           }
           @keyframes fishSwim {
-            0%, 100% { transform: translateX(-50%) translateX(-12px) scaleX(1); }
-            48%      { transform: translateX(-50%) translateX(12px)  scaleX(1); }
-            50%      { transform: translateX(-50%) translateX(12px)  scaleX(-1); }
-            98%      { transform: translateX(-50%) translateX(-12px) scaleX(-1); }
+            0%, 100% { transform: translateX(-50%) translateX(-28px) scaleX(1); }
+            45%      { transform: translateX(-50%) translateX(28px)  scaleX(1); }
+            50%      { transform: translateX(-50%) translateX(28px)  scaleX(-1); }
+            95%      { transform: translateX(-50%) translateX(-28px) scaleX(-1); }
           }
           @keyframes fishLunge {
             0%   { transform: translateX(-50%) translateY(0); }
-            35%  { transform: translateX(-50%) translateY(-46px); }
-            55%  { transform: translateX(-50%) translateY(-46px); }
+            30%  { transform: translateX(-50%) translateY(-72px); }
+            55%  { transform: translateX(-50%) translateY(-72px); }
             100% { transform: translateX(-50%) translateY(0); }
           }
           @keyframes dropFall {
