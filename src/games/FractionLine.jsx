@@ -38,6 +38,34 @@ const DROP_SPAWN_CHANCE = 0.25; // 25% per new question
 const DROP_FALL_DURATION_MS = 7000; // 7s to traverse top→bottom
 const POWERUP_NOTICE_MS = 2200; // toast lifetime
 
+// ─── EFFECT POOLS ────────────────────────────────────────────────────────────
+// Buffs (winner pick) and debuffs (loser pick). The math IS the bonus — kid had
+// to compare expressions to earn the slot, then a random effect from the pool
+// fires. Adds replay variety so two power-up rounds never feel identical.
+//
+// Heart/loseHeart are instant; the rest are timed windows. `magnet` and `reverse`
+// are FractionLine-specific (drag-modal). Other games will have different pools.
+const BUFF_TYPES = [
+  { type: "heart",      name: "❤️ +1 Heart",     duration: 0     },
+  { type: "starSurge",  name: "⭐⭐ Star Surge",  duration: 7000  },
+  { type: "invincible", name: "⚡ Invincible",    duration: 7000  },
+  { type: "slowTime",   name: "🐢 Slow Time",    duration: 7000  },
+  { type: "magnet",     name: "🧲 Magnet",       duration: 7000  },
+];
+const DEBUFF_TYPES = [
+  { type: "loseHeart",  name: "💀 -1 Heart",     duration: 0     },
+  { type: "frenzy",     name: "💨 Frenzy",       duration: 7000  },
+  { type: "thunder",    name: "⛈️ Thunder",      duration: 7000  },
+  { type: "blind",      name: "🌫️ Blind",       duration: 7000  },
+  { type: "reverse",    name: "🔄 Reverse",      duration: 5000  },
+  { type: "freeze",     name: "❄️ Freeze",       duration: 3000  },
+];
+
+// Magnet snap radius — kid must be within 10% of a lilypad to get snapped to it.
+// Larger than TOLERANCE (6%) so near-miss attempts get aim-assist; below ~12% so
+// a kid in the middle doesn't get teleported across the line.
+const MAGNET_SNAP_RADIUS = 0.10;
+
 // Pure math-expression generator. Returns [expressionText, numericValue].
 // v1: addition only, single-digit. Difficulty scaling (3.NBT.3 estimation tier
 // for the extreme bucket) lands in a follow-up commit.
@@ -180,6 +208,16 @@ export default function FractionLine({
   const [drops, setDrops] = useState([]); // active falling power-up drops (0 or 2 at a time)
   const [powerupNotice, setPowerupNotice] = useState(null); // { text, kind } toast for last applied effect
 
+  // ── Power-up effect state ──────────────────────────────────────────────────
+  // activeEffects: list of currently running TIMED effects with expiry timestamps.
+  // Instant effects (Heart, -1 Heart) don't enter this list — they fire and forget.
+  // Shape: [{ type: "invincible", expiresAt: 1234567890 }]
+  const [activeEffects, setActiveEffects] = useState([]);
+  const [frozen, setFrozen] = useState(false); // mirrors frozenRef for disabled-prop reactivity
+  const [lightningFlash, setLightningFlash] = useState(false); // Thunder cosmetic flash
+  const bonusStarsRef = useRef(0); // banked +1 per correct during Star Surge → added at endSession
+  const frozenRef = useRef(false); // synchronous Freeze gate for input handlers (mirrors `frozen` state)
+
   // ── Current question state ────────────────────────────────────────────────
   const [mode, setMode] = useState("drag"); // "drag" or "identify" (variant)
   const [targetFraction, setTargetFraction] = useState({ n: 1, d: 2 });
@@ -202,6 +240,55 @@ export default function FractionLine({
   const lockedRef = useRef(false); // synchronous double-tap guard — `locked` state is async (Codex MEDIUM 2026-04-25)
 
   useEffect(() => { markerPosRef.current = markerPos; }, [markerPos]);
+
+  // ── Effect helpers ────────────────────────────────────────────────────────
+  // applyEffect: starts (or refreshes) a timed effect. Stacking the same type
+  // REFRESHES the timer rather than extending it — kid who picks two Invincible
+  // drops in a row gets one fresh 7s window, not 14s. Cleanup setTimeout filters
+  // by expiresAt > now+50 so it doesn't clobber a refreshed entry whose new
+  // expiresAt is later than the original timer's fire time.
+  function applyEffect(type, durationMs) {
+    if (!durationMs) return; // instant effects bypass this list
+    const expiresAt = Date.now() + durationMs;
+    setActiveEffects(prev => [
+      ...prev.filter(e => e.type !== type),
+      { type, expiresAt },
+    ]);
+    setTimeout(() => {
+      setActiveEffects(prev => prev.filter(e => e.expiresAt > Date.now() + 50));
+    }, durationMs + 50);
+  }
+  function isActive(type) {
+    return activeEffects.some(e => e.type === type && e.expiresAt > Date.now());
+  }
+
+  // Lilypad positions for the current question. Used by both render and Magnet
+  // snap so the kid lands exactly where the visual cue suggests.
+  function getLilypadPositions() {
+    if (isLuca) return [0, 0.25, 0.5, 0.75, 1];
+    if (level === 1 || level === 2) {
+      return Array.from({ length: targetFraction.d + 1 }, (_, i) => i / targetFraction.d);
+    }
+    return [0, 1]; // L3: banks only — Magnet has reduced effect, by design
+  }
+
+  // ── Thunder cosmetic flash interval ───────────────────────────────────────
+  // While Thunder debuff is active, flash a white overlay every 1.2-2.7s for
+  // ~150ms. Cosmetic only — does not affect game state. Cleared when effect
+  // expires or session ends. Reads `activeEffects` types via a memoized signal
+  // so the interval re-inits exactly when Thunder activates/deactivates.
+  const activeTypesSig = activeEffects.map(e => e.type).sort().join(",");
+  useEffect(() => {
+    if (!activeTypesSig.includes("thunder")) return undefined;
+    let nextId;
+    const tick = () => {
+      setLightningFlash(true);
+      setTimeout(() => setLightningFlash(false), 150);
+      nextId = setTimeout(tick, 1200 + Math.random() * 1500);
+    };
+    nextId = setTimeout(tick, 800);
+    return () => clearTimeout(nextId);
+  }, [activeTypesSig]);
 
   // ── New question setup ────────────────────────────────────────────────────
   function newQuestion(currentLevel) {
@@ -262,6 +349,14 @@ export default function FractionLine({
     lockedRef.current = false;
     setDrops([]);
     setPowerupNotice(null);
+    // Reset all power-up effect state so leftover timers from a prior session
+    // can't bleed into the new run (e.g. previously-active Invincible erroneously
+    // surviving across a "Try Again" tap).
+    setActiveEffects([]);
+    setFrozen(false);
+    setLightningFlash(false);
+    bonusStarsRef.current = 0;
+    frozenRef.current = false;
     newQuestion(1);
     setPhase("play");
   }
@@ -273,9 +368,19 @@ export default function FractionLine({
   function endSession(victoryBonus = false, stats = null) {
     if (sessionEndedRef.current) return;
     sessionEndedRef.current = true;
+    // Clear active power-up effects on session end so a debuff (e.g. Reverse)
+    // can't survive into the Try Again screen and confuse the next attempt.
+    setActiveEffects([]);
+    setFrozen(false);
+    setLightningFlash(false);
+    frozenRef.current = false;
     const baseStars = 3;
     const bonusStars = victoryBonus ? 2 : 0;
-    const total = baseStars + bonusStars;
+    // Star Surge accumulator: +1 per correct answer landed during a Surge window.
+    // Banked invisibly during play (preserves "stars are revealed at session end"
+    // policy from the original design) and revealed in the total here.
+    const surgeBonus = bonusStarsRef.current;
+    const total = baseStars + bonusStars + surgeBonus;
     starsEarnedRef.current = total;
     addStars?.(total, victoryBonus
       ? "FractionLine full victory — all 3 levels"
@@ -294,7 +399,7 @@ export default function FractionLine({
   // Synchronous lockedRef guard prevents double-tap re-entry; setLocked() is async
   // so checking only the state value lets a fast second tap pass before re-render.
   function submitDragAnswer() {
-    if (lockedRef.current || mode !== "drag") return;
+    if (lockedRef.current || frozenRef.current || mode !== "drag") return;
     lockedRef.current = true;
     const truePos = fractionValue(targetFraction);
     const kidPos = markerPosRef.current;
@@ -305,7 +410,7 @@ export default function FractionLine({
 
   // ── Answer submission (identify mode) ─────────────────────────────────────
   function submitIdentifyAnswer(choice) {
-    if (lockedRef.current || mode !== "identify") return;
+    if (lockedRef.current || frozenRef.current || mode !== "identify") return;
     lockedRef.current = true;
     // Correct if the chosen fraction equals the shown-at fraction
     // (equivalents count — e.g. if shown at 0.5 and kid picks 2/4, that's fine).
@@ -335,6 +440,9 @@ export default function FractionLine({
       setTotalCorrect(newTotal);
       setStreak(newStreak);
       if (newStreak > bestStreak) setBestStreak(newStreak);
+      // Star Surge: bank +1 bonus star per correct landed during the Surge window.
+      // Revealed in starsEarnedRef.current at session end (see endSession).
+      if (isActive("starSurge")) bonusStarsRef.current += 1;
 
       // Luca: never auto-advance. All 3 kids eventually, but Luca stays on L1 forever.
       const canAdvance = !isLuca;
@@ -396,6 +504,16 @@ export default function FractionLine({
       return;
     }
 
+    // Invincible buff (⚡): blocks heart loss in the wrong-answer path. Note: a
+    // -1 Heart DEBUFF drop still subtracts hearts directly (see onTapDrop); per
+    // brief, Invincible only shields the answer-mistake path, not debuff drops.
+    // If a debuff drops lives to 0 even mid-Invincible, gameOver still fires via
+    // the `lives <= 0` useEffect below.
+    if (isActive("invincible")) {
+      setTimeout(() => newQuestion(level), 1500);
+      return;
+    }
+
     // Subsequent wrongs: lose a heart, advance to a new fraction (or game over).
     // recordAttempt above feeds the adaptive weak-area system in LearningEngine,
     // so missed fractions resurface naturally without us forcing repetition here.
@@ -423,11 +541,17 @@ export default function FractionLine({
     if (!r) return 0.5;
     const usable = r.width - LINE_PADDING * 2;
     const rel = clientX - (r.left + LINE_PADDING);
-    return Math.max(0, Math.min(1, rel / usable));
+    let pos = Math.max(0, Math.min(1, rel / usable));
+    // Reverse debuff (🔄): drag direction inverted in the visual coordinate space.
+    // Magnet snap targets are also visual, so the two effects compose cleanly:
+    // kid drags right, frog goes left, Magnet snaps to the visual pad nearest
+    // where the frog appears (not where the kid was pointing).
+    if (isActive("reverse")) pos = 1 - pos;
+    return pos;
   }
 
   function handlePointerDown(e) {
-    if (locked || mode !== "drag") return;
+    if (locked || frozenRef.current || mode !== "drag") return;
     draggingRef.current = true;
     const pos = clientXToPos(e.clientX);
     setMarkerPos(pos);
@@ -435,7 +559,7 @@ export default function FractionLine({
     e.currentTarget.setPointerCapture?.(e.pointerId);
   }
   function handlePointerMove(e) {
-    if (!draggingRef.current || locked || mode !== "drag") return;
+    if (!draggingRef.current || locked || frozenRef.current || mode !== "drag") return;
     const pos = clientXToPos(e.clientX);
     setMarkerPos(pos);
     markerPosRef.current = pos;
@@ -443,12 +567,33 @@ export default function FractionLine({
   function handlePointerUp(e) {
     if (!draggingRef.current) return;
     draggingRef.current = false;
+    // Magnet buff (🧲): on release, snap to nearest visible lilypad — but only
+    // if within MAGNET_SNAP_RADIUS (10%). Beyond that radius the kid wasn't
+    // really aiming at any pad and snapping would teleport them. At L3 the
+    // visible-pads set is just the banks {0,1}, so Magnet has reduced effect
+    // there by design (banks-only snap). Blind+Magnet: Blind filters the visible
+    // pad set, so Magnet snaps only to currently-visible pads (banks if Blind active).
+    if (isActive("magnet")) {
+      let pads = getLilypadPositions();
+      if (isActive("blind")) pads = pads.filter(p => p === 0 || p === 1);
+      const cur = markerPosRef.current;
+      let nearest = null;
+      let bestDiff = Infinity;
+      for (const p of pads) {
+        const d = Math.abs(cur - p);
+        if (d < bestDiff) { bestDiff = d; nearest = p; }
+      }
+      if (nearest !== null && bestDiff < MAGNET_SNAP_RADIUS) {
+        setMarkerPos(nearest);
+        markerPosRef.current = nearest;
+      }
+    }
     try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch {}
   }
 
   // Also allow tap-on-line to place marker (mobile ergonomics).
   function handleLineTap(e) {
-    if (locked || mode !== "drag") return;
+    if (locked || frozenRef.current || mode !== "drag") return;
     const pos = clientXToPos(e.clientX);
     setMarkerPos(pos);
     markerPosRef.current = pos;
@@ -464,31 +609,52 @@ export default function FractionLine({
   }
 
   // ── Power-up drop tap handler ─────────────────────────────────────────────
-  // Kid tapped one of the falling icons. If they picked the higher-value math
-  // expression they get a buff; lower → debuff. v1 implements +1 Heart (buff)
-  // and -1 Heart (debuff) only — additional effects (Slow Time, Magnet, Reverse,
-  // Freeze, Rotate, Star Surge, Invincible, Frenzy, Thunder, Blind) land in
-  // a follow-up commit. Mechanic itself is the validated piece here.
+  // Kid tapped one of the falling icons. The math IS the bonus: kid had to
+  // compare expressions to earn the slot. Random pick from BUFF_TYPES (winner)
+  // or DEBUFF_TYPES (loser) keeps replay variety so two power-up rounds never
+  // feel identical. Heart/-1 Heart are instant; others fire applyEffect for
+  // a timed window. Rotate is intentionally NOT in the pool yet — it needs
+  // pointer-math projection that we're shipping in a follow-up.
   function onTapDrop(drop) {
     setDrops([]); // both icons disappear when one is tapped
-    if (drop.isWinner) {
-      // BUFF: +1 Heart (capped at LIVES_MAX)
-      setLives(prev => Math.min(LIVES_MAX, prev + 1));
-      setPowerupNotice({
-        text: `❤️ +1 Heart! (${drop.expr} = ${drop.value} was higher)`,
-        kind: "buff",
-      });
-    } else {
-      // DEBUFF: -1 Heart (but not below 0; if it'd hit 0, end the run)
-      setLives(prev => {
-        const next = Math.max(0, prev - 1);
-        return next;
-      });
-      setPowerupNotice({
-        text: `💀 -1 Heart (${drop.expr} = ${drop.value} was lower)`,
-        kind: "debuff",
-      });
+    const pool = drop.isWinner ? BUFF_TYPES : DEBUFF_TYPES;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    const cmpText = drop.isWinner
+      ? `${drop.expr} = ${drop.value} (higher!)`
+      : `${drop.expr} = ${drop.value} (lower)`;
+
+    switch (pick.type) {
+      case "heart":
+        setLives(prev => Math.min(LIVES_MAX, prev + 1));
+        break;
+      case "loseHeart":
+        // Don't set below 0 — the lives<=0 useEffect handles the gameOver path.
+        setLives(prev => Math.max(0, prev - 1));
+        break;
+      case "freeze":
+        // Freeze locks input via a separate `frozenRef`/`frozen` gate so it
+        // doesn't collide with the existing `locked` flag (used for feedback
+        // animation lockout). frozenRef is the synchronous read; frozen state
+        // exists so React `disabled` props re-render. Both clear together.
+        frozenRef.current = true;
+        setFrozen(true);
+        setTimeout(() => {
+          frozenRef.current = false;
+          setFrozen(false);
+        }, pick.duration);
+        applyEffect(pick.type, pick.duration); // also tracked in activeEffects for HUD
+        break;
+      default:
+        // Timed effects: starSurge, invincible, slowTime, magnet, frenzy,
+        // thunder, blind, reverse — applyEffect handles refresh-on-restack.
+        applyEffect(pick.type, pick.duration);
+        break;
     }
+
+    setPowerupNotice({
+      text: `${pick.name} — ${cmpText}`,
+      kind: drop.isWinner ? "buff" : "debuff",
+    });
   }
 
   // Auto-dismiss the power-up notice after POWERUP_NOTICE_MS.
@@ -681,6 +847,38 @@ export default function FractionLine({
         </div>
       </div>
 
+      {/* Active effects HUD — small badge row under the hearts. Shows kid which
+          timed buffs/debuffs are running so they can game-plan ("I'm Invincible
+          for 4s, push hard"). Instant effects (Heart/-1 Heart) never appear here
+          since they don't enter activeEffects. Hidden when no effects active so
+          the layout stays clean. */}
+      {activeEffects.length > 0 && (
+        <div style={{
+          display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center",
+          marginBottom: 10,
+        }}>
+          {activeEffects.map(eff => {
+            const meta = [...BUFF_TYPES, ...DEBUFF_TYPES].find(t => t.type === eff.type);
+            if (!meta) return null;
+            const isBuff = BUFF_TYPES.some(t => t.type === eff.type);
+            return (
+              <div key={eff.type} style={{
+                fontSize: 11, fontWeight: 800, padding: "4px 10px",
+                borderRadius: 12, lineHeight: 1.2,
+                background: isBuff
+                  ? "linear-gradient(135deg, rgba(34,197,94,0.85), rgba(21,128,61,0.85))"
+                  : "linear-gradient(135deg, rgba(239,68,68,0.85), rgba(153,27,27,0.85))",
+                color: "#fff",
+                boxShadow: "0 2px 6px rgba(0,0,0,0.35)",
+                border: "1px solid rgba(255,255,255,0.25)",
+              }}>
+                {meta.name}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Prompt */}
       <div style={{ textAlign: "center", marginTop: 12, marginBottom: 18 }}>
         {mode === "drag" ? (
@@ -756,22 +954,16 @@ export default function FractionLine({
             can land on. Visually communicates "fractions = equal divisions" without
             requiring the kid to interpret tick semantics. Banks at 0 and 1 are sandy
             shore (where the frog starts / finishes). Interior pads are floating green
-            lily. L3 hides interior pads (banks only) to force magnitude estimation. */}
+            lily. L3 hides interior pads (banks only) to force magnitude estimation.
+            Blind debuff (🌫️): hides interior pads regardless of level — kid must
+            estimate by magnitude alone for the duration. */}
         {(() => {
-          let positions = [];
+          let positions = getLilypadPositions();
           let strength = "strong";
-          if (isLuca) {
-            positions = [0, 0.25, 0.5, 0.75, 1];
-            strength = "strong";
-          } else if (level === 1) {
-            positions = Array.from({ length: targetFraction.d + 1 }, (_, i) => i / targetFraction.d);
-            strength = "strong";
-          } else if (level === 2) {
-            positions = Array.from({ length: targetFraction.d + 1 }, (_, i) => i / targetFraction.d);
-            strength = "subtle";
-          } else {
-            positions = [0, 1]; // L3: banks only, no scaffolding
-            strength = "strong"; // banks are always visible regardless
+          if (!isLuca && level === 2) strength = "subtle";
+          if (isActive("blind")) {
+            positions = positions.filter(p => p === 0 || p === 1);
+            strength = "strong"; // banks visible at full strength even under Blind
           }
           return positions.map((pos, i) => {
             const isBank = pos === 0 || pos === 1;
@@ -871,26 +1063,36 @@ export default function FractionLine({
         {/* The Fish — lurks below the lilypad row. Swims back and forth idly.
             On Check + wrong: lunges UP to the frog's position (chomp).
             On Check + correct: stays low (frog leapt out of reach).
-            Hidden in identify mode where the frog isn't a moving target. */}
-        {mode === "drag" && (
-          <div style={{
-            position: "absolute",
-            left: `calc(${LINE_PADDING}px + ${
-              feedback === "incorrect" ? displayPos : 0.5
-            } * (100% - ${LINE_PADDING * 2}px))`,
-            top: 102,
-            fontSize: 30,
-            transform: "translateX(-50%)",
-            pointerEvents: "none",
-            filter: "drop-shadow(0 2px 3px rgba(0,0,0,0.4))",
-            animation: feedback === "incorrect"
-              ? "fishLunge 1.4s ease-in"
-              : "fishSwim 3.2s ease-in-out infinite",
-            zIndex: 5,
-          }}>
-            🐟
-          </div>
-        )}
+            Hidden in identify mode where the frog isn't a moving target.
+            Slow Time (🐢): both swim and lunge run at 50% speed (2× duration).
+            Frenzy (💨): lunge runs at 200% speed (0.5× duration). Swim unaffected.
+            Slow+Frenzy on lunge cancel (2× × 0.5× = 1×) — that's intentional, no
+            special-case needed. */}
+        {mode === "drag" && (() => {
+          const slowMul  = isActive("slowTime") ? 2   : 1;
+          const frenzyMul = isActive("frenzy")  ? 0.5 : 1;
+          const swimSec  = (3.2 * slowMul).toFixed(2);
+          const lungeSec = (1.4 * slowMul * frenzyMul).toFixed(2);
+          return (
+            <div style={{
+              position: "absolute",
+              left: `calc(${LINE_PADDING}px + ${
+                feedback === "incorrect" ? displayPos : 0.5
+              } * (100% - ${LINE_PADDING * 2}px))`,
+              top: 102,
+              fontSize: 30,
+              transform: "translateX(-50%)",
+              pointerEvents: "none",
+              filter: "drop-shadow(0 2px 3px rgba(0,0,0,0.4))",
+              animation: feedback === "incorrect"
+                ? `fishLunge ${lungeSec}s ease-in`
+                : `fishSwim ${swimSec}s ease-in-out infinite`,
+              zIndex: 5,
+            }}>
+              🐟
+            </div>
+          );
+        })()}
 
         {/* Animation keyframes (injected once per render — React dedupes) */}
         <style>{`
@@ -929,12 +1131,14 @@ export default function FractionLine({
         `}</style>
       </div>
 
-      {/* Action zone — varies by mode */}
+      {/* Action zone — varies by mode. `frozen` (Freeze debuff) disables submit
+          alongside the existing `locked` (feedback animation) gate. */}
       {mode === "drag" && (
         <div style={{ padding: "0 4px", marginTop: 8 }}>
           <GameBtn big color={feedback === "correct" ? "#22c55e" : feedback === "incorrect" ? "#ef4444" : "#0ea5e9"}
-                   disabled={locked} onClick={submitDragAnswer}>
-            {locked && feedback === "correct" ? "✓ Correct!"
+                   disabled={locked || frozen} onClick={submitDragAnswer}>
+            {frozen ? "❄️ Frozen!"
+             : locked && feedback === "correct" ? "✓ Correct!"
              : locked && feedback === "incorrect" ? "✗ Almost! Try again"
              : "Check Answer"}
           </GameBtn>
@@ -951,7 +1155,7 @@ export default function FractionLine({
               return (
                 <GameBtn key={i}
                   color={isThisCorrect ? "#22c55e" : "#1e40af"}
-                  disabled={locked}
+                  disabled={locked || frozen}
                   onClick={() => submitIdentifyAnswer(f)}>
                   <StackedFraction n={f.n} d={f.d} size={20} />
                 </GameBtn>
@@ -1058,6 +1262,33 @@ export default function FractionLine({
         }}>
           {powerupNotice.text}
         </div>
+      )}
+
+      {/* Thunder cosmetic flash overlay — debuff visual. Fullscreen pale-blue
+          flash, opacity toggled by `lightningFlash` (set by the Thunder useEffect
+          interval). pointerEvents:none so it never blocks taps. zIndex sits
+          ABOVE drops/toast so the flash reads as ambient lighting, not occluded
+          by UI chrome. */}
+      <div style={{
+        position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+        background: "linear-gradient(180deg, rgba(255,255,255,0.85), rgba(200,220,255,0.55))",
+        opacity: lightningFlash ? 1 : 0,
+        transition: lightningFlash ? "opacity 60ms ease-out" : "opacity 200ms ease-in",
+        pointerEvents: "none",
+        zIndex: 250,
+      }} />
+
+      {/* Frozen full-screen tint — subtle blue wash so the kid sees WHY input
+          isn't responding (rather than thinking the game crashed). Cleared as
+          soon as Freeze ends. */}
+      {frozen && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(120,180,255,0.18)",
+          backdropFilter: "blur(1px)",
+          pointerEvents: "none",
+          zIndex: 180,
+        }} />
       )}
     </div>
   );
