@@ -242,25 +242,48 @@ export default function FractionLine({
   useEffect(() => { markerPosRef.current = markerPos; }, [markerPos]);
 
   // ── Effect helpers ────────────────────────────────────────────────────────
+  // effectTimersRef holds the live `setTimeout` id per effect type so we can
+  // (1) cancel a prior timer on refresh — true refresh semantics, no zombie
+  // expiry firing early, and (2) clear all pending timers at lifecycle
+  // boundaries (startPlay, endSession, unmount) so callbacks can't fire into
+  // a dead or wrong-state component. (Codex HIGH 1+2 — 2026-05-07.)
+  const effectTimersRef = useRef({});
+
   // applyEffect: starts (or refreshes) a timed effect. Stacking the same type
   // REFRESHES the timer rather than extending it — kid who picks two Invincible
-  // drops in a row gets one fresh 7s window, not 14s. Cleanup setTimeout filters
-  // by expiresAt > now+50 so it doesn't clobber a refreshed entry whose new
-  // expiresAt is later than the original timer's fire time.
-  function applyEffect(type, durationMs) {
-    if (!durationMs) return; // instant effects bypass this list
+  // drops in a row gets one fresh 7s window, not 14s. The prior pending
+  // setTimeout for the same type is explicitly cancelled before scheduling
+  // the new one, so an early-firing zombie can't undo the refresh.
+  // `onExpire` lets callers attach side-effect cleanup that must run when
+  // the effect window actually ends (Freeze uses it to clear frozenRef/state).
+  function applyEffect(type, durationMs, onExpire) {
+    if (!durationMs) { onExpire?.(); return; }
+    if (effectTimersRef.current[type]) {
+      clearTimeout(effectTimersRef.current[type]);
+    }
     const expiresAt = Date.now() + durationMs;
     setActiveEffects(prev => [
       ...prev.filter(e => e.type !== type),
       { type, expiresAt },
     ]);
-    setTimeout(() => {
-      setActiveEffects(prev => prev.filter(e => e.expiresAt > Date.now() + 50));
-    }, durationMs + 50);
+    effectTimersRef.current[type] = setTimeout(() => {
+      delete effectTimersRef.current[type];
+      setActiveEffects(prev => prev.filter(e => e.type !== type));
+      onExpire?.();
+    }, durationMs);
   }
   function isActive(type) {
     return activeEffects.some(e => e.type === type && e.expiresAt > Date.now());
   }
+  function clearAllEffectTimers() {
+    Object.values(effectTimersRef.current).forEach(id => clearTimeout(id));
+    effectTimersRef.current = {};
+  }
+
+  // Unmount cleanup — cancel any pending timers so a deferred callback can't
+  // fire into a torn-down component (React StrictMode double-invocation; rapid
+  // Try Again; navigation away during an active effect window).
+  useEffect(() => () => clearAllEffectTimers(), []);
 
   // Lilypad positions for the current question. Used by both render and Magnet
   // snap so the kid lands exactly where the visual cue suggests.
@@ -281,13 +304,18 @@ export default function FractionLine({
   useEffect(() => {
     if (!activeTypesSig.includes("thunder")) return undefined;
     let nextId;
+    let flashOffId; // inner timeout id — must be tracked or it fires after unmount/deactivate
     const tick = () => {
       setLightningFlash(true);
-      setTimeout(() => setLightningFlash(false), 150);
+      flashOffId = setTimeout(() => setLightningFlash(false), 150);
       nextId = setTimeout(tick, 1200 + Math.random() * 1500);
     };
     nextId = setTimeout(tick, 800);
-    return () => clearTimeout(nextId);
+    return () => {
+      clearTimeout(nextId);
+      clearTimeout(flashOffId);
+      setLightningFlash(false); // safety: ensure overlay is off when Thunder ends
+    };
   }, [activeTypesSig]);
 
   // ── New question setup ────────────────────────────────────────────────────
@@ -351,7 +379,9 @@ export default function FractionLine({
     setPowerupNotice(null);
     // Reset all power-up effect state so leftover timers from a prior session
     // can't bleed into the new run (e.g. previously-active Invincible erroneously
-    // surviving across a "Try Again" tap).
+    // surviving across a "Try Again" tap). clearAllEffectTimers() runs FIRST so
+    // no in-flight callback can re-set state we're about to clear (Codex HIGH 2).
+    clearAllEffectTimers();
     setActiveEffects([]);
     setFrozen(false);
     setLightningFlash(false);
@@ -370,6 +400,9 @@ export default function FractionLine({
     sessionEndedRef.current = true;
     // Clear active power-up effects on session end so a debuff (e.g. Reverse)
     // can't survive into the Try Again screen and confuse the next attempt.
+    // clearAllEffectTimers() FIRST so no pending callback re-applies state
+    // we're about to wipe (Codex HIGH 2).
+    clearAllEffectTimers();
     setActiveEffects([]);
     setFrozen(false);
     setLightningFlash(false);
@@ -616,6 +649,12 @@ export default function FractionLine({
   // a timed window. Rotate is intentionally NOT in the pool yet — it needs
   // pointer-math projection that we're shipping in a follow-up.
   function onTapDrop(drop) {
+    // Gate drop taps during input lockouts. Without this, a frozen kid could
+    // still farm power-ups (Codex MED 3 — 2026-05-07), and a kid mid-feedback
+    // could stack a debuff onto a wrong-answer heart loss (audit FL4 from
+    // 2026-04-30). Both gates align onTapDrop with submit/pointer handlers.
+    if (frozenRef.current || lockedRef.current) return;
+
     setDrops([]); // both icons disappear when one is tapped
     const pool = drop.isWinner ? BUFF_TYPES : DEBUFF_TYPES;
     const pick = pool[Math.floor(Math.random() * pool.length)];
@@ -636,13 +675,14 @@ export default function FractionLine({
         // doesn't collide with the existing `locked` flag (used for feedback
         // animation lockout). frozenRef is the synchronous read; frozen state
         // exists so React `disabled` props re-render. Both clear together.
+        // Single timer source-of-truth via applyEffect's onExpire callback —
+        // refresh semantics match all other timed effects (Codex HIGH 1).
         frozenRef.current = true;
         setFrozen(true);
-        setTimeout(() => {
+        applyEffect(pick.type, pick.duration, () => {
           frozenRef.current = false;
           setFrozen(false);
-        }, pick.duration);
-        applyEffect(pick.type, pick.duration); // also tracked in activeEffects for HUD
+        });
         break;
       default:
         // Timed effects: starSurge, invincible, slowTime, magnet, frenzy,
@@ -851,9 +891,15 @@ export default function FractionLine({
           timed buffs/debuffs are running so they can game-plan ("I'm Invincible
           for 4s, push hard"). Instant effects (Heart/-1 Heart) never appear here
           since they don't enter activeEffects. Hidden when no effects active so
-          the layout stays clean. */}
+          the layout stays clean. role+aria-live mirror the hearts HUD so screen
+          readers announce effect changes (Codex LOW 5 — 2026-05-07). */}
       {activeEffects.length > 0 && (
-        <div style={{
+        <div role="status" aria-live="polite" aria-atomic="true"
+             aria-label={`Active effects: ${activeEffects.map(e => {
+               const m = [...BUFF_TYPES, ...DEBUFF_TYPES].find(t => t.type === e.type);
+               return m ? m.name : e.type;
+             }).join(", ")}`}
+             style={{
           display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center",
           marginBottom: 10,
         }}>
