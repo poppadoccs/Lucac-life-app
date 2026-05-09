@@ -1,7 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { groqFetch, cacheGet, cacheSet, speakText } from "../utils";
+import { groqFetch, cacheGet, cacheSet, speakText, triggerConfetti } from "../utils";
 import { GameBtn, recordGameHistory, ageBandFromProfile } from "./_shared";
 import { recordAttempt } from "../LearningEngine";
+import {
+  BUFF_TYPES, DEBUFF_TYPES, POWERUP_NOTICE_MS, DROP_FALL_DURATION_MS,
+  spawnDropPair,
+} from "./_powerups";
 
 // ─── ReadingGame (S04 A6 rewrite) ────────────────────────────────────────────
 // Finger-swipe word-by-word reader. Same UI for both kids; content adapts to
@@ -21,6 +25,12 @@ import { recordAttempt } from "../LearningEngine";
 const GROQ_KEY = import.meta.env.VITE_GROQ_KEY;
 const STORY_MODEL = "llama-3.3-70b-versatile";
 const STORY_TIMEOUT = 20000;
+
+// ─── READING ADVENTURE EXTENSIONS ────────────────────────────────────────────
+// Yana-mode only by design — Luca's decoding mode keeps zero-shame UX per
+// ReadingGame header (lines 6-19). Lives + power-ups for fluent readers only.
+const LIVES_MAX_READING = 3;          // requested by feature spec
+const POWERUP_INTERVAL_MS = 30_000;   // requested cadence: every 30 seconds
 
 // ─── Luca mode: decodable phonics passages ───────────────────────────────────
 // Scope-and-sequence aligned. Level 1 = CVC short-vowel (a, i, o, u, e).
@@ -86,6 +96,15 @@ export default function ReadingGame({
 
   // Session state
   const [pagesCompleted, setPagesCompleted] = useState(0); // count this session
+
+  // Adventure-mode state (Yana mode only — gated by !isLucaMode at use sites)
+  const [lives, setLives] = useState(LIVES_MAX_READING);
+  const [drops, setDrops] = useState([]);
+  const [powerupNotice, setPowerupNotice] = useState(null);
+  const [activeBuff, setActiveBuff] = useState(null); // {type, expiresAt} | null
+  const [activeDebuff, setActiveDebuff] = useState(null);
+  const [fishMood, setFishMood] = useState("idle"); // "idle" | "happy" | "lunge"
+  const dropTimerRef = useRef(null);
   const [sessionStars, setSessionStars] = useState(0);
   const [completedTitles, setCompletedTitles] = useState([]);
   const [toast, setToast] = useState(null);
@@ -282,6 +301,56 @@ export default function ReadingGame({
     setDraggingWord(null);
   }
 
+  // ─── Apply a buff/debuff effect (subset of FractionLine's set; reading does
+  //     not implement Magnet/Reverse since there's no drag target). The non-
+  //     instant effects are stored as activeBuff/activeDebuff for the notice
+  //     toast — gameplay impact in the reading context is intentionally
+  //     limited to ±1 heart, since reading has no twitch loop to modify.
+  function applyBuff(buff) {
+    if (buff.type === "heart") {
+      setLives(L => Math.min(LIVES_MAX_READING, L + 1));
+    } else if (buff.duration > 0) {
+      setActiveBuff({ type: buff.type, expiresAt: Date.now() + buff.duration });
+      setTimeout(() => setActiveBuff(null), buff.duration);
+    }
+    setFishMood("happy");
+    setTimeout(() => setFishMood("idle"), 2000);
+    setPowerupNotice({ text: buff.name, kind: "buff" });
+  }
+
+  function applyDebuff(deb) {
+    if (deb.type === "loseHeart") {
+      setLives(L => Math.max(0, L - 1));
+    } else if (deb.duration > 0) {
+      setActiveDebuff({ type: deb.type, expiresAt: Date.now() + deb.duration });
+      setTimeout(() => setActiveDebuff(null), deb.duration);
+    }
+    setFishMood("lunge");
+    setTimeout(() => setFishMood("idle"), 1500);
+    setPowerupNotice({ text: deb.name, kind: "debuff" });
+  }
+
+  function tapDrop(drop) {
+    setDrops(prev => prev.filter(d => d.id !== drop.id && d.id !== drop.id - 1 && d.id !== drop.id + 1));
+    if (drop.isWinner) {
+      const buff = BUFF_TYPES[Math.floor(Math.random() * BUFF_TYPES.length)];
+      applyBuff(buff);
+    } else {
+      const deb = DEBUFF_TYPES[Math.floor(Math.random() * DEBUFF_TYPES.length)];
+      applyDebuff(deb);
+    }
+  }
+
+  // Remove a drop after its CSS fall animation completes (kid didn't tap it).
+  // Without this, ignored drops would persist in state and the 30-second
+  // scheduler's `prev.length === 0` guard would never re-fire — so a kid who
+  // misses one drop would never see another. NOT in the original plumbline
+  // plan; added because the spec ("every 30 seconds") only works if untapped
+  // drops eventually clear from state.
+  function dropFellOff(drop) {
+    setDrops(prev => prev.filter(d => d.id !== drop.id));
+  }
+
   // ─── When all words read — record attempt, award star, await kid's Next ───
   useEffect(() => {
     if (!allRead || loading) return;
@@ -294,6 +363,12 @@ export default function ReadingGame({
     addStars?.(1, "Reading page completed");
     setSessionStars(s => s + 1);
     setCompletedTitles(prev => [...prev, passageSource]);
+    // "Chapter completion" confetti — small for per-page, big at session end
+    triggerConfetti(document.body, "small");
+    // Reactive fish: page complete = happy fish (Yana mode only — fish is
+    // hidden in Luca mode so the setState is harmless but unobserved)
+    setFishMood("happy");
+    setTimeout(() => setFishMood("idle"), 2000);
 
     // Update kidsData.readingStats — canonical shape per S04 spec:
     // { storiesRead, wordsRead, lastPlayed } — shared with StoryQuest + WordWarrior
@@ -325,6 +400,43 @@ export default function ReadingGame({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allRead]);
 
+  // ─── 30-second power-up drop scheduler (Yana-mode only) ──────────────────
+  // Differs from FractionLine's per-question cadence by design: reading has no
+  // "questions" — pages take longer than fraction problems, so wall-clock
+  // cadence makes more sense than per-page cadence.
+  useEffect(() => {
+    if (isLucaMode) return;          // Luca mode = no drops, no shame
+    if (loading) return;
+    if (finishedSession) return;
+
+    dropTimerRef.current = setInterval(() => {
+      setDrops(prev => prev.length === 0 ? spawnDropPair() : prev);
+    }, POWERUP_INTERVAL_MS);
+
+    return () => {
+      if (dropTimerRef.current) clearInterval(dropTimerRef.current);
+      dropTimerRef.current = null;
+    };
+  }, [isLucaMode, loading, finishedSession]);
+
+  // Auto-dismiss the power-up notice (matches FractionLine:702-705 lifetime)
+  useEffect(() => {
+    if (!powerupNotice) return;
+    const t = setTimeout(() => setPowerupNotice(null), POWERUP_NOTICE_MS);
+    return () => clearTimeout(t);
+  }, [powerupNotice]);
+
+  // Lives = 0 → end session early with empathy (no "GAME OVER" — matches
+  // ReadingGame design intent, lines 6-19)
+  useEffect(() => {
+    if (isLucaMode) return;
+    if (lives > 0) return;
+    if (finishedSession) return;
+    showToast("That was a tough one — let's stop here for now");
+    finishSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lives, isLucaMode, finishedSession]);
+
   // ─── Exit / finish session — award session bonus + record history ─────────
   function finishSession() {
     if (!finishedSession) {
@@ -335,8 +447,17 @@ export default function ReadingGame({
         mode: isLucaMode ? "luca-phonics" : "yana-fluency",
       });
       setFinishedSession(true);
+      // Session-bonus confetti (big) — only Yana mode (Luca's mode is single-
+      // page by design; small confetti fired on the page completion already)
+      if (!isLucaMode && pagesCompleted > 0) {
+        triggerConfetti(document.body, "big");
+      }
     }
     stopSpeech();
+    if (dropTimerRef.current) {
+      clearInterval(dropTimerRef.current);
+      dropTimerRef.current = null;
+    }
     transitionTo?.("mini_games");
   }
 
@@ -365,7 +486,7 @@ export default function ReadingGame({
         </div>
       )}
 
-      <div style={{ background: headerBg, padding: 20, minHeight: 500 }}>
+      <div style={{ background: headerBg, padding: 20, minHeight: 500, position: "relative" }}>
         {/* Header */}
         <div style={{
           display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -404,6 +525,16 @@ export default function ReadingGame({
             ⭐ {sessionStars}
           </div>
         </div>
+
+        {/* Lives bar — Yana mode only (anti-shame guardrail for Luca) */}
+        {!isLucaMode && (
+          <div role="status" aria-label={`${lives} ${lives === 1 ? "life" : "lives"} remaining`}
+            style={{ textAlign: "center", marginBottom: 8, color: "#fbbf24",
+                     fontSize: 18, fontWeight: 700 }}>
+            <span aria-hidden="true">{"❤️".repeat(Math.max(0, lives))}</span>
+            <span style={{ marginLeft: 6, fontSize: 14 }}>×{lives}</span>
+          </div>
+        )}
 
         {/* Title / subtitle */}
         <div style={{ textAlign: "center", marginBottom: 16 }}>
@@ -540,6 +671,65 @@ export default function ReadingGame({
             )}
           </div>
         )}
+
+        {/* Reactive fish — bottom-left, Yana mode only */}
+        {!isLucaMode && (
+          <div aria-hidden="true" style={{
+            position: "absolute", bottom: 12, left: 16, fontSize: 36,
+            transition: "transform 0.3s",
+            transform: fishMood === "happy" ? "translateY(-12px) rotate(-15deg)"
+                     : fishMood === "lunge" ? "translateY(-22px) scale(1.2)"
+                     : "translateY(0) rotate(0)",
+            pointerEvents: "none",
+          }}>
+            🐟
+          </div>
+        )}
+
+        {/* Falling power-up drops (Yana mode only) — tapping a drop applies
+            its effect; a winner drop applies a random buff, a loser drop
+            applies a random debuff. Pattern adapted from FractionLine.jsx
+            falling-drop overlay. onAnimationEnd clears untapped drops so a
+            kid who ignores them isn't permanently locked out of new spawns. */}
+        {!isLucaMode && drops.map(d => (
+          <button key={d.id} onClick={() => tapDrop(d)}
+            onAnimationEnd={() => dropFellOff(d)}
+            aria-label={`Power-up: ${d.expr}`}
+            style={{
+              position: "absolute", left: `${d.leftPct}%`, top: 0,
+              transform: "translateX(-50%)",
+              animation: `dropFall ${DROP_FALL_DURATION_MS}ms linear forwards`,
+              background: "rgba(15,23,42,0.85)", color: "#fbbf24",
+              border: "2px solid #fbbf24", borderRadius: 12,
+              padding: "8px 12px", fontWeight: 800, fontSize: 16,
+              minHeight: 44, minWidth: 44, cursor: "pointer", zIndex: 10,
+            }}>
+            {d.expr}
+          </button>
+        ))}
+
+        {/* Power-up notice toast */}
+        {powerupNotice && (
+          <div role="status" style={{
+            position: "absolute", top: 70, left: "50%", transform: "translateX(-50%)",
+            background: powerupNotice.kind === "buff" ? "#15803d" : "#991b1b",
+            color: "#fff", padding: "10px 18px", borderRadius: 10, fontWeight: 800,
+            border: "2px solid rgba(255,255,255,0.4)", zIndex: 20,
+          }}>
+            {powerupNotice.text}
+          </div>
+        )}
+
+        {/* Adventure-mode keyframes — dropFall is not in RPGCore's shared
+            KEYFRAMES_CSS (verified at FractionLine.jsx:1169 — defined inline
+            inside that game's own <style> block), so we mirror the local-
+            scope pattern here. */}
+        <style>{`
+          @keyframes dropFall {
+            from { top: -10%; }
+            to   { top: 100%; }
+          }
+        `}</style>
       </div>
     </div>
   );
