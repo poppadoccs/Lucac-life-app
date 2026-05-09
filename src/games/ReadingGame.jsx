@@ -101,6 +101,12 @@ export default function ReadingGame({
   const [lives, setLives] = useState(LIVES_MAX_READING);
   const [drops, setDrops] = useState([]);
   const [powerupNotice, setPowerupNotice] = useState(null);
+  // TODO(reading-adventure-v2): activeBuff / activeDebuff are stored on tap
+  // but not consulted by gameplay logic. Reading has no twitch loop, so
+  // Frenzy/Invincible/Slow Time/etc. currently surface as flavor toasts only.
+  // Future wiring opportunities: Frenzy → faster confetti, Star Surge → +2
+  // stars per next page, Blind → temporary letter blur, etc. Keep state for
+  // when that work lands; remove if a future audit confirms it stays unused.
   const [activeBuff, setActiveBuff] = useState(null); // {type, expiresAt} | null
   const [activeDebuff, setActiveDebuff] = useState(null);
   const [fishMood, setFishMood] = useState("idle"); // "idle" | "happy" | "lunge"
@@ -363,12 +369,17 @@ export default function ReadingGame({
     addStars?.(1, "Reading page completed");
     setSessionStars(s => s + 1);
     setCompletedTitles(prev => [...prev, passageSource]);
-    // "Chapter completion" confetti — small for per-page, big at session end
+    // "Chapter completion" confetti — small for per-page, big at session end.
+    // Confetti is mode-agnostic (celebration, not adventure mechanic) so Luca
+    // gets it on his single-page session too — magical kid UX.
     triggerConfetti(document.body, "small");
     // Reactive fish: page complete = happy fish (Yana mode only — fish is
-    // hidden in Luca mode so the setState is harmless but unobserved)
-    setFishMood("happy");
-    setTimeout(() => setFishMood("idle"), 2000);
+    // hidden in Luca mode, so we skip the setState entirely to avoid
+    // mutating dead adventure state in Luca's path).
+    if (!isLucaMode) {
+      setFishMood("happy");
+      setTimeout(() => setFishMood("idle"), 2000);
+    }
 
     // Update kidsData.readingStats — canonical shape per S04 spec:
     // { storiesRead, wordsRead, lastPlayed } — shared with StoryQuest + WordWarrior
@@ -404,9 +415,15 @@ export default function ReadingGame({
   // Differs from FractionLine's per-question cadence by design: reading has no
   // "questions" — pages take longer than fraction problems, so wall-clock
   // cadence makes more sense than per-page cadence.
+  //
+  // Codex review (HIGH): `loading` was originally in deps, which meant every
+  // "Next passage" tap (loading: false→true→false) tore down and recreated
+  // the timer at zero. A fast reader would NEVER see a drop. Fixed by
+  // removing `loading` from deps so the timer accumulates across passages.
+  // A drop can now spawn during a Groq fetch — that's an acceptable UX
+  // tradeoff (kid has something to tap during a brief wait).
   useEffect(() => {
     if (isLucaMode) return;          // Luca mode = no drops, no shame
-    if (loading) return;
     if (finishedSession) return;
 
     dropTimerRef.current = setInterval(() => {
@@ -417,7 +434,7 @@ export default function ReadingGame({
       if (dropTimerRef.current) clearInterval(dropTimerRef.current);
       dropTimerRef.current = null;
     };
-  }, [isLucaMode, loading, finishedSession]);
+  }, [isLucaMode, finishedSession]);
 
   // Auto-dismiss the power-up notice (matches FractionLine:702-705 lifetime)
   useEffect(() => {
