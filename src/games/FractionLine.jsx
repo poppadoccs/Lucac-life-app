@@ -15,6 +15,10 @@ import { useState, useEffect, useRef } from "react";
 import { GameBtn, recordGameHistory, ageBandFromProfile } from "./_shared";
 import { recordAttempt } from "../LearningEngine";
 import { verifyMath } from "../utils";
+import {
+  BUFF_TYPES, DEBUFF_TYPES, POWERUP_NOTICE_MS, DROP_FALL_DURATION_MS,
+  spawnDropPair,
+} from "./_powerups";
 
 // ─── FRACTION SETS ───────────────────────────────────────────────────────────
 // L1: halves, thirds, fourths.   L2: + fifths, sixths, eighths.
@@ -34,64 +38,14 @@ const LIVES_MAX = 5; // default starting hearts — wrong answers cost 1, lives=
 // Two icons fall from the top of the screen with math expressions. Kid taps the
 // HIGHER value → grabs power-up. Lower value → debuff. Ignoring is safe.
 // Per Alex's design 2026-04-24: "the math IS the bonus, not just the mechanic."
+// Effect pools (BUFF_TYPES/DEBUFF_TYPES) and spawnDropPair now live in
+// ./_powerups so other games (ReadingGame's adventure mode) can reuse them.
 const DROP_SPAWN_CHANCE = 0.25; // 25% per new question
-const DROP_FALL_DURATION_MS = 7000; // 7s to traverse top→bottom
-const POWERUP_NOTICE_MS = 2200; // toast lifetime
-
-// ─── EFFECT POOLS ────────────────────────────────────────────────────────────
-// Buffs (winner pick) and debuffs (loser pick). The math IS the bonus — kid had
-// to compare expressions to earn the slot, then a random effect from the pool
-// fires. Adds replay variety so two power-up rounds never feel identical.
-//
-// Heart/loseHeart are instant; the rest are timed windows. `magnet` and `reverse`
-// are FractionLine-specific (drag-modal). Other games will have different pools.
-const BUFF_TYPES = [
-  { type: "heart",      name: "❤️ +1 Heart",     duration: 0     },
-  { type: "starSurge",  name: "⭐⭐ Star Surge",  duration: 7000  },
-  { type: "invincible", name: "⚡ Invincible",    duration: 7000  },
-  { type: "slowTime",   name: "🐢 Slow Time",    duration: 7000  },
-  { type: "magnet",     name: "🧲 Magnet",       duration: 7000  },
-];
-const DEBUFF_TYPES = [
-  { type: "loseHeart",  name: "💀 -1 Heart",     duration: 0     },
-  { type: "frenzy",     name: "💨 Frenzy",       duration: 7000  },
-  { type: "thunder",    name: "⛈️ Thunder",      duration: 7000  },
-  { type: "blind",      name: "🌫️ Blind",       duration: 7000  },
-  { type: "reverse",    name: "🔄 Reverse",      duration: 5000  },
-  { type: "freeze",     name: "❄️ Freeze",       duration: 3000  },
-];
 
 // Magnet snap radius — kid must be within 10% of a lilypad to get snapped to it.
 // Larger than TOLERANCE (6%) so near-miss attempts get aim-assist; below ~12% so
 // a kid in the middle doesn't get teleported across the line.
 const MAGNET_SNAP_RADIUS = 0.10;
-
-// Pure math-expression generator. Returns [expressionText, numericValue].
-// v1: addition only, single-digit. Difficulty scaling (3.NBT.3 estimation tier
-// for the extreme bucket) lands in a follow-up commit.
-function generateMathExpr(_difficulty = "easy") {
-  const a = 1 + Math.floor(Math.random() * 9);
-  const b = 1 + Math.floor(Math.random() * 9);
-  return [`${a} + ${b}`, a + b];
-}
-
-// Generate a pair of drops with DIFFERENT values (so there's always a clear winner).
-function spawnDropPair() {
-  const [exprA, valA] = generateMathExpr();
-  let [exprB, valB] = generateMathExpr();
-  let attempts = 0;
-  while (valB === valA && attempts < 8) {
-    [exprB, valB] = generateMathExpr();
-    attempts++;
-  }
-  if (valB === valA) valB = valA + 1; // emergency tiebreak
-  const winnerIsA = valA > valB;
-  const baseId = Date.now();
-  return [
-    { id: baseId,     expr: exprA, value: valA, isWinner: winnerIsA,  leftPct: 22 },
-    { id: baseId + 1, expr: exprB, value: valB, isWinner: !winnerIsA, leftPct: 78 },
-  ];
-}
 
 // ─── MATH HELPERS ────────────────────────────────────────────────────────────
 function gcd(a, b) {
