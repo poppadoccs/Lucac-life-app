@@ -234,10 +234,37 @@ export default function FractionLine({
     effectTimersRef.current = {};
   }
 
+  // Feedback-timer tracking — finishQuestion schedules a 1300ms (correct) or
+  // 1500ms (wrong / free-retry / invincible-wrong) advance-to-next-question
+  // timer. Codex round-2 flagged two scenarios these untracked timers couldn't
+  // survive: (1) unmount mid-feedback fires the callback on a dead component
+  // (React warning); (2) drop-tap → loseHeart → gameOver race where the
+  // feedback timer fires AFTER gameOver renders, calling newQuestion on a
+  // stale phase. Same pattern as effectTimersRef but single ref since only
+  // one feedback timer can be in flight at a time (lockedRef gates re-entry).
+  const feedbackTimerRef = useRef(null);
+  function scheduleFeedback(callback, delay) {
+    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+    feedbackTimerRef.current = setTimeout(() => {
+      feedbackTimerRef.current = null;
+      callback();
+    }, delay);
+  }
+  function clearFeedbackTimer() {
+    if (feedbackTimerRef.current) {
+      clearTimeout(feedbackTimerRef.current);
+      feedbackTimerRef.current = null;
+    }
+  }
+
   // Unmount cleanup — cancel any pending timers so a deferred callback can't
   // fire into a torn-down component (React StrictMode double-invocation; rapid
-  // Try Again; navigation away during an active effect window).
-  useEffect(() => () => clearAllEffectTimers(), []);
+  // Try Again; navigation away during an active effect window). Feedback timer
+  // added in Codex round-2 follow-up — same lifecycle concern, different ref.
+  useEffect(() => () => {
+    clearAllEffectTimers();
+    clearFeedbackTimer();
+  }, []);
 
   // Lilypad positions for the current question. Used by both render and Magnet
   // snap so the kid lands exactly where the visual cue suggests.
@@ -333,9 +360,11 @@ export default function FractionLine({
     setPowerupNotice(null);
     // Reset all power-up effect state so leftover timers from a prior session
     // can't bleed into the new run (e.g. previously-active Invincible erroneously
-    // surviving across a "Try Again" tap). clearAllEffectTimers() runs FIRST so
-    // no in-flight callback can re-set state we're about to clear (Codex HIGH 2).
+    // surviving across a "Try Again" tap). clearAllEffectTimers() + clearFeedbackTimer()
+    // run FIRST so no in-flight callback can re-set state we're about to clear
+    // (Codex HIGH 2 + Codex round-2 follow-up).
     clearAllEffectTimers();
+    clearFeedbackTimer();
     setActiveEffects([]);
     setFrozen(false);
     setLightningFlash(false);
@@ -354,9 +383,12 @@ export default function FractionLine({
     sessionEndedRef.current = true;
     // Clear active power-up effects on session end so a debuff (e.g. Reverse)
     // can't survive into the Try Again screen and confuse the next attempt.
-    // clearAllEffectTimers() FIRST so no pending callback re-applies state
-    // we're about to wipe (Codex HIGH 2).
+    // clearAllEffectTimers() + clearFeedbackTimer() FIRST so no pending callback
+    // re-applies state we're about to wipe — and so a pending feedback timer
+    // can't call newQuestion AFTER the gameOver phase renders (Codex HIGH 2 +
+    // Codex round-2 follow-up).
     clearAllEffectTimers();
+    clearFeedbackTimer();
     setActiveEffects([]);
     setFrozen(false);
     setLightningFlash(false);
@@ -436,7 +468,9 @@ export default function FractionLine({
 
       // Bumped to 1300ms (from 900) per persona-review finding: "green sparkle too brief,
       // cat's eye left immediately = kid won't feel the win." Extra time lets the win land.
-      setTimeout(() => {
+      // scheduleFeedback (Codex round-2 follow-up) so this advance can be cancelled
+      // on unmount / Try Again / mid-feedback gameOver race.
+      scheduleFeedback(() => {
         // Snapshot of fresh stats — pass to endSession to avoid closure staleness.
         const freshStats = { totalCorrect: newTotal, questionsAnswered: newQA, level };
         if (newLevelCorrect >= QUESTIONS_PER_LEVEL) {
@@ -474,7 +508,7 @@ export default function FractionLine({
     if (!freeRetryUsedRef.current) {
       freeRetryUsedRef.current = true;
       setUsedFreeThisQuestion(true);
-      setTimeout(() => {
+      scheduleFeedback(() => {
         setFeedback(null);
         setShowTruth(false);
         setLocked(false);
@@ -497,7 +531,7 @@ export default function FractionLine({
     // If a debuff drops lives to 0 even mid-Invincible, gameOver still fires via
     // the `lives <= 0` useEffect below.
     if (isActive("invincible")) {
-      setTimeout(() => newQuestion(level), 1500);
+      scheduleFeedback(() => newQuestion(level), 1500);
       return;
     }
 
@@ -506,7 +540,7 @@ export default function FractionLine({
     // so missed fractions resurface naturally without us forcing repetition here.
     const newLives = lives - 1;
     setLives(newLives);
-    setTimeout(() => {
+    scheduleFeedback(() => {
       if (newLives <= 0) {
         // Game over — pass fresh stats explicitly (questionsAnswered was just bumped
         // to newQA above; totalCorrect/level unchanged in wrong path).
