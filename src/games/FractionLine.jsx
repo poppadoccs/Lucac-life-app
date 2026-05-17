@@ -14,7 +14,7 @@
 import { useState, useEffect, useRef } from "react";
 import { GameBtn, recordGameHistory, ageBandFromProfile } from "./_shared";
 import { recordAttempt } from "../LearningEngine";
-import { verifyMath } from "../utils";
+import { verifyMath, triggerConfetti } from "../utils";
 import {
   BUFF_TYPES, DEBUFF_TYPES, POWERUP_NOTICE_MS, DROP_FALL_DURATION_MS,
   spawnDropPair,
@@ -459,9 +459,16 @@ export default function FractionLine({
       setTotalCorrect(newTotal);
       setStreak(newStreak);
       if (newStreak > bestStreak) setBestStreak(newStreak);
-      // Star Surge: bank +1 bonus star per correct landed during the Surge window.
-      // Revealed in starsEarnedRef.current at session end (see endSession).
-      if (isActive("starSurge")) bonusStarsRef.current += 1;
+      // Star Surge: bank +1 bonus star per correct landed during the Surge window,
+      // revealed in starsEarnedRef.current at session end (see endSession). The
+      // visible kid-feedback during the window is a confetti burst per correct —
+      // makes Surge feel meaningfully different from a normal correct without
+      // changing the "stars revealed at session end" policy (Alex direction
+      // 2026-04-30, picked option A from the design Q reset 2026-05-17).
+      if (isActive("starSurge")) {
+        bonusStarsRef.current += 1;
+        triggerConfetti(document.body, "small");
+      }
 
       // Luca: never auto-advance. All 3 kids eventually, but Luca stays on L1 forever.
       const canAdvance = !isLuca;
