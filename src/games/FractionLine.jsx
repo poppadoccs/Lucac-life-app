@@ -14,7 +14,7 @@
 import { useState, useEffect, useRef } from "react";
 import { GameBtn, recordGameHistory, ageBandFromProfile } from "./_shared";
 import { recordAttempt } from "../LearningEngine";
-import { verifyMath, triggerConfetti } from "../utils";
+import { verifyMath, triggerConfetti, clearConfetti } from "../utils";
 import {
   BUFF_TYPES, DEBUFF_TYPES, POWERUP_NOTICE_MS, DROP_FALL_DURATION_MS,
   spawnDropPair,
@@ -551,6 +551,9 @@ export default function FractionLine({
       if (newLives <= 0) {
         // Game over — pass fresh stats explicitly (questionsAnswered was just bumped
         // to newQA above; totalCorrect/level unchanged in wrong path).
+        // clearConfetti() suppresses lingering Surge celebration so the gameOver
+        // screen doesn't land while "you got bonus!" particles are still falling.
+        clearConfetti();
         endSession(false, { totalCorrect, questionsAnswered: newQA, level });
         setPhase("gameOver");
       } else {
@@ -701,8 +704,11 @@ export default function FractionLine({
 
   // If a debuff (or sequence of effects) drops lives to 0 outside the wrong-answer
   // path, end the session here. sessionEndedRef guards against double-ending.
+  // clearConfetti() suppresses any in-flight Surge celebration so the gameOver
+  // screen doesn't get sprinkled with "you got bonus!" particles.
   useEffect(() => {
     if (lives <= 0 && phase === "play" && !sessionEndedRef.current) {
+      clearConfetti();
       endSession(false, { totalCorrect, questionsAnswered, level });
       setPhase("gameOver");
     }

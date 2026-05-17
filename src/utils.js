@@ -167,6 +167,10 @@ export const SWATCH_COLORS = [
 ];
 
 // --- Confetti helper (pure CSS, no library) ---
+// Each particle is tagged with `data-confetti="1"` so callers can clear
+// lingering particles via clearConfetti() — used by FractionLine to suppress
+// "you got Surge bonus + you died" emotional incongruity when a debuff drop
+// drains hearts to 0 shortly after a Surge correct.
 export function triggerConfetti(container, intensity = "small") {
   if (!container) return;
   const count = intensity === "big" ? 60 : 20;
@@ -174,6 +178,7 @@ export function triggerConfetti(container, intensity = "small") {
   for (let i = 0; i < count; i++) {
     const el = document.createElement("div");
     const size = Math.random() * 8 + 4;
+    el.setAttribute("data-confetti", "1");
     el.style.cssText = `
       position:fixed; width:${size}px; height:${size}px; border-radius:${Math.random() > 0.5 ? "50%" : "2px"};
       background:${colors[Math.floor(Math.random() * colors.length)]};
@@ -200,6 +205,16 @@ export function triggerConfetti(container, intensity = "small") {
     `;
     document.head.appendChild(style);
   }
+}
+
+// Remove any confetti particles still in-flight. Call when transitioning to
+// a screen where the celebration is no longer appropriate (e.g. gameOver
+// triggered by a debuff drop right after a Surge correct). Particles are
+// independent of React lifecycle, so React state cleanup alone doesn't
+// catch them.
+export function clearConfetti() {
+  if (typeof document === "undefined") return;
+  document.querySelectorAll('[data-confetti="1"]').forEach(el => el.remove());
 }
 
 // --- Speech recognition helper ---
