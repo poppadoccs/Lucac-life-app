@@ -16,6 +16,8 @@ progress:
 
 # Project State
 
+> **SUPERSEDED (2026-04-07):** This GSD-v1 tree was migrated to `.gsd/` (commits 8ac52d1, caac014). Live tracking: `.gsd/milestones/M001/M001-ROADMAP.md`. Content below is frozen at 2026-04-06 and does NOT reflect reality — S02 (2026-04-07/08), S03 (220dea6, 2026-04-08), S04 game upgrades + Waves A–D (2026-04-08→12), and the S04 learning-games wave (→2026-05-17) all shipped after this file stopped updating. S05 remains partial (AI fallback not built).
+
 ## Project Reference
 
 See: .planning/PROJECT.md (updated 2026-04-05)

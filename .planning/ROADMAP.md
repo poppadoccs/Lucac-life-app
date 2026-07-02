@@ -1,5 +1,7 @@
 # Roadmap: Lucac Life App
 
+> **SUPERSEDED (2026-04-07):** This GSD-v1 tree was migrated to `.gsd/` (commits 8ac52d1, caac014). Live tracking: `.gsd/milestones/M001/M001-ROADMAP.md`. Checkboxes below were synced to reality on 2026-07-02 but this file is no longer maintained.
+
 ## Overview
 
 This milestone upgrades the Lucac Life App from a solid v25 base into a polished, multi-user family experience. Phase 1 splits the monolithic game file and hardens security/role infrastructure — the prerequisite that unlocks everything else. Phase 2 completes the kids' experience (the app's core value). Phase 3 delivers Danyells features that make the co-parent feel included and respected. Phase 4 upgrades all four games now that parallel development is safe. Phase 5 rounds out nutrition, budget, and AI resilience as quality-of-life improvements.
@@ -14,11 +16,11 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation** - Split LucacLegends, harden security/roles, fix TTS — unblocks all parallel work
  (completed 2026-04-06)
-- [ ] **Phase 2: Kids & Homework** - Kids' home screen, Homework Helper fixes, family calendar views
-- [ ] **Phase 3: Danyells & AI** - Daily Spark, Danyells permissions, AI assistant for all profiles
-- [ ] **Phase 4: Game Upgrades** - Fish, Racing, Board Game, Reading game upgrades across split files
-- [ ] **Phase 5: Nutrition, Budget & AI Fallback** - MacroFactor features, budget research, OpenRouter/Ollama layers
-- [ ] **Phase 6: Education & Integrations** - Learning Engine, speed games, Word Warrior, Story Quest, Gmail, progress dashboard
+- [x] **Phase 2: Kids & Homework** - Kids' home screen, Homework Helper fixes, family calendar views (S02 shipped 2026-04-07/08 + waveA)
+- [x] **Phase 3: Danyells & AI** - Daily Spark, Danyells permissions, AI assistant for all profiles (220dea6, 2026-04-08)
+- [x] **Phase 4: Game Upgrades** - Fish, Racing, Board Game, Reading game upgrades across split files (waves B1–B4 + avatars, 2026-04-09)
+- [ ] **Phase 5: Nutrition, Budget & AI Fallback** - MacroFactor features, budget research, OpenRouter/Ollama layers (partial — budget C5 + nutrition waveD shipped; AI fallback NOT built, see src/utils.js callAI)
+- [x] **Phase 6: Education & Integrations** - Learning Engine, speed games, Word Warrior, Story Quest, Gmail, progress dashboard (waveC1/C2/c3 + waveD Gmail, 2026-04-09→12)
 
 ## Phase Details
 

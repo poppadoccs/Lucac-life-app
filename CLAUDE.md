@@ -18,13 +18,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Critical Rules
 
-- **Edit `src/App.jsx`, `src/LucacLegends.jsx`, and any `src/*.jsx` component files** — NEVER touch `package.json`, `vite.config.js`, `index.html`, or `src/main.jsx`
+- **Edit `src/App.jsx`, `src/*.jsx` tab components, and `src/games/*.jsx` game files** — `src/LucacLegends.jsx` is a 170-line shell (split in S01, 2026-04-06); game logic lives in `src/games/`. NEVER touch `package.json`, `vite.config.js`, `index.html`, or `src/main.jsx`
 - **Component files allowed**: Split features into `src/FoodTab.jsx`, `src/BudgetTab.jsx`, `src/HomeworkHelper.jsx`, `src/utils.js`, etc. and import into App.jsx
 - **Firebase config stays hardcoded in App.jsx** — never move it to environment variables
-- **Push command**: `git add . && git commit -m "description" && git push`
+- **Push command**: `git add <specific paths> ; git commit -m "description" ; git push` — NEVER `git add .` or `-A` (see Lessons Learned 2026-04-23)
 - **Alex is colorblind** — never give color-only UI instructions; always use labels, icons, or patterns alongside color
 - **Danyells (ex) will judge this app** — always build it looking polished and professional
-- **Current version**: v25 — live at lucac-life-app.vercel.app
+- **Current version**: GSD M001 era — live at lucac-life-app.vercel.app. Version tags retired after v29b (2026-03-16); work is tracked as milestone slices in `.gsd/milestones/M001/M001-ROADMAP.md`. Shipped since v25: v26–v29b, S01 Foundation (LucacLegends split), S02 Homework, S03 Danyells & AI, Waves A–D (games/education/budget/Gmail/nutrition), S04 learning games, S07 audit fixes + fun layer
 - **11 MCPs connected**: GitHub, Playwright, Context7, Filesystem, Memory (active) + Sentry, Vercel, Zapier, Puppeteer, Reddit, WhatsApp (need API keys)
 - **Commit co-author**: Sonnet kicked Dad (Opus) out of commit credits. Use `Co-Authored-By: Claude Sonnet <noreply@anthropic.com>`
 
@@ -52,6 +52,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | v23 | `eff1e54` | Versus mode, manual racing controls, PWA installable |
 | v24 | `a7fd07d` | Full audit round 2: 10 bugs fixed, GroqAssistant rewrite with confirmations |
 | v25 | `02a703a` | Playwright automated audit: 8 bugs fixed, displayEvents architectural refactor, favicon, edit/delete buttons |
+| v26 | `2ef85e6` | Privacy roles + working games + AI context (after `dfc3594` security hotfix; `18d6cf2` Sentry) |
+| v27a–d | `6395746`/`63fcec8`/`e7aadf7` | Security lockdown, custody patterns, chores, alerts, family calendar, micronutrients, AI commands |
+| v28 | `61776c9` | AI agent architecture — function calling replaces all regex parsing |
+| v29/v29b | `fac1ec3`/`f89d5c6` | Delete fix + widget layout system (resize/move/pin/hide); emotional-support tone rewrite |
+| — | `4ec00c8` | App.jsx split into 7 component files — enables parallel development |
+| GSD M001 | `013b8dd`→`602f48d` | S01 Foundation split (src/games/), S02 Homework teaching modes, S03 Danyells & AI (Daily Spark, `220dea6`), Waves A–D (B1–B4 game upgrades, C1–C3 education, C5 budget, D Gmail+nutrition), S04 learning games (FractionLine etc.) — 2026-04-06 → 2026-05-17 |
+| S07 | (this session) | Bedrock-verified audit fixes (gameHistory permissions, difficulty pipeline, Jr safety guard, privacy consistency, race-free star writes) + touchstone-grounded fun layer (Web Audio SFX/haptics, per-fact retrieval engine, personal bests, Fact Map, Titan Realms, Luca reading Levels 3-4) — 2026-07-01/02 |
 
 ## Build & Dev Commands
 
@@ -63,19 +70,41 @@ No test framework or linter is configured.
 
 ## Architecture
 
-Single-page React 18 app built with Vite. 8 source files in `src/`:
+Single-page React 18 app built with Vite. 31 source files — 18 in `src/`, 13 in `src/games/` (~20,800 lines; counts as of 602f48d, 2026-05-17, before S07):
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `src/App.jsx` | ~3,093 | Main shell: Firebase init, all state, routing, themes (`V`/`THEMES`), 3 home layouts, calendar with `displayEvents` dedup layer, settings, kids, family tabs. Imports all component files. |
-| `src/FoodTab.jsx` | ~1,141 | MacroFactor-style nutrition: SVG macro rings, 4 meal sections, AI voice logging, weight trend chart, micronutrient bars, shopping list, goal modes |
-| `src/BudgetTab.jsx` | ~1,458 | Budget tracker: Groq-powered expense parsing, SVG donut chart, custom categories, period views, Dad vs Mom weeks, bulk delete, summaries |
-| `src/GroqAssistant.jsx` | ~1,282 | bby sonnet Jr.: floating AI assistant with full app powers, Tavily web search, 3 personalities, mood system, preview confirmations |
-| `src/HomeworkHelper.jsx` | ~746 | AI tutor: kid selector, 4 subjects, age-appropriate responses, read-aloud, math verification, 20-msg rate limit, session saving |
-| `src/LucacLegends.jsx` | ~2,249 | RPG game + mini-games: 5 worlds, avatar system, Racing, Fish Eater, Potions, Reading, Versus, Co-op (self-contained, do NOT modify) |
-| `src/utils.js` | ~122 | Shared helpers: `groqFetch` (10s timeout), `parseGroqJSON`, `cacheGet`/`cacheSet` (localStorage), `triggerConfetti` (CSS-only), `createSpeechRecognition`, `SWATCH_COLORS` |
-
-`src/main.jsx` renders `<App />` into the root.
+| `src/App.jsx` | 1,791 | Main shell: Firebase init, state, routing, themes, fbSet + canWrite guard; imports all tabs |
+| `src/HomeTab.jsx` | 1,697 | 3 theme home layouts, calendar views (incl. 3W + jump-to-month), Daily Spark widget |
+| `src/BudgetTab.jsx` | 1,775 | Budget: Groq expense parsing, safe-to-spend, recurring scheduler, trend chart, CSV export |
+| `src/FoodTab.jsx` | 1,699 | Nutrition: macro rings, TDEE, food scoring, habit streaks, voice logging |
+| `src/GroqAssistant.jsx` | 1,144 | bby sonnet Jr. floating AI assistant — all roles, role-filtered tools |
+| `src/HomeworkHelper.jsx` | 1,043 | AI tutor: teaching modes, deterministic safety guard, JS math verification, past sessions |
+| `src/SettingsTab.jsx` | 562 | Profiles, themes, per-kid curriculum/grade/difficulty controls |
+| `src/ParentDashboard.jsx` | 507 | Per-kid learning stats, stars/rewards redemption, AI weekly report ("Progress" tab) |
+| `src/FamilyTab.jsx` | 434 | Custody schedule, house rules, exchange log |
+| `src/GmailWidget.jsx` | 379 | Gmail via GIS OAuth, per-profile tokens |
+| `src/KidsTab.jsx` | 278 | Kid task cards + homework entry |
+| `src/LucacLegends.jsx` | 170 | THIN SHELL — menu + curriculum + star routing only; all games live in `src/games/` |
+| `src/WidgetSystem.jsx` | 94 | Widget layout system (resize/move/pin/hide) |
+| `src/main.jsx` | 4 | Renders `<App />` |
+| `src/aiAgent.js` | 620 | AI function-calling agent, ROLE_TOOLS per-role filtering, kid/guest safety guard |
+| `src/utils.js` | 394+ | groqFetch/callAI, speakText TTS, canWrite, verifyMath, safety guard, privacy helpers, playSfx/buzz, cache, confetti |
+| `src/LearningEngine.js` | 284+ | Adaptive difficulty, K-5 curriculum standards, per-fact retrieval engine |
+| `src/shared.js` | 21 | Small shared constants |
+| `src/games/RPGCore.jsx` | 1,391 | RPG worlds + mini-game delegation + avatar integration |
+| `src/games/FractionLine.jsx` | 1,342 | Number-line fraction game (lives, full power-up roster, Frog Pond, Star Surge) |
+| `src/games/RacingGame.jsx` | 772 | Tracks, power-ups, math barriers, age-split controls |
+| `src/games/ReadingGame.jsx` | 753 | Finger-swipe reading: Luca decodable phonics (no AI), Yana Groq passages + adventure mode |
+| `src/games/FishGame.jsx` | 735 | Levels, boss fish, fish-as-answers, lives, age-split |
+| `src/games/BoardGame.jsx` | 668 | Monopoly-style cross-device family game (Firebase turns, potions, traps) |
+| `src/games/MultiplicationMonsters.jsx` | 554+ | Math Monsters: multiplication + division fact families, strategy-first worlds, Fact Map |
+| `src/games/StoryQuest.jsx` | 542 | Branching-narrative reading game (unwired — pending kid-voice ASR) |
+| `src/games/MathRacer.jsx` | 341 | Timed multiplication speed game |
+| `src/games/WordWarrior.jsx` | 341 | Voice-reading word game (unwired — pending kid-voice ASR) |
+| `src/games/AvatarCreator.jsx` | 256 | Canvas finger-draw avatars saved to Firebase |
+| `src/games/_shared.js` | 127+ | Shared game lib: problem generator, factChoices, personal bests, GameBtn |
+| `src/games/_powerups.js` | 55+ | Shared power-up effect pools + drop-pair math |
 
 ## All Features (v25)
 
@@ -144,11 +173,13 @@ Single-page React 18 app built with Vite. 8 source files in `src/`:
 ## Next Session Roadmap
 
 - Firebase cleanup: delete 3 duplicate "Eating wings" entries (old corrupt data with different times)
-- Cross-device multiplayer for Lucac Legends
-- Lucac LLC website (professional landing page)
-- Configure MCP API keys: Sentry, Vercel, Zapier, Reddit, WhatsApp
-- Add adaptive calorie suggestions (after 14 days of weight + food data)
-- Performance: code-split with dynamic `import()` to get under 500KB warning
+- ~~Cross-device multiplayer for Lucac Legends~~ SHIPPED — BoardGame `d148a07` (2026-04-09)
+- Lucac LLC website — in progress (see `docs/lucac-llc-research/`)
+- Configure MCP API keys: Sentry (DSN live in App.jsx), Vercel, Zapier, Reddit, WhatsApp
+- Adaptive calorie suggestions — TDEE shipped in waveD `fbe19fb`; only suggestions-beyond-TDEE remain if wanted
+- Performance: code-split with dynamic `import()` to get under 500KB warning (bundle ~1,013 kB / 280 kB gzip)
+- S05 remainder: Groq→OpenRouter→Ollama AI fallback chain + per-profile nutrient toggles
+- S07 open decisions for Alex: best-streak all-time vs session, sparkReaction key schema, Luca adventure parity, MathMonsters boss timer, MathRacer tile, RPG adventure content variety, Dad/Mom identity split (see `.gsd/milestones/M001/slices/S07/S07-PLAN.md`)
 
 ## Lessons Learned
 
@@ -197,7 +228,7 @@ A family life management app for a co-parenting household — calendar, AI assis
 - **Mobile-first**: All buttons >= 44px tap targets. Kids use tablets with touch.
 - **Free tier APIs**: Groq free tier has rate limits. Build with rate limit awareness.
 - **No new dependencies**: Keep bundle under control. CSS-only solutions preferred.
-- **LucacLegends.jsx**: Currently self-contained — needs splitting BEFORE parallel game upgrades
+- **LucacLegends.jsx**: Split complete (S01, 2026-04-06) — 170-line shell; parallel game work happens in per-game files under `src/games/`
 - **File conflicts**: App.jsx is the bottleneck. Minimize concurrent edits to it.
 <!-- GSD:project-end -->
 

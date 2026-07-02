@@ -77,7 +77,7 @@ The kids' experience must be magical — games they love, homework help that act
 - **Mobile-first**: All buttons >= 44px tap targets. Kids use tablets with touch.
 - **Free tier APIs**: Groq free tier has rate limits. Build with rate limit awareness.
 - **No new dependencies**: Keep bundle under control. CSS-only solutions preferred.
-- **LucacLegends.jsx**: Currently self-contained — needs splitting BEFORE parallel game upgrades
+- **LucacLegends.jsx**: Split complete (S01, 2026-04-06) — 170-line shell; parallel game work happens in per-game files under `src/games/`
 - **File conflicts**: App.jsx is the bottleneck. Minimize concurrent edits to it.
 
 ## Key Decisions
