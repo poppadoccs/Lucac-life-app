@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { getDatabase, ref, onValue } from "firebase/database";
+import { getDatabase, ref, onValue, increment } from "firebase/database";
 import { callAI } from "./utils";
 import { getWeakAreas, getSubjectLabel } from "./LearningEngine";
 
@@ -135,8 +135,10 @@ export default function ParentDashboard({ profiles, kidsData = {}, learningStats
     const kidStats = learningStats?.[selectedKidName] || {};
     const rStats = (kidsData || {})[selectedKidName]?.readingStats || {};
 
-    // Pass real numbers to the prompt — AI narrates, JS supplies the facts
-    const subjectSummary = Object.entries(kidStats).map(([subjId, raw]) => {
+    // Pass real numbers to the prompt — AI narrates, JS supplies the facts.
+    // Skip the "facts" sibling key — it's the per-fact retrieval store
+    // (learningStats/{kid}/facts/{a}x{b}), not a subject attempt record.
+    const subjectSummary = Object.entries(kidStats).filter(([subjId]) => subjId !== "facts").map(([subjId, raw]) => {
       const { attempts, correct } = aggregate(raw);
       const pct = attempts > 0 ? Math.round((correct / attempts) * 100) : null;
       return `${getSubjectLabel(subjId)}: ${pct !== null ? pct + "% correct" : "not attempted"} (${attempts} tries)`;
@@ -184,6 +186,9 @@ Write 3–4 sentences max. Be specific and encouraging. Mention one clear streng
 
   const kid = kids.find(k => k.name === selectedKidName) || kids[0];
   const kidStats = learningStats?.[kid.name] || {};
+  // "facts" is a sibling of subject ids under learningStats/{kid}/ — filter it
+  // out of subject-row rendering (it's {seen, correct, streak}, not attempts).
+  const subjectEntries = Object.entries(kidStats).filter(([subjId]) => subjId !== "facts");
   const rStats = (kidsData || {})[kid.name]?.readingStats || {};
   const weakAreas = getWeakAreas(learningStats, kid.name);
   const hasAnyData = Object.keys(kidStats).length > 0 || rStats.storiesRead || rStats.wordsRead;
@@ -227,16 +232,14 @@ Write 3–4 sentences max. Be specific and encouraging. Mention one clear streng
     const confirmed = window.confirm(`Redeem ${reward.label} for ${cost} stars?`);
     if (!confirmed) return;
     const ts = Date.now();
-    const newLog = {
-      ...(kidRecord.starLog || {}),
-      [ts]: { amount: -cost, reason: "Redeemed: " + (reward.label || "reward") },
-    };
-    const updatedKid = {
-      ...kidRecord,
-      points: Math.max(0, kidStars - cost),
-      starLog: newLog,
-    };
-    fbSet("kidsData", { ...(kidsData || {}), [kid.name]: updatedKid });
+    // Path-specific writes — never rewrite the whole kidsData tree, or a
+    // concurrent kid-device points write gets silently clobbered (S07 C2).
+    // Atomic decrement (codex S07 review): an absolute Math.max(0, stale-cost)
+    // write would erase stars the kid earned between our last sync and this
+    // click. increment(-cost) can't lose earnings; the affordability gate
+    // above keeps balances non-negative except in a rare double-redeem race.
+    fbSet(`kidsData/${kid.name}/points`, increment(-cost));
+    fbSet(`kidsData/${kid.name}/starLog/${ts}`, { amount: -cost, reason: "Redeemed: " + (reward.label || "reward") });
     setRedeemNotice(`Redeemed: ${reward.label} (-${cost}⭐)`);
     setTimeout(() => setRedeemNotice(""), 3000);
   }
@@ -278,11 +281,12 @@ Write 3–4 sentences max. Be specific and encouraging. Mention one clear streng
         </div>
       )}
 
-      {/* Subject accuracy */}
-      {Object.keys(kidStats).length > 0 && (
+      {/* Subject accuracy — skip the "facts" sibling key (per-fact retrieval
+          store under learningStats/{kid}/facts, not a subject attempt record) */}
+      {subjectEntries.length > 0 && (
         <div style={{ background: "#1f2937", borderRadius: 14, padding: 16, marginBottom: 16 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: "#e5e7eb", marginBottom: 14 }}>Subject Accuracy</div>
-          {Object.entries(kidStats).map(([subjId, raw]) => {
+          {subjectEntries.map(([subjId, raw]) => {
             const { attempts, correct, avgTimeMs } = aggregate(raw);
             return (
               <AccuracyBar
@@ -310,7 +314,14 @@ Write 3–4 sentences max. Be specific and encouraging. Mention one clear streng
                 display: "flex", justifyContent: "space-between", alignItems: "center",
                 marginBottom: 8, background: "#374151", borderRadius: 8, padding: "10px 14px",
               }}>
-                <span style={{ color: "#e5e7eb", fontSize: 14 }}>{a.label}</span>
+                <span style={{ color: "#e5e7eb", fontSize: 14 }}>
+                  {a.label}
+                  {a.tier === "provisional" && (
+                    <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: "#93c5fd", background: "#1e3a5f", borderRadius: 4, padding: "2px 6px", whiteSpace: "nowrap" }}>
+                      NEW — needs practice
+                    </span>
+                  )}
+                </span>
                 <span style={{ fontWeight: 700, fontSize: 14, color: pct < 50 ? "#ef4444" : "#f59e0b" }}>
                   {pct}% correct
                 </span>

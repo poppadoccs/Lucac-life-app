@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, set, onValue, update, runTransaction } from "firebase/database";
+import { getDatabase, ref, set, onValue, update, runTransaction, increment } from "firebase/database";
 import * as Sentry from "@sentry/react";
 import LucacLegends from "./LucacLegends";
-import { groqFetch, parseGroqJSON, cacheGet, cacheSet, SWATCH_COLORS, triggerConfetti, createSpeechRecognition, canWrite } from "./utils";
+import { groqFetch, parseGroqJSON, cacheGet, cacheSet, SWATCH_COLORS, triggerConfetti, createSpeechRecognition, canWrite, canSeeEvent, filterEventsByPrivacy } from "./utils";
 import { DAYS, MONTHS, dateKey, parseTime } from "./shared";
 import { getWidgetPref as _getWidgetPref, setWidgetPref as _setWidgetPref } from "./WidgetSystem";
 import FoodTab from "./FoodTab";
@@ -466,32 +466,12 @@ export default function App() {
   const currentRole = isAdmin ? "admin" : isKid ? "kid" : isParent ? "parent" : "guest";
 
   // ═══ ROLE-BASED EVENT FILTERING ═══
-  // Filters events based on current user's role:
-  //   admin  → sees everything
-  //   parent → sees non-private events + own events
-  //   kid    → sees non-private events (read-only)
-  //   guest  → sees non-private events (read-only)
+  // THEME-A: delegates to the shared privacy rule in utils.js —
+  //   admin → sees everything; everyone else → non-private events + their own
+  //   private events (missing creator defaults to "admin", missing isPrivate
+  //   defaults to false); days with no visible events are dropped.
   function filterEventsForRole(eventsObj, profile) {
-    if (!eventsObj || !profile) return {};
-    const role = profile.type === "admin" ? "admin"
-      : (profile.type === "parent" || profile.type === "family") ? "parent"
-      : profile.type === "kid" ? "kid" : "guest";
-    if (role === "admin") return eventsObj;
-    const filtered = {};
-    Object.entries(eventsObj).forEach(([dk, dayEvs]) => {
-      const visible = (Array.isArray(dayEvs) ? dayEvs : []).filter(ev => {
-        // SEC-02: isPrivate field (D-14) with backward-compatible fallback to ev.private
-        // D-16: missing creator defaults to "admin", missing isPrivate defaults to false
-        const isPrivateEvent = ev.isPrivate ?? ev.private ?? false;
-        if (isPrivateEvent) {
-          const eventCreator = ev.creator ?? "admin";
-          return eventCreator === profile.name;
-        }
-        return true;
-      });
-      if (visible.length > 0) filtered[dk] = visible;
-    });
-    return filtered;
+    return filterEventsByPrivacy(eventsObj, profile);
   }
 
   // Firebase sync with localStorage cache fallback
@@ -592,7 +572,9 @@ export default function App() {
   // ═══ S04 ageBand migration ═══
   // Seeds profile.ageBand on kid profiles that don't have it yet so games can
   // derive UI ergonomics from a stable field instead of matching on the kid's
-  // name. Name-based initial guess: Yana → "standard", everyone else → "early"
+  // name. C8: grade-first rule — profile.grade ("K", 1, 2, ...) decides the
+  // band (K/1 → "early", 2+ → "standard"); the Yana name heuristic is only a
+  // last resort when no grade is set, and everyone else defaults to "early"
   // (conservative default — bigger tap targets are more universally safe).
   // Parent flips in Settings → Learning → Age mode. Admin-gated (profiles is
   // ADMIN_ONLY_PATHS); the needsSeed guard prevents the effect from looping.
@@ -602,13 +584,15 @@ export default function App() {
     if (!needsSeed) return;
     const seeded = profiles.map(p => {
       if (p?.type !== "kid" || p?.ageBand) return p;
-      const name = (p?.name || "").toLowerCase();
-      const ageBand = name === "yana" ? "standard" : "early";
+      const g = p?.grade;
+      const gNum = g === "K" ? 0 : Number(g);
+      const ageBand = (g != null && g !== "" && !Number.isNaN(gNum))
+        ? (gNum <= 1 ? "early" : "standard")
+        : ((p?.name || "").toLowerCase() === "yana" ? "standard" : "early");
       return { ...p, ageBand };
     });
     fbSet("profiles", seeded);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profiles, isAdmin]);
+  }, [profiles, isAdmin, fbSet]);
 
   // ═══ EVENT ALERT NOTIFICATIONS ═══
   useEffect(() => {
@@ -663,15 +647,11 @@ export default function App() {
       getEventsInRange: (start, end, person) => {
         const results = [];
         const endD = end || start;
-        const isAdminUser = currentProfile?.type === "admin";
         Object.entries(events || {}).forEach(([dk, dayEvs]) => {
           if (dk >= start && dk <= endD) {
             (dayEvs || []).forEach(ev => {
-              // T02: filter private events — matches filterEventsForRole: creator sees own, others don't
-              const isPrivateEvent = ev.isPrivate ?? ev.private ?? false;
-              if (isPrivateEvent && !isAdminUser) {
-                if ((ev.creator ?? "admin") !== currentProfile?.name) return;
-              }
+              // T02: filter private events — shared rule (utils.canSeeEvent): admin + creator see private
+              if (!canSeeEvent(ev, currentProfile)) return;
               if (!person || ev.who === person || !ev.who) {
                 results.push({ title: ev.title, date: dk, time: ev.time, who: ev.who });
               }
@@ -707,10 +687,8 @@ export default function App() {
       },
       getDailyBriefingData: () => {
         const td = todayStr;
-        const isAdminUser = currentProfile?.type === "admin";
-        const todayEvs = ((events || {})[td] || []).filter(e =>
-          isAdminUser || !(e.isPrivate ?? e.private ?? false)
-        );
+        // M1: shared rule (utils.canSeeEvent) — non-admins keep their OWN private events in the briefing
+        const todayEvs = ((events || {})[td] || []).filter(e => canSeeEvent(e, currentProfile));
         const custody = getCustodyForDate(td);
         const lines = [];
         lines.push(`📅 Events today: ${todayEvs.length > 0 ? todayEvs.map(e => `${e.title}${e.time ? ' at ' + e.time : ''}`).join(', ') : 'None'}`);
@@ -1024,6 +1002,8 @@ export default function App() {
             isPrivate: false
           };
           if (args.alert && args.alert !== "none") eventData.alert = args.alert;
+          // M2: tell non-admins the privacy flag was ignored instead of failing silently
+          if (args.isPrivate && !isAdmin) showToast("Private events are admin-only — created as public", "info");
           if (args.isPrivate && isAdmin) { eventData.isPrivate = true; eventData.private = true; }
           const updated = { ...(events || {}) };
           updated[dk] = [...(updated[dk] || []), eventData];
@@ -1102,7 +1082,8 @@ export default function App() {
         case 'add_task_for_kid': {
           const kd = getKidData(args.kidName);
           const task = { text: args.task, done: false, emoji: args.emoji || "📝" };
-          fbSet("kidsData", { ...(kidsData || {}), [args.kidName]: { ...kd, tasks: [...(kd.tasks || []), task] } });
+          // Per-kid leaf write — never overwrite the whole kidsData tree (kid-concurrent data)
+          fbSet(`kidsData/${args.kidName}/tasks`, [...(kd.tasks || []), task]);
           showToast(`Assigned "${args.task}" to ${args.kidName}`, "success");
           break;
         }
@@ -1332,8 +1313,8 @@ export default function App() {
     const t = (newTask[kidName] || "").trim();
     if (!t) return;
     const kd = getKidData(kidName);
-    const updated = { ...(kidsData||{}), [kidName]: { ...kd, tasks: [...(kd.tasks||[]), { text:t, done:false, emoji: selectedTaskEmoji }] }};
-    fbSet("kidsData", updated);
+    // Per-kid leaf write — never overwrite the whole kidsData tree (kid-concurrent data)
+    fbSet(`kidsData/${kidName}/tasks`, [...(kd.tasks||[]), { text:t, done:false, emoji: selectedTaskEmoji }]);
     setNewTask({...newTask, [kidName]:""}); setSelectedTaskEmoji("📝");
     showToast("Task added!", "success");
   }
@@ -1341,9 +1322,10 @@ export default function App() {
     const kd = getKidData(kidName);
     const tasks = [...(kd.tasks||[])];
     tasks[idx] = { ...tasks[idx], done: true };
-    const points = (kd.points || 0) + 10;
-    const updated = { ...(kidsData||{}), [kidName]: { ...kd, tasks, points }};
-    fbSet("kidsData", updated);
+    // Per-kid leaf writes — never overwrite the whole kidsData tree (kid-concurrent data).
+    // Points use atomic increment so a concurrent game-award can't be lost.
+    fbSet(`kidsData/${kidName}/tasks`, tasks);
+    fbSet(`kidsData/${kidName}/points`, increment(10));
     triggerConfetti(document.body, "small");
     showToast("Great job! +10 points! ⭐", "success");
   }

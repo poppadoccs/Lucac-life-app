@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { groqFetch, SWATCH_COLORS, triggerConfetti, cacheGet, cacheSet } from "./utils";
+import { groqFetch, SWATCH_COLORS, triggerConfetti, cacheGet, cacheSet, isEventPrivate } from "./utils";
 import { DAYS, MONTHS, dateKey } from "./shared";
 import { getActionPreviewLabel } from "./aiAgent";
 
@@ -228,12 +228,13 @@ For TIPS: give 3 real, out-of-the-ordinary techniques. Think cognitive reframing
   }
 
   function saveSparkReaction(emoji) {
-    const currentDate = new Date().toISOString().split('T')[0];
-    const cacheKey = `spark_${currentDate}_${sparkData?.category}`;
+    // Key off the DISPLAYED spark's date — reacting just after midnight must not mis-key the cache or Firebase write
+    const d = sparkData?.date || new Date().toISOString().split('T')[0];
+    const cacheKey = `spark_${d}_${sparkData?.category}`;
     const updated = { ...sparkData, reaction: emoji };
     setSparkData(updated);
     cacheSet(cacheKey, updated);
-    fbSet(`sparkReaction/${currentDate}`, emoji);
+    fbSet(`sparkReaction/${d}`, emoji);
   }
 
   useEffect(() => {
@@ -314,7 +315,7 @@ For TIPS: give 3 real, out-of-the-ordinary techniques. Think cognitive reframing
                         }}>
                           {ev.repeat && <span style={{ marginRight:4 }}>🔁</span>}
                           {ev.title}
-                          {(ev.isPrivate || ev.private) && isAdmin && (
+                          {isEventPrivate(ev) && isAdmin && (
                             <span style={{
                               fontSize: 11, fontWeight: 700, color: V.accent,
                               background: `${V.accent}18`, padding: "2px 8px",

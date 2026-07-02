@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { createSpeechRecognition } from "./utils";
+import { createSpeechRecognition, canSeeEvent } from "./utils";
 import { runAgentLoop, getActionPreviewLabel } from "./aiAgent";
 
 // ═══ bby sonnet Jr. — Floating Personal Assistant (v4 Agent Engine) ═══
@@ -126,16 +126,11 @@ export default function GroqAssistant({
       getEventsInRange: (start, end, person) => {
         const results = [];
         const endDate = end || start;
-        const isAdminUser = currentProfile?.type === "admin";
-        const currentName = currentProfile?.name;
         Object.entries(events || {}).forEach(([dateKey, dayEvs]) => {
           if (dateKey >= start && dateKey <= endDate) {
             (dayEvs || []).forEach(ev => {
-              // Filter private events — creator sees own, others don't
-              const isPrivateEvent = ev.isPrivate ?? ev.private ?? false;
-              if (isPrivateEvent && !isAdminUser) {
-                if ((ev.creator ?? "admin") !== currentName) return;
-              }
+              // Filter private events — shared visibility rule (THEME-A)
+              if (!canSeeEvent(ev, currentProfile)) return;
               if (!person || ev.who === person || !ev.who) {
                 results.push({ title: ev.title, date: dateKey, time: ev.time, who: ev.who });
               }
@@ -206,13 +201,8 @@ export default function GroqAssistant({
       },
       getDailyBriefingData: (forPerson) => {
         const today = todayStr;
-        const isAdminUser = currentProfile?.type === "admin";
-        const currentName = currentProfile?.name;
-        const todayEvs = ((events || {})[today] || []).filter(e => {
-          const isPrivate = e.isPrivate ?? e.private ?? false;
-          if (isPrivate && !isAdminUser) return (e.creator ?? "admin") === currentName;
-          return true;
-        });
+        // Filter private events — shared visibility rule (THEME-A)
+        const todayEvs = ((events || {})[today] || []).filter(e => canSeeEvent(e, currentProfile));
         const lines = [];
         lines.push(`Events today: ${todayEvs.length > 0 ? todayEvs.map(e => e.title + (e.time ? " at " + e.time : "")).join(", ") : "None"}`);
         lines.push(`Routines: ${(routines || []).filter(r => r.done).length}/${(routines || []).length} done`);
@@ -259,7 +249,14 @@ export default function GroqAssistant({
             if (args.repeat && args.repeat !== "none") {
               eventData.repeat = args.repeat;
             }
-            if (args.isPrivate) eventData.isPrivate = true;
+            // H1: private events are admin-only; dual-write both privacy fields
+            if (args.isPrivate && userRole === "admin") {
+              eventData.isPrivate = true;
+              eventData.private = true; // legacy dual-write — FamilyTab reads only .private
+            } else if (args.isPrivate) {
+              results.push(`⚠️ Private events are admin-only — "${eventData.title}" was created as public.`);
+              showToast("Private events are admin-only — created as public", "info");
+            }
             if (args.alert && args.alert !== "none") eventData.alert = args.alert;
             const updated = { ...(events || {}) };
             updated[date] = [...(updated[date] || []), eventData];
@@ -414,8 +411,7 @@ export default function GroqAssistant({
             const kidName = args.kidName;
             const task = args.task;
             if (!kidName || !task) { results.push("\u274C Missing kid name or task."); break; }
-            const kd = { ...(kidsData || {}) };
-            const kidData = kd[kidName] || { tasks: [], points: 0 };
+            const kidData = (kidsData || {})[kidName] || { tasks: [], points: 0 };
             const tasks = Array.isArray(kidData.tasks) ? [...kidData.tasks] : [];
             tasks.push({
               id: Date.now(),
@@ -424,8 +420,8 @@ export default function GroqAssistant({
               stars: args.stars || 5,
               done: false,
             });
-            kd[kidName] = { ...kidData, tasks };
-            fbSet("kidsData", kd);
+            // KIDSDATA LEAF: per-kid leaf write \u2014 never overwrite the whole kidsData tree
+            fbSet(`kidsData/${kidName}/tasks`, tasks);
             showToast(`Task assigned to ${kidName}: ${task}`, "success");
             results.push(`\u2705 Assigned to ${kidName}: "${task}" (${args.stars || 5} stars)`);
             break;

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { increment } from "firebase/database";
 import LucacLegends from "./LucacLegends";
 import HomeworkHelper from "./HomeworkHelper";
 import { triggerConfetti } from "./utils";
@@ -24,8 +25,8 @@ export default function KidsTab({ V, profiles, currentProfile, kidsData, chores,
     const t = (newTask[kidName] || "").trim();
     if (!t) return;
     const kd = getKidData(kidName);
-    const updated = { ...(kidsData||{}), [kidName]: { ...kd, tasks: [...(kd.tasks||[]), { text:t, done:false, emoji: selectedTaskEmoji }] }};
-    fbSet("kidsData", updated);
+    // Per-kid leaf write — never rewrite the whole kidsData tree (S07 A11)
+    fbSet(`kidsData/${kidName}/tasks`, [...(kd.tasks||[]), { text:t, done:false, emoji: selectedTaskEmoji }]);
     setNewTask({...newTask, [kidName]:""}); setSelectedTaskEmoji("📝");
     showToast("Task added!", "success");
   }
@@ -33,9 +34,10 @@ export default function KidsTab({ V, profiles, currentProfile, kidsData, chores,
     const kd = getKidData(kidName);
     const tasks = [...(kd.tasks||[])];
     tasks[idx] = { ...tasks[idx], done: true };
-    const points = (kd.points || 0) + 10;
-    const updated = { ...(kidsData||{}), [kidName]: { ...kd, tasks, points }};
-    fbSet("kidsData", updated);
+    // Per-kid leaf writes — never rewrite the whole kidsData tree (S07 A11).
+    // Points use atomic increment so a concurrent game-award can't be lost.
+    fbSet(`kidsData/${kidName}/tasks`, tasks);
+    fbSet(`kidsData/${kidName}/points`, increment(10));
     triggerConfetti(document.body, "small");
     showToast("Great job! +10 points! ⭐", "success");
   }
@@ -63,13 +65,13 @@ export default function KidsTab({ V, profiles, currentProfile, kidsData, chores,
     if (!text) return;
     const kd = getKidData(kid.name);
     const goal = { id: Date.now()+"", text, done: false };
-    fbSet("kidsData", { ...(kidsData||{}), [kid.name]: { ...kd, goals: [...(kd.goals||[]), goal] }});
+    fbSet(`kidsData/${kid.name}/goals`, [...(kd.goals||[]), goal]);
     setNewGoalText(s => ({ ...s, [kid.name]: "" }));
     showToast("Goal added! 🌟", "success");
   }
   function removeGoal(kid, goalId) {
     const kd = getKidData(kid.name);
-    fbSet("kidsData", { ...(kidsData||{}), [kid.name]: { ...kd, goals: (kd.goals||[]).filter(g => g.id !== goalId) }});
+    fbSet(`kidsData/${kid.name}/goals`, (kd.goals||[]).filter(g => g.id !== goalId));
   }
 
   if (showGame) {
@@ -121,7 +123,7 @@ export default function KidsTab({ V, profiles, currentProfile, kidsData, chores,
                   <div style={{fontSize:13,fontWeight:700,color:V.textPrimary,textAlign:"center",wordBreak:"break-word"}}>{task.text}</div>
                   {isAdmin && <button onClick={e=>{e.stopPropagation();
                     const tasks=[...(kd.tasks||[])]; tasks.splice(i,1);
-                    fbSet("kidsData",{...(kidsData||{}),[kid.name]:{...kd,tasks}});
+                    fbSet(`kidsData/${kid.name}/tasks`, tasks);
                   }} style={{position:"absolute",top:4,right:4,background:"rgba(0,0,0,0.1)",border:"none",borderRadius:"50%",
                     width:24,height:24,fontSize:12,color:V.textDim,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2}}>✕</button>}
                 </div>
@@ -225,8 +227,7 @@ export default function KidsTab({ V, profiles, currentProfile, kidsData, chores,
                     const updated=[...(chores||[])]; updated[i]={...updated[i],verified:true};
                     fbSet("chores",updated);
                     const kidName=chore.completedBy;
-                    const kd=getKidData(kidName);
-                    fbSet("kidsData",{...(kidsData||{}),[kidName]:{...kd,points:(kd.points||0)+(chore.stars||5)}});
+                    fbSet(`kidsData/${kidName}/points`,increment(chore.stars||5));
                     triggerConfetti(document.body,"small");
                     showToast(`${kidName} earned ${chore.stars||5} stars! ⭐`,"success");
                   }} style={{...btnPrimary,padding:"6px 12px",fontSize:12,background:V.success}}>✅ Verify</button>

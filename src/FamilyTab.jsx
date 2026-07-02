@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { DAYS } from "./shared";
+import { isEventPrivate } from "./utils";
 import BudgetTab from "./BudgetTab";
 
 export default function FamilyTab({ V, profiles, currentProfile, events, visibleEvents, custodySchedule, custodyPattern, custodyOverrides, myRules, theirRules, sharedRules, ruleProposals, exchangeLog, budgetData, fbSet, showToast, isAdmin, isParent, cardStyle, btnPrimary, btnSecondary, inputStyle, getCustodyForDate, todayStr, GROQ_KEY }) {
@@ -106,7 +107,7 @@ export default function FamilyTab({ V, profiles, currentProfile, events, visible
                 const dt = new Date(startOfWeek);
                 dt.setDate(startOfWeek.getDate() + w * 7 + d);
                 const ds = `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
-                const dayEvs = (visibleEvents[ds] || []).filter(ev => !ev.private);
+                const dayEvs = (visibleEvents[ds] || []).filter(ev => !isEventPrivate(ev)); // stricter rule: private hidden from EVERYONE here (see utils.js note) — do not swap to canSeeEvent
                 const custody = getCustodyForDate(ds);
                 const isToday3 = ds === todayStr;
                 days.push(
