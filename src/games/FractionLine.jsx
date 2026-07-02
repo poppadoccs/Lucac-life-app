@@ -12,9 +12,9 @@
 // Stars policy: +3 on session complete, NOT per question. No shame, no timer.
 
 import { useState, useEffect, useRef } from "react";
-import { GameBtn, recordGameHistory, ageBandFromProfile } from "./_shared";
+import { GameBtn, recordGameHistory, ageBandFromProfile, checkPersonalBest } from "./_shared";
 import { recordAttempt } from "../LearningEngine";
-import { verifyMath, triggerConfetti, clearConfetti } from "../utils";
+import { verifyMath, triggerConfetti, clearConfetti, playSfx, buzz, getKidDifficulty } from "../utils";
 import {
   BUFF_TYPES, DEBUFF_TYPES, POWERUP_NOTICE_MS, DROP_FALL_DURATION_MS,
   spawnDropPair,
@@ -144,7 +144,6 @@ function StackedFraction({ n, d, size = 28, color = "#fff" }) {
 
 export default function FractionLine({
   profile, kidsData, fbSet, addStars, transitionTo,
-  curriculum, learningStats = {}, rewardsConfig = [],
 }) {
   const isLuca = ageBandFromProfile(profile) === "luca";
   const MARKER_SIZE = isLuca ? 80 : 56;
@@ -186,8 +185,10 @@ export default function FractionLine({
   const questionStartRef = useRef(0);
   const lineRef = useRef(null);
   const draggingRef = useRef(false);
+  const rafRef = useRef(null); // pending requestAnimationFrame id — throttles drag re-renders to one per frame (FL3)
   const markerPosRef = useRef(0.5);
   const starsEarnedRef = useRef(0);
+  const pbRef = useRef(null); // personal-best result from endSession — read by end screens ({isNewBest, prevBest, best})
   const sessionEndedRef = useRef(false);
   const recentFractionsRef = useRef([]); // last 3 fractions shown — pickFraction filters these out
   const freeRetryUsedRef = useRef(false); // first wrong of session is "free" — no heart loss, retry same Q
@@ -264,6 +265,7 @@ export default function FractionLine({
   useEffect(() => () => {
     clearAllEffectTimers();
     clearFeedbackTimer();
+    if (rafRef.current) cancelAnimationFrame(rafRef.current); // pending drag frame (FL3)
   }, []);
 
   // Lilypad positions for the current question. Used by both render and Magnet
@@ -316,7 +318,8 @@ export default function FractionLine({
     // Power-up drop spawn — 25% chance per new question. Two icons fall, kid taps
     // higher math value for a buff or lower for a debuff. Ignoring is safe.
     if (Math.random() < DROP_SPAWN_CHANCE) {
-      setDrops(spawnDropPair());
+      // Drop expressions scale with the kid's parent-set addition difficulty (FL9).
+      setDrops(spawnDropPair(getKidDifficulty(kidsData, profile?.name, "addition")));
     } else {
       setDrops([]);
     }
@@ -407,6 +410,19 @@ export default function FractionLine({
     const finalCorrect = stats?.totalCorrect ?? totalCorrect;
     const finalQA = stats?.questionsAnswered ?? questionsAnswered;
     const finalLevel = stats?.level ?? level;
+    // Personal best — self-competition only, per-device localStorage. First-ever
+    // score sets the baseline silently (checkPersonalBest returns isNewBest:false),
+    // so the record banner only fires when there's a real prior best to beat.
+    const pb = checkPersonalBest(profile?.name, "fractions", finalCorrect);
+    pbRef.current = pb;
+    if (pb.isNewBest) {
+      // newRecord's recipe supersedes starReveal — one or the other, not both.
+      triggerConfetti(document.body, "big");
+      playSfx("newRecord");
+      buzz([40, 60, 40]);
+    } else {
+      playSfx("starReveal");
+    }
     recordGameHistory(fbSet, profile, "fraction_line", finalCorrect, total, {
       level: finalLevel,
       questionsAnswered: finalQA,
@@ -459,6 +475,8 @@ export default function FractionLine({
       setTotalCorrect(newTotal);
       setStreak(newStreak);
       if (newStreak > bestStreak) setBestStreak(newStreak);
+      playSfx("correct");
+      buzz([20]);
       // Star Surge: bank +1 bonus star per correct landed during the Surge window,
       // revealed in starsEarnedRef.current at session end (see endSession). The
       // visible kid-feedback during the window is a confetti burst per correct —
@@ -507,6 +525,7 @@ export default function FractionLine({
 
     // Wrong path
     setStreak(0);
+    playSfx("tryAgain");
 
     // First wrong of session is a "free try" — show truth + retry same question, no
     // heart loss. Per persona-review (Yana): the heart cascade itself is the worst part
@@ -582,22 +601,44 @@ export default function FractionLine({
   }
 
   function handlePointerDown(e) {
-    if (locked || frozenRef.current || mode !== "drag") return;
+    // lockedRef (not `locked` state) — synchronous read, same reasoning as the
+    // submit handlers: state is async so a fast tap mid-feedback slips through (FL2).
+    if (lockedRef.current || frozenRef.current || mode !== "drag") return;
     draggingRef.current = true;
     const pos = clientXToPos(e.clientX);
     setMarkerPos(pos);
     markerPosRef.current = pos;
-    e.currentTarget.setPointerCapture?.(e.pointerId);
+    // Guarded like the release in handlePointerUp — synthetic/stale pointer
+    // ids throw NotFoundError on some browsers.
+    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch {}
   }
   function handlePointerMove(e) {
-    if (!draggingRef.current || locked || frozenRef.current || mode !== "drag") return;
-    const pos = clientXToPos(e.clientX);
-    setMarkerPos(pos);
-    markerPosRef.current = pos;
+    if (!draggingRef.current || lockedRef.current || frozenRef.current || mode !== "drag") return;
+    // rAF throttle (FL3): the ref always tracks the live pointer, but React
+    // re-renders at most once per frame — pointermove can fire 2-4× per frame
+    // on tablets and each setMarkerPos re-renders the whole pond.
+    markerPosRef.current = clientXToPos(e.clientX);
+    if (rafRef.current) return;
+    rafRef.current = requestAnimationFrame(() => {
+      setMarkerPos(markerPosRef.current);
+      rafRef.current = null;
+    });
   }
   function handlePointerUp(e) {
-    if (!draggingRef.current) return;
+    // Flush any pending drag frame FIRST so the Magnet snap below reads the
+    // final position and a queued setMarkerPos can't fire after the snap (FL3).
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+      setMarkerPos(markerPosRef.current);
+    }
+    const wasDragging = draggingRef.current;
     draggingRef.current = false;
+    // Release capture UNCONDITIONALLY — even if the drag never started (e.g.
+    // pointerdown was gated by lock/freeze), a stuck capture would swallow
+    // future taps on the line (FL8).
+    try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch {}
+    if (!wasDragging) return;
     // Magnet buff (🧲): on release, snap to nearest visible lilypad — but only
     // if within MAGNET_SNAP_RADIUS (10%). Beyond that radius the kid wasn't
     // really aiming at any pad and snapping would teleport them. At L3 the
@@ -619,16 +660,11 @@ export default function FractionLine({
         markerPosRef.current = nearest;
       }
     }
-    try { e.currentTarget.releasePointerCapture?.(e.pointerId); } catch {}
   }
 
-  // Also allow tap-on-line to place marker (mobile ergonomics).
-  function handleLineTap(e) {
-    if (locked || frozenRef.current || mode !== "drag") return;
-    const pos = clientXToPos(e.clientX);
-    setMarkerPos(pos);
-    markerPosRef.current = pos;
-  }
+  // NOTE: the old tap-on-line onClick handler is gone (FL7) — pointerdown already
+  // places the marker on tap, and the synthetic click that fires after pointerup
+  // was silently UNDOING the Magnet snap by re-placing at the raw tap position.
 
   // ── Exit mid-session → still grant partial stars if they answered ─────────
   function exitSession() {
@@ -653,6 +689,7 @@ export default function FractionLine({
     // 2026-04-30). Both gates align onTapDrop with submit/pointer handlers.
     if (frozenRef.current || lockedRef.current) return;
 
+    playSfx("powerup");
     setDrops([]); // both icons disappear when one is tapped
     const pool = drop.isWinner ? BUFF_TYPES : DEBUFF_TYPES;
     const pick = pool[Math.floor(Math.random() * pool.length)];
@@ -729,7 +766,9 @@ export default function FractionLine({
   // FIXED-POSITION OVERLAY: per Playwright playtest 2026-04-26, the app's bottom
   // nav bar (Home / My Stuff) was bisecting the game UI between Check Answer and
   // Exit. Making play phase a fullscreen overlay covers the nav bar; Exit button
-  // remains accessible inside the overlay. zIndex: 50 sits above the app shell.
+  // remains accessible inside the overlay. zIndex must beat the kid bottom nav's
+  // zIndex:100 (App.jsx) — at 50 the nav floated OVER the game and swallowed the
+  // Exit tap on short viewports (S07 smoke test, 2026-07-02).
   const wrapPlay = {
     ...wrapBase,
     position: "fixed",
@@ -737,7 +776,7 @@ export default function FractionLine({
     minHeight: "auto",
     height: "100vh",
     overflowY: "auto",
-    zIndex: 50,
+    zIndex: 120,
     background: "linear-gradient(180deg, #87ceeb 0%, #4ba8d8 28%, #1e6091 60%, #0c3a5e 100%)",
   };
 
@@ -789,10 +828,27 @@ export default function FractionLine({
       <div style={{ textAlign: "center", padding: 32 }}>
         <div style={{ fontSize: 64 }}>🎉</div>
         <div style={{ fontSize: 26, fontWeight: 900, color: "#7dd3fc" }}>Great job!</div>
-        <div style={{ fontSize: 15, color: "rgba(255,255,255,0.75)", marginTop: 6, marginBottom: 4 }}>
-          {totalCorrect} correct out of {questionsAnswered}
-        </div>
-        <div style={{ fontSize: 16, color: "#fbbf24", fontWeight: 700, marginBottom: 24 }}>
+        {/* POSITIVE-ONLY framing (FL1) — same block as Game Over: show what she
+            EARNED, never the deficit ratio. */}
+        {totalCorrect > 0 && (
+          <div style={{ fontSize: 17, color: "#a7f3d0", fontWeight: 700, marginTop: 14 }}>
+            {totalCorrect} {totalCorrect === 1 ? "fraction" : "fractions"} placed ✓
+          </div>
+        )}
+        {bestStreak >= 3 && (
+          <div style={{ fontSize: 14, color: "#fb923c", fontWeight: 700, marginTop: 4 }}>
+            Best streak: 🔥 {bestStreak} in a row
+          </div>
+        )}
+        {pbRef.current?.isNewBest && (
+          <div style={{ fontSize: 16, color: "#fcd34d", fontWeight: 900, marginTop: 10 }}>
+            🏆 NEW PERSONAL BEST!
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.8)", fontWeight: 600, marginTop: 2 }}>
+              Your old best: {pbRef.current.prevBest}
+            </div>
+          </div>
+        )}
+        <div style={{ fontSize: 16, color: "#fbbf24", fontWeight: 700, marginTop: 6, marginBottom: 24 }}>
           ⭐ +{starsEarnedRef.current} stars earned
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 260, margin: "0 auto" }}>
@@ -815,9 +871,26 @@ export default function FractionLine({
         <div style={{ fontSize: 15, color: "rgba(255,255,255,0.85)", marginTop: 8 }}>
           All 3 levels cleared
         </div>
-        <div style={{ fontSize: 15, color: "rgba(255,255,255,0.75)", marginTop: 4 }}>
-          {totalCorrect} correct out of {questionsAnswered}
-        </div>
+        {/* POSITIVE-ONLY framing (FL1) — same block as Game Over: show what she
+            EARNED, never the deficit ratio. */}
+        {totalCorrect > 0 && (
+          <div style={{ fontSize: 17, color: "#a7f3d0", fontWeight: 700, marginTop: 14 }}>
+            {totalCorrect} {totalCorrect === 1 ? "fraction" : "fractions"} placed ✓
+          </div>
+        )}
+        {bestStreak >= 3 && (
+          <div style={{ fontSize: 14, color: "#fb923c", fontWeight: 700, marginTop: 4 }}>
+            Best streak: 🔥 {bestStreak} in a row
+          </div>
+        )}
+        {pbRef.current?.isNewBest && (
+          <div style={{ fontSize: 16, color: "#fcd34d", fontWeight: 900, marginTop: 10 }}>
+            🏆 NEW PERSONAL BEST!
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.8)", fontWeight: 600, marginTop: 2 }}>
+              Your old best: {pbRef.current.prevBest}
+            </div>
+          </div>
+        )}
         <div style={{ fontSize: 18, color: "#fbbf24", fontWeight: 700, marginTop: 10, marginBottom: 24 }}>
           ⭐ +{starsEarnedRef.current} stars (with bonus!)
         </div>
@@ -847,6 +920,14 @@ export default function FractionLine({
         {bestStreak >= 3 && (
           <div style={{ fontSize: 14, color: "#fb923c", fontWeight: 700, marginTop: 4 }}>
             Best streak: 🔥 {bestStreak} in a row
+          </div>
+        )}
+        {pbRef.current?.isNewBest && (
+          <div style={{ fontSize: 16, color: "#fcd34d", fontWeight: 900, marginTop: 10 }}>
+            🏆 NEW PERSONAL BEST!
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.8)", fontWeight: 600, marginTop: 2 }}>
+              Your old best: {pbRef.current.prevBest}
+            </div>
           </div>
         )}
         <div style={{ fontSize: 18, color: "#fbbf24", fontWeight: 800, marginTop: 14, marginBottom: 28 }}>
@@ -955,7 +1036,6 @@ export default function FractionLine({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
-        onClick={handleLineTap}
         style={{
           position: "relative",
           height: 170,

@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { increment } from "firebase/database";
 import RPGCore from "./games/RPGCore";
+import AvatarCreator from "./games/AvatarCreator";
 import { isEarlyLearner } from "./games/_shared";
 
 // ─── KEYFRAMES CSS (used by menu screen animations) ──────
@@ -10,14 +12,17 @@ const KEYFRAMES_CSS = `
 `;
 
 // ─── AVATAR (used by menu screen) ────────────────────────
-function Avatar({ emoji, emotion, anim, size = 60, style: extraStyle }) {
+// avatarDataUrl: drawn avatar from AvatarCreator (same prop shape as RPGCore's Avatar)
+function Avatar({ emoji, emotion, anim, size = 60, style: extraStyle, avatarDataUrl }) {
   const face = emotion === "happy" ? "😊" : emotion === "victorious" ? "🎉" : null;
   let animName = "none";
   if (anim === "bounce") animName = "ll-bounce 0.6s ease-in-out infinite";
   if (anim === "pulse") animName = "ll-pulse 1s ease-in-out infinite";
   return (
     <div style={{ position: "relative", display: "inline-block", animation: animName, ...extraStyle }}>
-      <div style={{ fontSize: size, lineHeight: 1 }}>{emoji}</div>
+      {avatarDataUrl
+        ? <img src={avatarDataUrl} alt="avatar" style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", display: "block" }} />
+        : <div style={{ fontSize: size, lineHeight: 1 }}>{emoji}</div>}
       {face && (
         <div style={{ position: "absolute", bottom: -4, right: -4, fontSize: size * 0.4,
           background: "rgba(0,0,0,0.5)", borderRadius: "50%", width: size * 0.45, height: size * 0.45,
@@ -53,6 +58,7 @@ export default function LucacLegends({ profile, kidsData, fbSet, learningStats =
   const [starsEarned, setStarsEarned] = useState(0);
   const [totalStarsSession, setTotalStarsSession] = useState(0);
   const [worldsCompleted, setWorldsCompleted] = useState([]);
+  const [showAvatarCreator, setShowAvatarCreator] = useState(false);
 
   // ─── Curriculum (D-04 + S04: shell-computed metadata + Firebase parent-set focus) ──
   // S04: isLucaMode now derives from profile.ageBand (parent-set in Settings)
@@ -78,15 +84,19 @@ export default function LucacLegends({ profile, kidsData, fbSet, learningStats =
   // S04: optional `reason` is logged to kidsData/{name}/starLog/{ts} so the
   // Parent Dashboard can show "this week" earnings + reasons. Earning is
   // tied to session/page/level completion, NOT per correct answer.
+  // S07: path-specific writes only — writing the whole kidsData tree was a
+  // silent-overwrite race against every other kid-device write.
   function addStars(n, reason = "") {
     if (!n) return;
     setStarsEarned(s => s + n);
     setTotalStarsSession(s => s + n);
-    if (fbSet && kidsData && profile?.name) {
+    if (fbSet && profile?.name) {
       const ts = Date.now();
-      const newLog = { ...(kd.starLog || {}), [ts]: { amount: n, reason: reason || "session" } };
-      const updated = { ...kd, points: (kd.points || 0) + n, starLog: newLog };
-      fbSet("kidsData", { ...kidsData, [profile.name]: updated });
+      // Atomic server-side increment (codex S07 review): a read-modify-write
+      // from the render-closure kd.points could clobber a concurrent award
+      // (other device / rapid double-award). increment() can't lose stars.
+      fbSet(`kidsData/${profile.name}/points`, increment(n));
+      fbSet(`kidsData/${profile.name}/starLog/${ts}`, { amount: n, reason: reason || "session" });
     }
   }
 
@@ -130,7 +140,7 @@ export default function LucacLegends({ profile, kidsData, fbSet, learningStats =
               <div style={{ fontSize: 14, color: "rgba(255,255,255,0.6)", marginBottom: 20 }}>An Epic Adventure Awaits</div>
               {/* Avatar */}
               <div style={{ marginBottom: 16 }}>
-                <Avatar emoji={playerEmoji} emotion="idle" anim="pulse" size={70} />
+                <Avatar emoji={playerEmoji} emotion="idle" anim="pulse" size={70} avatarDataUrl={kd.avatarDataUrl} />
                 <div style={{ fontSize: 18, fontWeight: 700, color: "#fff", marginTop: 8 }}>{playerName}</div>
                 <div style={{ fontSize: 14, color: "#fbbf24" }}>⭐ {currentPoints} stars</div>
               </div>
@@ -138,6 +148,7 @@ export default function LucacLegends({ profile, kidsData, fbSet, learningStats =
               <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 300, margin: "0 auto" }}>
                 <GameBtn color="#22c55e" big onClick={() => transitionTo("world_select")}>⚔️ Start Adventure</GameBtn>
                 <GameBtn color="#3b82f6" big onClick={() => transitionTo("mini_games")}>🎮 Mini Games</GameBtn>
+                <GameBtn color="#ec4899" onClick={() => setShowAvatarCreator(true)}>🎨 Draw Avatar</GameBtn>
                 <GameBtn color="#8b5cf6" onClick={() => transitionTo("store")}>🏪 Star Store</GameBtn>
                 <GameBtn color="#f59e0b" onClick={() => transitionTo("chores")}>📋 My Chores</GameBtn>
               </div>
@@ -155,6 +166,16 @@ export default function LucacLegends({ profile, kidsData, fbSet, learningStats =
             </div>
           </div>
         </div>
+        {/* Avatar drawing modal — writes kidsData/{name}/avatarDataUrl itself */}
+        {showAvatarCreator && (
+          <AvatarCreator
+            profile={profile}
+            kidsData={kidsData}
+            fbSet={fbSet}
+            onSave={() => setShowAvatarCreator(false)}
+            onClose={() => setShowAvatarCreator(false)}
+          />
+        )}
       </>
     );
   }

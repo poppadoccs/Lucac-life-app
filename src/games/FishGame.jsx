@@ -1,12 +1,35 @@
 import { useState, useEffect, useRef } from "react";
-import { speakText, verifyMath } from "../utils";
-import { generateMathProblem, GameBtn, recordGameHistory, ageBandFromProfile } from "./_shared";
+import { speakText, verifyMath, DIFFICULTY_LEVELS, playSfx, buzz, triggerConfetti } from "../utils";
+import { generateMathProblem, GameBtn, recordGameHistory, ageBandFromProfile, checkPersonalBest } from "./_shared";
+import { recordAttempt } from "../LearningEngine";
 
 // ─── FISH GAME ───────────────────────────────────────────────────────────────
 export default function FishGame({ profile, kidsData, fbSet, addStars, transitionTo, curriculum, learningStats, rewardsConfig }) {
   const { mathDifficulty } = curriculum || { mathDifficulty: "easy" };
   const activeSubjects = curriculum?.activeSubjects || [];
   const isLucaMode = ageBandFromProfile(profile) === "luca";
+
+  // S07 C1-C: per-kid arithmetic difficulty for bubble/boss problems.
+  // Raw-read + validate (NOT getKidDifficulty) so an UNSET parent knob falls
+  // back to the ageBand-derived mathDifficulty (e.g. Yana's "hard"), not
+  // getKidDifficulty's blanket "easy". Same pattern as RacingGame barriers.
+  const rawAdd = kidsData?.[profile?.name]?.difficulty?.addition;
+  const arithDiff = DIFFICULTY_LEVELS.includes(rawAdd) ? rawAdd : mathDifficulty;
+
+  // Attempts must file under REAL LEARNING_SUBJECTS ids — "arithmetic" is not
+  // in the catalog, so those records would be invisible to getWeakAreas and
+  // render as a raw id in the Parent Dashboard (3-lens review). Resolve the
+  // record subject from the question's operator.
+  const recordSubjectFor = (prob, subject) =>
+    subject !== "arithmetic" ? subject
+      : prob.question?.includes("×") ? "multiplication"
+      : prob.question?.includes("÷") ? "division"
+      : prob.question?.includes("+") ? "addition"
+      : "subtraction";
+  const makeBossProblem = () => {
+    const p = generateMathProblem(arithDiff);
+    return { ...p, subject: "arithmetic", recordSubject: recordSubjectFor(p, "arithmetic") };
+  };
 
   // ── Answer-fish subject rotator (alternates multiplication/division if both active) ──
   const subjectToggleRef = useRef(0);
@@ -55,6 +78,10 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
   // ── Victory ──────────────────────────────────────────────────────────────────
   const [victory, setVictory]         = useState(false);
 
+  // ── Personal best (S07 juice — self-competition only, never siblings) ───────
+  const [pbResult, setPbResult]       = useState(null); // null | { isNewBest, prevBest, best }
+  const pbCheckedRef                  = useRef(false);
+
   // ── Power-ups ────────────────────────────────────────────────────────────────
   const [shield, setShield]           = useState(false);
   const [speedBoost, setSpeedBoost]   = useState(false);
@@ -78,6 +105,14 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
   useEffect(() => { doubleStarsRef.current = doubleStars; },   [doubleStars]);
   useEffect(() => { bossesDefeatedRef.current = bossesDefeated; }, [bossesDefeated]);
 
+  // ─── Unmount cleanup (S07 / G7) ────────────────────────────────────────────
+  // Pending power-up timers would otherwise fire setState on an unmounted
+  // component after Back / transitionTo.
+  useEffect(() => () => {
+    if (speedBoostTimerRef.current) clearTimeout(speedBoostTimerRef.current);
+    if (doubleStarsTimerRef.current) clearTimeout(doubleStarsTimerRef.current);
+  }, []);
+
   // ─── Level timer — tick every 30s ─────────────────────────────────────────
   useEffect(() => {
     if (!fishActive || fishGameOver || victory) return;
@@ -91,7 +126,7 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
           setBoss({
             hp: maxHp, maxHp,
             x: 50, y: 35,
-            mathProblem: generateMathProblem(mathDifficulty),
+            mathProblem: makeBossProblem(),
           });
           if (isLucaMode) speakText("Boss fish incoming!");
         }
@@ -99,7 +134,7 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
       });
     }, 30000);
     return () => clearInterval(iv);
-  }, [fishActive, fishGameOver, victory, isLucaMode, mathDifficulty]);
+  }, [fishActive, fishGameOver, victory, isLucaMode, mathDifficulty, kidsData]);
 
   // ─── Enemy spawner — rate and max enemies scale with level ────────────────
   useEffect(() => {
@@ -197,7 +232,15 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
       setFishMathBubble(prev => {
         if (prev) return prev;
         const subject = pickMathSubject();
-        const prob = generateMathProblem(mathDifficulty, subject);
+        // S07 C1-C: per-subject knob when SET; unset falls back to the
+        // ageBand-derived mathDifficulty for mult/div too — getKidDifficulty's
+        // blanket "easy" default would silently DOWNGRADE Yana's ×/÷ content
+        // below what shipped pre-S07 (3-lens review).
+        const rawSub = kidsData?.[profile?.name]?.difficulty?.[subject];
+        const fishDiff = subject === "arithmetic"
+          ? arithDiff
+          : (DIFFICULTY_LEVELS.includes(rawSub) ? rawSub : mathDifficulty);
+        const prob = generateMathProblem(fishDiff, subject);
         // Spawn answer fish: 2 in Luca mode, 3 otherwise. Use the problem's choices.
         const numFish = isLucaMode ? 2 : 3;
         // Pick distinct choices: correct answer + enough wrong ones
@@ -227,13 +270,14 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
         });
         setAnswerFish(newAnswerFish);
         answerCooldownRef.current = 0;
-        return { ...prob };
+        // subject + spawnedAt ride along so collisions can feed recordAttempt (S07 / G4)
+        return { ...prob, subject, recordSubject: recordSubjectFor(prob, subject), spawnedAt: now };
       });
     };
     const iv      = setInterval(show, 12000);
     const timeout = setTimeout(show, 3000);
     return () => { clearInterval(iv); clearTimeout(timeout); };
-  }, [fishActive, fishGameOver, victory, mathDifficulty, boss, isLucaMode]);
+  }, [fishActive, fishGameOver, victory, mathDifficulty, boss, isLucaMode, kidsData]);
 
   // ─── Answer-fish movement, collision, and 12s despawn ─────────────────────
   useEffect(() => {
@@ -272,12 +316,19 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
             } else {
               // Wrong: flash red, short cooldown, pause this fish for 1s.
               // NO life lost. Keep wrong fish on screen (paused).
+              // Record at most ONE wrong attempt per answer fish — a parked
+              // player fish re-collides every ~550ms, and re-collisions must
+              // stay cosmetic (flash only), not fresh learningStats writes
+              // that tank the kid's measured accuracy (3-lens review).
+              if (!af.wrongRecorded) {
+                recordAttempt(fbSet, profile?.name, fishMathBubble.recordSubject || fishMathBubble.subject || "arithmetic", false, now - (fishMathBubble.spawnedAt || now));
+              }
               setFishFlashRed(true);
               setTimeout(() => setFishFlashRed(false), 300);
               setFishPowerMsg("Try another!");
               setTimeout(() => setFishPowerMsg(null), 700);
               answerCooldownRef.current = now + 500;
-              updated.push({ ...af, x: wrappedX, pausedUntil: now + 1000 });
+              updated.push({ ...af, x: wrappedX, pausedUntil: now + 1000, wrongRecorded: true });
               continue;
             }
           }
@@ -288,8 +339,16 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
           // Bonus score + celebration, clear bubble + all answer fish
           const bonus = doubleStarsRef.current ? 20 : 10;
           setFishScore(s => s + bonus);
+          // Feed the adaptive learning engine (S07 / G4) — timeMs = spawn→eaten
+          recordAttempt(fbSet, profile?.name, fishMathBubble.recordSubject || fishMathBubble.subject || "arithmetic", true, now - (fishMathBubble.spawnedAt || now));
+          playSfx("correct");
+          buzz([20]);
           setFishPowerMsg(`Correct! +${bonus} ✨`);
           setTimeout(() => setFishPowerMsg(null), 800);
+          // Power-up restore (S07) — applyPowerUp had zero callers since 8c93630;
+          // a random reward per correct answer keeps the HUD badges honest.
+          // Called last so its announcement wins the message slot (explains the badge).
+          applyPowerUp(POWER_UPS[Math.floor(Math.random() * POWER_UPS.length)]);
           setFishMathBubble(null);
           return [];
         }
@@ -314,6 +373,7 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
   const POWER_UPS = ["size", "speed", "shield", "doubleStars"];
 
   const applyPowerUp = (type) => {
+    playSfx("powerup");
     if (type === "size") {
       setFishSize(s => Math.min(10, s + 2));
       setFishScore(s => s + 50);
@@ -341,21 +401,26 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
   const handleBossAnswer = (c) => {
     if (!boss) return;
     if (c === boss.mathProblem.answer) {
+      // Feed the adaptive learning engine (S07 / G4) — boss answers are untimed
+      recordAttempt(fbSet, profile?.name, boss.mathProblem?.recordSubject || boss.mathProblem?.subject || "arithmetic", true, 0);
       const newHp = boss.hp - 1;
       if (newHp <= 0) {
         setBoss(null);
         const newDefeated = bossesDefeatedRef.current + 1;
         setBossesDefeated(newDefeated);
         setFishScore(s => s + 200);
+        playSfx("levelClear");
+        buzz([30, 50, 30]);
         setFishPowerMsg("BOSS DEFEATED! +200 🎉");
         setTimeout(() => setFishPowerMsg(null), 1500);
         if (levelRef.current >= 15) setVictory(true);
       } else {
-        setBoss(b => ({ ...b, hp: newHp, mathProblem: generateMathProblem(mathDifficulty) }));
+        setBoss(b => ({ ...b, hp: newHp, mathProblem: makeBossProblem() }));
         setFishPowerMsg(`Boss hit! ${newHp} HP left 💥`);
         setTimeout(() => setFishPowerMsg(null), 800);
       }
     } else {
+      recordAttempt(fbSet, profile?.name, boss.mathProblem?.recordSubject || boss.mathProblem?.subject || "arithmetic", false, 0);
       // Wrong — take hit (shield absorbs)
       if (shieldRef.current) {
         setShield(false);
@@ -367,7 +432,7 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
         setFishFlashRed(true);
         setTimeout(() => setFishFlashRed(false), 300);
       }
-      setBoss(b => ({ ...b, mathProblem: generateMathProblem(mathDifficulty) }));
+      setBoss(b => ({ ...b, mathProblem: makeBossProblem() }));
     }
   };
 
@@ -409,6 +474,8 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
     fishInvincibleUntilRef.current = 0;
     answerCooldownRef.current = 0;
     setLives(isLucaMode ? 3 : 2);
+    setPbResult(null);
+    pbCheckedRef.current = false;
   };
 
   // ─── Award stars on level advance (level clear) ───────────────────────────
@@ -418,6 +485,7 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
   useEffect(() => {
     if (level > lastAwardedLevelRef.current && !fishGameOver && !victory) {
       lastAwardedLevelRef.current = level;
+      playSfx("levelClear"); // S07 juice — level advance chime
       // 1 star per level advance — the in-game game-end bundle is the big reward.
       if (typeof addStars === "function") {
         try {
@@ -429,6 +497,21 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
       }
     }
   }, [level, fishGameOver, victory, addStars]);
+
+  // ─── Personal best check — once per game end (S07 / PB) ───────────────────
+  // checkPersonalBest also WRITES the new best, so the ref guards re-runs
+  // (e.g. profile identity changes) from double-checking a finished game.
+  useEffect(() => {
+    if (!fishDone || pbCheckedRef.current) return;
+    pbCheckedRef.current = true;
+    const pb = checkPersonalBest(profile?.name, "fish", fishScore);
+    setPbResult(pb);
+    if (pb.isNewBest) {
+      triggerConfetti(document.body, "big");
+      playSfx("newRecord");
+      buzz([40, 60, 40]);
+    }
+  }, [fishDone, fishScore, profile]);
 
   return (
     <div style={{
@@ -468,7 +551,7 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
                 <span key={i} style={{ fontSize:16 }}>{i < lives ? "❤️" : "🖤"}</span>
               ))}
             </div>
-            <div style={{ color:"#22d3ee", fontWeight:700, fontSize:14 }}>Size: {sizeRounded}/20</div>
+            <div style={{ color:"#22d3ee", fontWeight:700, fontSize:14 }}>Size: {sizeRounded}/10</div>
           </div>
         </div>
 
@@ -477,8 +560,8 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
           <span style={{ color:"#22d3ee", fontSize:12, fontWeight:600 }}>Size:</span>
           <div style={{ flex:1, height:12, background:"rgba(0,0,0,0.3)", borderRadius:6, overflow:"hidden" }}>
             <div style={{
-              width:`${(fishSize/20)*100}%`, height:"100%", borderRadius:6, transition:"width 0.3s",
-              background: fishSize > 15 ? "linear-gradient(90deg, #22c55e, #fbbf24)" : "linear-gradient(90deg, #22d3ee, #22c55e)",
+              width:`${(fishSize/10)*100}%`, height:"100%", borderRadius:6, transition:"width 0.3s",
+              background: fishSize > 7.5 ? "linear-gradient(90deg, #22c55e, #fbbf24)" : "linear-gradient(90deg, #22d3ee, #22c55e)",
             }} />
           </div>
           <span style={{ color:"#fff", fontSize:13, fontWeight:700 }}>{sizeRounded}</span>
@@ -662,6 +745,12 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
                 <div style={{ fontSize:28, fontWeight:800 }}>OCEAN CHAMPION!</div>
                 <div style={{ fontSize:18, marginTop:4 }}>Score: {fishScore} | ⭐ {fishStarsEarned} Stars!</div>
                 <div style={{ fontSize:14, marginTop:4, color:"#a78bfa" }}>Bosses defeated: {bossesDefeated}</div>
+                {pbResult?.isNewBest && (
+                  <div style={{ marginTop:8 }}>
+                    <div style={{ fontSize:18, fontWeight:900, color:"#fbbf24" }}>🏆 NEW PERSONAL BEST!</div>
+                    <div style={{ fontSize:13, color:"#e0e7ff", marginTop:2 }}>Your old best: {pbResult.prevBest}</div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -674,6 +763,12 @@ export default function FishGame({ profile, kidsData, fbSet, addStars, transitio
                 <div style={{ fontSize:48 }}>😱🐡</div>
                 <div style={{ fontSize:28, fontWeight:800, color:"#ef4444" }}>EATEN!</div>
                 <div style={{ fontSize:16, marginTop:4, color:"#fbbf24" }}>Score: {fishScore} | ⭐ {fishStarsEarned} Stars</div>
+                {pbResult?.isNewBest && (
+                  <div style={{ marginTop:8 }}>
+                    <div style={{ fontSize:18, fontWeight:900, color:"#fbbf24" }}>🏆 NEW PERSONAL BEST!</div>
+                    <div style={{ fontSize:13, color:"#e0e7ff", marginTop:2 }}>Your old best: {pbResult.prevBest}</div>
+                  </div>
+                )}
               </div>
             </div>
           )}

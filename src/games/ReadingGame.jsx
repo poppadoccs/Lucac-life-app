@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { groqFetch, cacheGet, cacheSet, speakText, triggerConfetti } from "../utils";
-import { GameBtn, recordGameHistory, ageBandFromProfile } from "./_shared";
+import { increment } from "firebase/database";
+import { groqFetch, cacheGet, cacheSet, speakText, triggerConfetti, playSfx, buzz, getKidDifficulty } from "../utils";
+import { GameBtn, recordGameHistory, ageBandFromProfile, checkPersonalBest } from "./_shared";
 import { recordAttempt } from "../LearningEngine";
 import {
   BUFF_TYPES, DEBUFF_TYPES, POWERUP_NOTICE_MS, DROP_FALL_DURATION_MS,
@@ -32,10 +33,27 @@ const STORY_TIMEOUT = 20000;
 const LIVES_MAX_READING = 3;          // requested by feature spec
 const POWERUP_INTERVAL_MS = 30_000;   // requested cadence: every 30 seconds
 
+// S07: every effect shown to the kid must DO something in THIS game — a
+// power-up that's flavor-only teaches kids the game lies. Magnet/Reverse are
+// drag-modal mechanics (no drag target here); Invincible/Thunder/Freeze have
+// no honest reading equivalent (freeze-blocking a kid mid-word-swipe is
+// anti-motivation). Filtered out so the pools contain only wired effects:
+// heart/starSurge/slowTime (buffs), loseHeart/frenzy/blind (debuffs).
+const READING_BUFF_POOL = BUFF_TYPES.filter(b =>
+  ["heart", "starSurge", "slowTime"].includes(b.type));
+const READING_DEBUFF_POOL = DEBUFF_TYPES.filter(d =>
+  ["loseHeart", "frenzy", "blind"].includes(d.type));
+
 // ─── Luca mode: decodable phonics passages ───────────────────────────────────
 // Scope-and-sequence aligned. Level 1 = CVC short-vowel (a, i, o, u, e).
 // Level 2 = digraphs (sh, ch, th, wh) + common blends (st, sp, fr, fl, pl).
+// Level 3 = vowel teams (ai, ee, oa, ea) + r-controlled (ar, or, er),
+//           layered on all earlier patterns.
+// Level 4 = two-syllable compounds of TAUGHT patterns (sunset, backpack).
 // Advance Luca one level after 3 passages completed at current level.
+// STRICT decodability: no word outside taught patterns + the sight words
+// already used in this pool (the, a, is, in, on, has, had, can, will, when,
+// come, from).
 const LUCA_PASSAGES = [
   // Level 1 — short-a CVC
   { level: 1, pattern: "short-a", text: "The cat sat on the mat. The fat rat ran fast. Pat had a hat." },
@@ -52,7 +70,42 @@ const LUCA_PASSAGES = [
   // Level 2 — blends
   { level: 2, pattern: "blends", text: "The frog will jump in the pond. Stop and spin. The flag is on the mast." },
   { level: 2, pattern: "blends", text: "A plum fell from the plant. Fred and Stan ran fast. The clam is in a pool." },
+  // Level 3 — vowel teams (ai, ee, oa, ea)
+  { level: 3, pattern: "vowel-teams", text: "The boat is in the rain. The sail is wet. Wait for the sun." },
+  { level: 3, pattern: "vowel-teams", text: "See the bee nap on a leaf. The bee has a seat in the sun." },
+  { level: 3, pattern: "vowel-teams", text: "The goat is on the road. A toad sat in the boat. The goat can eat a peach." },
+  { level: 3, pattern: "vowel-teams", text: "Dean can read at the beach. The sea is deep. Dean can see far." },
+  // Level 3 — r-controlled (ar, or, er)
+  { level: 3, pattern: "vowel-teams", text: "The car is in the barn. The farm has a big red barn. A star is far off in the dark." },
+  { level: 3, pattern: "vowel-teams", text: "Mark has corn for the hen. Her cat sat on the porch. The sun set on the farm." },
+  // Level 4 — two-syllable compounds of taught patterns
+  { level: 4, pattern: "multisyllabic", text: "The sun set on the farm. Pat can see the sunset from the hilltop. The sunset is red." },
+  { level: 4, pattern: "multisyllabic", text: "Pam has a backpack. A raincoat is in the backpack. Pam can zip the backpack shut." },
+  { level: 4, pattern: "multisyllabic", text: "The catfish swam in the pond. A sunfish swam past the sailboat." },
+  { level: 4, pattern: "multisyllabic", text: "The teapot is hot. Mom has popcorn in a big cup. The bathtub is not for popcorn." },
 ];
+
+// Kid-facing level names for the LEVEL UP banner (S07 Luca runway)
+const LUCA_LEVEL_NAMES = {
+  1: "Letter Sounds",
+  2: "Sound Teams",
+  3: "Vowel Teams",
+  4: "Big Words",
+};
+const LUCA_LEVEL_CAP = 4;
+
+// G12: each Luca passage records under its own phonics subject so the
+// learning engine tracks per-pattern accuracy instead of one blended
+// "reading" blob. Yana mode stays "reading-sentence".
+const PATTERN_SUBJECT_MAP = {
+  "short-a": "reading-3letter",
+  "short-i": "reading-3letter",
+  "short-o": "reading-3letter",
+  "digraphs": "reading-4letter",
+  "blends": "phonics-blends",
+  "vowel-teams": "phonics-vowel-teams",
+  "multisyllabic": "phonics-syllables",
+};
 
 // ─── Yana mode: fluency fallback passages (~6) ───────────────────────────────
 const YANA_FALLBACK_PASSAGES = [
@@ -87,7 +140,6 @@ export default function ReadingGame({
   const ageBand = ageBandFromProfile(profile);
   const isLucaMode = ageBand === "luca";
   const kidName = profile?.name || "Reader";
-  const subjectId = isLucaMode ? "reading-3letter" : "reading-sentence";
 
   // Font sizing
   const WORD_FONT = isLucaMode ? 32 : 22;
@@ -101,27 +153,54 @@ export default function ReadingGame({
   const [lives, setLives] = useState(LIVES_MAX_READING);
   const [drops, setDrops] = useState([]);
   const [powerupNotice, setPowerupNotice] = useState(null);
-  // TODO(reading-adventure-v2): activeBuff / activeDebuff are stored on tap
-  // but not consulted by gameplay logic. Reading has no twitch loop, so
-  // Frenzy/Invincible/Slow Time/etc. currently surface as flavor toasts only.
-  // Future wiring opportunities: Frenzy → faster confetti, Star Surge → +2
-  // stars per next page, Blind → temporary letter blur, etc. Keep state for
-  // when that work lands; remove if a future audit confirms it stays unused.
+  // S07: activeBuff/activeDebuff are REAL now — consulted by gameplay:
+  // ⭐⭐ Star Surge doubles the next page-complete star award, 🌫️ Blind blurs
+  // not-yet-read words (squint challenge), 🐢 Slow Time pauses drop spawns,
+  // 💨 Frenzy keeps the fish lunging + speeds up drop falls. Pools are
+  // filtered to only-real effects (READING_BUFF_POOL / READING_DEBUFF_POOL).
   const [activeBuff, setActiveBuff] = useState(null); // {type, expiresAt} | null
   const [activeDebuff, setActiveDebuff] = useState(null);
   const [fishMood, setFishMood] = useState("idle"); // "idle" | "happy" | "lunge"
   const dropTimerRef = useRef(null);
+  // Refs mirror buff/debuff for the 30s spawn interval closure — it re-inits
+  // only on mode/finish changes, so reading state directly would go stale.
+  const activeBuffRef = useRef(null);
+  const activeDebuffRef = useRef(null);
   const [sessionStars, setSessionStars] = useState(0);
   const [completedTitles, setCompletedTitles] = useState([]);
   const [toast, setToast] = useState(null);
+  const [lastPageStars, setLastPageStars] = useState(1); // 2 when ⭐⭐ Star Surge doubled the page
+  const [levelUpBanner, setLevelUpBanner] = useState(null); // {level, name} | null — 2.5s overlay
+  const [pbBanner, setPbBanner] = useState(null); // {prevBest, best} | null — 🏆 record overlay
+  const levelUpTimerRef = useRef(null);
+  const exitTimerRef = useRef(null);
+  const finishedRef = useRef(false); // synchronous double-tap guard for finishSession
 
   // Current passage
   const [passageText, setPassageText] = useState("");
   const [passageSource, setPassageSource] = useState(""); // "luca-L1" / "yana-groq" / "yana-fallback"
+  const [currentPattern, setCurrentPattern] = useState(null); // Luca passage phonics pattern (G12)
   const [loading, setLoading] = useState(true);
-  const [lucaLevel, setLucaLevel] = useState(1);
-  const [pagesAtLevel, setPagesAtLevel] = useState(0);
-  const [lucaPool, setLucaPool] = useState(() => shufflePool(1));
+  // S07 2c: Luca's level persists across his single-page sessions — validate
+  // the Firebase value before trusting it (Lessons Learned: coerce external data)
+  const [lucaLevel, setLucaLevel] = useState(() => {
+    const saved = kidsData?.[kidName]?.readingLevel;
+    return typeof saved === "number" && saved >= 1 && saved <= LUCA_LEVEL_CAP ? saved : 1;
+  });
+  const [pagesAtLevel, setPagesAtLevel] = useState(() => {
+    const saved = kidsData?.[kidName]?.readingPagesAtLevel;
+    return typeof saved === "number" && saved >= 0 && saved < 3 ? saved : 0;
+  });
+  // Re-sync UPWARD if kidsData loads after mount (async Firebase) — a session
+  // started at the default Level 1 must never clobber Luca's persisted higher
+  // level on its next level-up write (3-lens review).
+  const savedLevel = kidsData?.[kidName]?.readingLevel;
+  useEffect(() => {
+    if (typeof savedLevel === "number" && savedLevel >= 1 && savedLevel <= LUCA_LEVEL_CAP) {
+      setLucaLevel(l => (savedLevel > l ? savedLevel : l));
+    }
+  }, [savedLevel]);
+  const [lucaPool, setLucaPool] = useState(() => shufflePool(lucaLevel));
   const [lucaIdx, setLucaIdx] = useState(0);
   const [yanaIdx, setYanaIdx] = useState(0);
   const [finishedSession, setFinishedSession] = useState(false); // Luca-mode single-page finish
@@ -154,11 +233,18 @@ export default function ReadingGame({
   useEffect(() => {
     loadNextPassage(true);
     return () => {
-      // On unmount — cancel any TTS that's still speaking
+      // On unmount — cancel any TTS that's still speaking + pending banner /
+      // exit timers (lesson f45f9fd: feedback timers must not outlive the game)
       if (window.speechSynthesis) window.speechSynthesis.cancel();
+      if (levelUpTimerRef.current) clearTimeout(levelUpTimerRef.current);
+      if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Keep the interval-closure mirrors in sync with buff/debuff state
+  useEffect(() => { activeBuffRef.current = activeBuff; }, [activeBuff]);
+  useEffect(() => { activeDebuffRef.current = activeDebuff; }, [activeDebuff]);
 
   // ─── Load next passage (per-mode logic) ───────────────────────────────────
   async function loadNextPassage(isFirst = false) {
@@ -182,12 +268,15 @@ export default function ReadingGame({
       setLucaIdx(idx);
       setPassageText(passage.text);
       setPassageSource(`luca-L${passage.level}-${passage.pattern}`);
+      setCurrentPattern(passage.pattern); // G12: drives per-pattern recordAttempt subject
       setLoading(false);
       return;
     }
 
-    // Yana — try Groq first, cache per-kid, fall back gracefully
-    const cacheKey = `reading_yana_${kidName}_${pagesCompleted}`;
+    // Yana — try Groq first, cache per-kid, fall back gracefully.
+    // G6: date segment keeps passages fresh daily — without it the cache
+    // served the same frozen sequence forever.
+    const cacheKey = `reading_yana_${kidName}_${new Date().toISOString().slice(0, 10)}_${pagesCompleted}`;
     const cached = cacheGet(cacheKey);
     if (cached?.text) {
       setPassageText(cached.text);
@@ -307,17 +396,27 @@ export default function ReadingGame({
     setDraggingWord(null);
   }
 
-  // ─── Apply a buff/debuff effect (subset of FractionLine's set; reading does
-  //     not implement Magnet/Reverse since there's no drag target). The non-
-  //     instant effects are stored as activeBuff/activeDebuff for the notice
-  //     toast — gameplay impact in the reading context is intentionally
-  //     limited to ±1 heart, since reading has no twitch loop to modify.
+  // ─── Apply a buff/debuff effect. S07: every effect in the reading pools is
+  //     REAL — heart/loseHeart fire instantly; ⭐⭐ Star Surge is a ONE-SHOT
+  //     flag consumed at the next page completion (no wall-clock expiry — a
+  //     page takes minutes, so FractionLine's 7s window would make the buff
+  //     a phantom, the exact failure S07 eliminates; 3-lens review); other
+  //     timed effects land in activeBuff/activeDebuff with an expiry check:
+  //     🐢 Slow Time → spawn pause (drop scheduler), 🌫️ Blind → unread-word
+  //     blur (word span render), 💨 Frenzy → lunging fish + faster drops.
   function applyBuff(buff) {
     if (buff.type === "heart") {
       setLives(L => Math.min(LIVES_MAX_READING, L + 1));
+    } else if (buff.type === "starSurge") {
+      // Consumed (setActiveBuff(null)) by the page-complete effect after
+      // doubling exactly one page's star.
+      setActiveBuff({ type: "starSurge", expiresAt: Infinity });
     } else if (buff.duration > 0) {
-      setActiveBuff({ type: buff.type, expiresAt: Date.now() + buff.duration });
-      setTimeout(() => setActiveBuff(null), buff.duration);
+      const applied = { type: buff.type, expiresAt: Date.now() + buff.duration };
+      setActiveBuff(applied);
+      // Only clear the buff THIS timeout armed — a stale timeout must not
+      // null a pending Star Surge picked up afterward.
+      setTimeout(() => setActiveBuff(cur => (cur === applied ? null : cur)), buff.duration);
     }
     setFishMood("happy");
     setTimeout(() => setFishMood("idle"), 2000);
@@ -332,17 +431,20 @@ export default function ReadingGame({
       setTimeout(() => setActiveDebuff(null), deb.duration);
     }
     setFishMood("lunge");
-    setTimeout(() => setFishMood("idle"), 1500);
+    // Frenzy = the fish stays in lunge mood for the whole effect window;
+    // other debuffs get the brief 1.5s reaction only.
+    setTimeout(() => setFishMood("idle"), deb.type === "frenzy" ? deb.duration : 1500);
     setPowerupNotice({ text: deb.name, kind: "debuff" });
   }
 
   function tapDrop(drop) {
+    playSfx("powerup"); // juice: every drop tap makes a sound
     setDrops(prev => prev.filter(d => d.id !== drop.id && d.id !== drop.id - 1 && d.id !== drop.id + 1));
     if (drop.isWinner) {
-      const buff = BUFF_TYPES[Math.floor(Math.random() * BUFF_TYPES.length)];
+      const buff = READING_BUFF_POOL[Math.floor(Math.random() * READING_BUFF_POOL.length)];
       applyBuff(buff);
     } else {
-      const deb = DEBUFF_TYPES[Math.floor(Math.random() * DEBUFF_TYPES.length)];
+      const deb = READING_DEBUFF_POOL[Math.floor(Math.random() * READING_DEBUFF_POOL.length)];
       applyDebuff(deb);
     }
   }
@@ -363,11 +465,26 @@ export default function ReadingGame({
     if (tokens.length === 0) return;
 
     const elapsed = Date.now() - pageStartRef.current;
-    // Record one successful attempt per page (not per word)
-    recordAttempt(fbSet, profile?.name, subjectId, true, elapsed);
-    // Per-page star
-    addStars?.(1, "Reading page completed");
-    setSessionStars(s => s + 1);
+    // Record one successful attempt per page (not per word). G12: Luca's
+    // attempts file under the passage's own phonics pattern so the learning
+    // engine sees per-pattern accuracy; Yana stays "reading-sentence".
+    const attemptSubject = isLucaMode
+      ? (PATTERN_SUBJECT_MAP[currentPattern] || "reading-3letter")
+      : "reading-sentence";
+    recordAttempt(fbSet, profile?.name, attemptSubject, true, elapsed);
+    // Per-page star — doubled while ⭐⭐ Star Surge is active (S07: buffs are real)
+    const surgeActive = !isLucaMode && activeBuff?.type === "starSurge" &&
+      activeBuff.expiresAt > Date.now();
+    const pageStars = surgeActive ? 2 : 1;
+    addStars?.(pageStars, "Reading page completed");
+    setSessionStars(s => s + pageStars);
+    setLastPageStars(pageStars);
+    if (surgeActive) {
+      showToast("⭐⭐ Double-star page!");
+      playSfx("powerup");
+      setActiveBuff(null); // surge consumed — doubles exactly this one page
+    }
+    playSfx("correct"); // page-complete juice
     setCompletedTitles(prev => [...prev, passageSource]);
     // "Chapter completion" confetti — small for per-page, big at session end.
     // Confetti is mode-agnostic (celebration, not adventure mechanic) so Luca
@@ -382,29 +499,47 @@ export default function ReadingGame({
     }
 
     // Update kidsData.readingStats — canonical shape per S04 spec:
-    // { storiesRead, wordsRead, lastPlayed } — shared with StoryQuest + WordWarrior
+    // { storiesRead, wordsRead, lastPlayed } — shared with StoryQuest + WordWarrior.
+    // Atomic per-counter increments (codex S07 review): the old whole-object
+    // write built from a stale kidsData snapshot could drop a concurrent
+    // page completion from another device/session.
     if (fbSet && profile?.name) {
-      const prev = (kidsData || {})[profile.name]?.readingStats || {};
-      fbSet(`kidsData/${profile.name}/readingStats`, {
-        ...prev,
-        storiesRead: (prev.storiesRead || 0) + 1,
-        wordsRead: (prev.wordsRead || 0) + tokens.length,
-        lastPlayed: new Date().toISOString(),
-      });
+      fbSet(`kidsData/${profile.name}/readingStats/storiesRead`, increment(1));
+      fbSet(`kidsData/${profile.name}/readingStats/wordsRead`, increment(tokens.length));
+      fbSet(`kidsData/${profile.name}/readingStats/lastPlayed`, new Date().toISOString());
     }
 
-    // Advance Luca level after 3 pages at current level
+    // Advance Luca level after 3 pages at current level (S07 runway: cap is
+    // now Level 4). Level + page count persist to Firebase because Luca's
+    // sessions are single-page by design — without persistence the counter
+    // reset every session and he could never reach 3 pages at a level.
     if (isLucaMode) {
       const nextPagesAtLevel = pagesAtLevel + 1;
-      if (nextPagesAtLevel >= 3 && lucaLevel < 2) {
-        setLucaLevel(2);
+      if (lucaLevel < LUCA_LEVEL_CAP && nextPagesAtLevel >= 3) {
+        const newLevel = lucaLevel + 1;
+        setLucaLevel(newLevel);
         setPagesAtLevel(0);
-        setLucaPool(shufflePool(2));
+        setLucaPool(shufflePool(newLevel));
         setLucaIdx(-1); // so next tick loadNextPassage advances to 0
-        showToast("Level up! New word patterns unlocked");
-      } else {
+        if (fbSet && profile?.name) {
+          fbSet(`kidsData/${profile.name}/readingLevel`, newLevel);
+          fbSet(`kidsData/${profile.name}/readingPagesAtLevel`, 0);
+        }
+        // 2.5s full-screen LEVEL UP moment — banner + confetti + sfx + haptic
+        setLevelUpBanner({ level: newLevel, name: LUCA_LEVEL_NAMES[newLevel] || "" });
+        triggerConfetti(document.body, "big");
+        playSfx("levelClear");
+        buzz([30, 50, 30]);
+        if (levelUpTimerRef.current) clearTimeout(levelUpTimerRef.current);
+        levelUpTimerRef.current = setTimeout(() => setLevelUpBanner(null), 2500);
+      } else if (lucaLevel < LUCA_LEVEL_CAP) {
         setPagesAtLevel(nextPagesAtLevel);
+        if (fbSet && profile?.name) {
+          fbSet(`kidsData/${profile.name}/readingPagesAtLevel`, nextPagesAtLevel);
+        }
       }
+      // At the Level 4 cap there's no next level to count toward — leave
+      // pagesAtLevel at 0 and keep celebrating pages via stars.
     }
 
     setPagesCompleted(p => p + 1);
@@ -427,7 +562,21 @@ export default function ReadingGame({
     if (finishedSession) return;
 
     dropTimerRef.current = setInterval(() => {
-      setDrops(prev => prev.length === 0 ? spawnDropPair() : prev);
+      // 🐢 Slow Time (real buff): drop spawns pause while it's active
+      const buff = activeBuffRef.current;
+      if (buff?.type === "slowTime" && buff.expiresAt > Date.now()) return;
+      setDrops(prev => {
+        if (prev.length !== 0) return prev;
+        // 💨 Frenzy (real debuff): drops spawned while active fall 2× faster.
+        // fallMs is baked at spawn so mid-flight drops never restart their
+        // CSS animation when the effect expires.
+        const deb = activeDebuffRef.current;
+        const frenzied = deb?.type === "frenzy" && deb.expiresAt > Date.now();
+        const fallMs = frenzied ? Math.round(DROP_FALL_DURATION_MS / 2) : DROP_FALL_DURATION_MS;
+        // FL9: drop math scales with the parent-set addition difficulty
+        return spawnDropPair(getKidDifficulty(kidsData, profile?.name, "addition"))
+          .map(d => ({ ...d, fallMs }));
+      });
     }, POWERUP_INTERVAL_MS);
 
     return () => {
@@ -455,33 +604,58 @@ export default function ReadingGame({
   }, [lives, isLucaMode, finishedSession]);
 
   // ─── Exit / finish session — award session bonus + record history ─────────
+  // Effort-gated (mirrors FractionLine.exitSession): this is ALSO the Back-
+  // button handler, so the +3 bonus and the history entry only exist when at
+  // least one page was actually read — no enter-exit star farming against
+  // real-world rewards. finishedRef guards synchronously against double-taps.
   function finishSession() {
-    if (!finishedSession) {
-      addStars?.(3, "Reading session complete");
-      setSessionStars(s => s + 3);
-      recordGameHistory(fbSet, profile, "reading", pagesCompleted, sessionStars + 3, {
-        passages: completedTitles,
-        mode: isLucaMode ? "luca-phonics" : "yana-fluency",
-      });
-      setFinishedSession(true);
-      // Session-bonus confetti (big) — only Yana mode (Luca's mode is single-
-      // page by design; small confetti fired on the page completion already)
-      if (!isLucaMode && pagesCompleted > 0) {
-        triggerConfetti(document.body, "big");
+    let exitDelayMs = 0;
+    if (!finishedSession && !finishedRef.current) {
+      finishedRef.current = true;
+      if (pagesCompleted >= 1) {
+        addStars?.(3, "Reading session complete");
+        setSessionStars(s => s + 3);
+        recordGameHistory(fbSet, profile, "reading", pagesCompleted, sessionStars + 3, {
+          passages: completedTitles,
+          mode: isLucaMode ? "luca-phonics" : "yana-fluency",
+        });
+        // 🏆 Personal best — self-competition only (own pages-per-session record)
+        const pb = checkPersonalBest(profile?.name, "reading", pagesCompleted);
+        if (pb.isNewBest) {
+          setPbBanner(pb);
+          playSfx("newRecord");
+          exitDelayMs = 2500; // let the kid SEE the record before leaving
+        }
+        // Session-bonus confetti (big) — only Yana mode (Luca's mode is single-
+        // page by design; small confetti fired on the page completion already)
+        if (!isLucaMode) {
+          triggerConfetti(document.body, "big");
+        }
       }
+      setFinishedSession(true);
     }
     stopSpeech();
     if (dropTimerRef.current) {
       clearInterval(dropTimerRef.current);
       dropTimerRef.current = null;
     }
-    transitionTo?.("mini_games");
+    if (exitDelayMs > 0) {
+      exitTimerRef.current = setTimeout(() => transitionTo?.("mini_games"), exitDelayMs);
+    } else {
+      transitionTo?.("mini_games");
+    }
   }
 
   // ─── Render helpers ───────────────────────────────────────────────────────
   const headerBg = isLucaMode
     ? "linear-gradient(180deg, #1e3a8a, #1e40af, #2563eb)"
     : "linear-gradient(180deg, #064e3b, #065f46, #047857)";
+
+  // 🌫️ Blind (real debuff, Yana only): NOT-yet-read words blur into a squint
+  // challenge and un-blur one by one as the kid reads them. Expiry clears via
+  // the applyDebuff timeout → re-render → everything crisp again.
+  const blindActive = !isLucaMode && activeDebuff?.type === "blind" &&
+    activeDebuff.expiresAt > Date.now();
 
   return (
     <div style={{
@@ -500,6 +674,39 @@ export default function ReadingGame({
           maxWidth: "90vw", textAlign: "center",
         }}>
           {toast}
+        </div>
+      )}
+
+      {/* 📖 LEVEL UP banner — 2.5s full-screen moment (Luca runway) */}
+      {levelUpBanner && (
+        <div role="status" style={{
+          position: "fixed", inset: 0, zIndex: 9998, display: "flex",
+          flexDirection: "column", alignItems: "center", justifyContent: "center",
+          background: "rgba(15,23,42,0.9)", textAlign: "center", padding: 20,
+        }}>
+          <div style={{ fontSize: 56, marginBottom: 10 }}>📖</div>
+          <div style={{ fontSize: 32, fontWeight: 900, color: "#fbbf24" }}>LEVEL UP!</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: "#fff", marginTop: 8 }}>
+            Level {levelUpBanner.level}: {levelUpBanner.name}
+          </div>
+        </div>
+      )}
+
+      {/* 🏆 NEW PERSONAL BEST banner — shown 2.5s before the exit transition */}
+      {pbBanner && (
+        <div role="status" style={{
+          position: "fixed", inset: 0, zIndex: 9998, display: "flex",
+          flexDirection: "column", alignItems: "center", justifyContent: "center",
+          background: "rgba(15,23,42,0.9)", textAlign: "center", padding: 20,
+        }}>
+          <div style={{ fontSize: 56, marginBottom: 10 }}>🏆</div>
+          <div style={{ fontSize: 30, fontWeight: 900, color: "#fbbf24" }}>NEW PERSONAL BEST!</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: "#fff", marginTop: 8 }}>
+            {pbBanner.best} {pbBanner.best === 1 ? "page" : "pages"} read
+          </div>
+          <div style={{ fontSize: 15, color: "rgba(255,255,255,0.75)", marginTop: 4 }}>
+            Your old best: {pbBanner.prevBest}
+          </div>
         </div>
       )}
 
@@ -565,7 +772,9 @@ export default function ReadingGame({
           </div>
           {isLucaMode && (
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginTop: 2 }}>
-              Level {lucaLevel} · Page {pagesAtLevel + 1} of 3
+              Level {lucaLevel}{lucaLevel < LUCA_LEVEL_CAP
+                ? ` · Page ${Math.min(pagesAtLevel + 1, 3)} of 3`
+                : " · ⭐ Top level!"}
             </div>
           )}
         </div>
@@ -629,7 +838,9 @@ export default function ReadingGame({
                       ? "2px solid #fbbf24"
                       : "2px solid rgba(255,255,255,0.1)",
                     boxShadow: isRead ? "0 0 12px rgba(251,191,36,0.5)" : "none",
-                    transition: "background 0.15s, box-shadow 0.15s, color 0.15s",
+                    // 🌫️ Blind: unread words blur; each word un-blurs as it's read
+                    filter: blindActive && !isRead ? "blur(3px)" : "none",
+                    transition: "background 0.15s, box-shadow 0.15s, color 0.15s, filter 0.3s",
                     touchAction: "none",
                     cursor: "pointer",
                   }}
@@ -660,7 +871,7 @@ export default function ReadingGame({
                   {isLucaMode ? "🎉 Great job!" : "✨ Page complete!"}
                 </div>
                 <div style={{ fontSize: 14, color: "rgba(255,255,255,0.8)", marginBottom: 14 }}>
-                  You earned ⭐ 1 star for this page
+                  You earned ⭐ {lastPageStars} {lastPageStars === 1 ? "star" : "stars"} for this page
                 </div>
                 <div style={{
                   display: "flex", gap: 10, flexDirection: "column",
@@ -715,7 +926,7 @@ export default function ReadingGame({
             style={{
               position: "absolute", left: `${d.leftPct}%`, top: 0,
               transform: "translateX(-50%)",
-              animation: `dropFall ${DROP_FALL_DURATION_MS}ms linear forwards`,
+              animation: `dropFall ${d.fallMs || DROP_FALL_DURATION_MS}ms linear forwards`,
               background: "rgba(15,23,42,0.85)", color: "#fbbf24",
               border: "2px solid #fbbf24", borderRadius: 12,
               padding: "8px 12px", fontWeight: 800, fontSize: 16,

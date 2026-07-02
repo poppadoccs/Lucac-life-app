@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { getDatabase, ref, onValue } from "firebase/database";
-import { generateMathProblem, GameBtn, recordGameHistory, ageBandFromProfile } from "./_shared";
-import { verifyMath } from "../utils";
+import { generateMathProblem, GameBtn, recordGameHistory, ageBandFromProfile, checkPersonalBest } from "./_shared";
+import { verifyMath, playSfx, buzz, triggerConfetti, DIFFICULTY_LEVELS } from "../utils";
 
 // ─── CONSTANTS ───────────────────────────────────────────
 
@@ -64,7 +63,8 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
   const savedCar = kidsData?.[profile?.name]?.favoriteCar || CARS[0];
   const [selectedCar, setSelectedCar] = useState(savedCar);
   const [selectedTrack, setSelectedTrack] = useState("highway");
-  const [leaderboard, setLeaderboard] = useState({ yana: [], luca: [] });
+  // S07: self-competition only — the kid's OWN best, never a sibling's.
+  const [personalBest, setPersonalBest] = useState(null);
   // S04-A5: Car color selection persists per-kid. Defaults to "default"
   // (no tint) when the kid hasn't picked one yet.
   const initialColor = kidsData?.[profile?.name]?.favoriteCarColor || "default";
@@ -121,28 +121,25 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
   useEffect(() => { nitroRef.current = nitroActive; }, [nitroActive]);
   useEffect(() => { slowRef.current = slowPenalty; }, [slowPenalty]);
 
-  // ─── Leaderboard load ─────────────────────────────────
-  useEffect(() => {
-    const db = getDatabase();
-    const unsubs = ["yana", "luca"].map(name => {
-      const r = ref(db, `gameHistory/${name}`);
-      return onValue(r, snap => {
-        const data = snap.val() || {};
-        const races = Object.values(data)
-          .filter(e => e.game === "racing")
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 3);
-        setLeaderboard(prev => ({ ...prev, [name]: races }));
-      });
-    });
-    return () => unsubs.forEach(u => u());
-  }, []);
-
   // ─── Game-over trigger (avoid setState-in-render) ─────
+  // S07: race finish is also where the personal-best check runs — score is
+  // final here. PB is self-competition only (own prior best, per device).
   useEffect(() => {
     if (raceHits >= MAX_HITS && raceActive) {
       setRaceActive(false);
       setScreen("gameover");
+      const pb = checkPersonalBest(profile?.name, "racing", raceScore);
+      setPersonalBest(pb);
+      if (pb.isNewBest) {
+        // newRecord's fanfare already contains the levelClear arpeggio —
+        // playing both would double the notes, so it's one or the other.
+        triggerConfetti(document.body, "big");
+        playSfx("newRecord");
+        buzz([40, 60, 40]);
+      } else {
+        playSfx("levelClear");
+        buzz([30, 50, 30]);
+      }
     }
   }, [raceHits, raceActive, MAX_HITS]);
 
@@ -166,6 +163,7 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
     setRaceFrozen(false);
     setRaceShake(false);
     setDistance(0);
+    setPersonalBest(null);
     setNitroActive(false); nitroRef.current = false;
     setShieldActive(false); shieldRef.current = false;
     setMagnetActive(false); magnetRef.current = false;
@@ -259,7 +257,7 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
           const collected = magnetRef.current
             ? ny > 40 && s.lane === raceLane
             : ny > 75 && ny < 95 && s.lane === raceLane;
-          if (collected) { setRaceScore(sc => sc + 25); continue; }
+          if (collected) { setRaceScore(sc => sc + 25); playSfx("correct"); continue; }
           next.push({ ...s, y: ny });
         }
         return next;
@@ -332,17 +330,33 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
         } else if (active.includes("division")) {
           subject = "division";
         }
-        const prob = generateMathProblem(mathDifficulty, subject);
+        // S07 C1-C: per-kid per-subject difficulty. Every subject reads its
+        // own knob when SET and falls back to the ageBand-derived
+        // mathDifficulty when unset — a blanket "easy" default for mult/div
+        // would silently DOWNGRADE Yana's barriers below what shipped pre-S07
+        // (3-lens review).
+        const rawAdd = kidsData?.[profile?.name]?.difficulty?.addition;
+        const rawSub = kidsData?.[profile?.name]?.difficulty?.[subject];
+        const barrierDiff = subject === "arithmetic"
+          ? (DIFFICULTY_LEVELS.includes(rawAdd) ? rawAdd : mathDifficulty)
+          : (DIFFICULTY_LEVELS.includes(rawSub) ? rawSub : mathDifficulty);
+        const prob = generateMathProblem(barrierDiff, subject);
         setRaceMathBarrier(prob);
         setRaceFrozen(true);
         setRaceSpeed(0);
         // S04-A5 safety net: auto-clear after 5s so the car is never
         // permanently stuck. Tracked in a ref so correct-answer path
         // can clear it on dismiss.
+        // S07: waiting the barrier out must not beat answering — resume at
+        // reduced speed (same slow-down as a wrong answer) but with NO toast
+        // and NO negative text. Correct always strictly wins.
         if (barrierTimeoutRef.current) clearTimeout(barrierTimeoutRef.current);
         barrierTimeoutRef.current = setTimeout(() => {
           setRaceMathBarrier(null);
           setRaceFrozen(false);
+          setRaceSpeed(s => s * 0.5);
+          setSlowPenalty(true); slowRef.current = true;
+          setTimeout(() => { setSlowPenalty(false); slowRef.current = false; }, 3000);
           barrierTimeoutRef.current = null;
         }, 5000);
       }
@@ -352,7 +366,7 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
 
     raceAnimRef.current = requestAnimationFrame(loop);
     return () => { if (raceAnimRef.current) cancelAnimationFrame(raceAnimRef.current); };
-  }, [raceActive, raceLane, raceFrozen, mathDifficulty, selectedTrack, isLucaMode, SPEED_MAX]);
+  }, [raceActive, raceLane, raceFrozen, mathDifficulty, selectedTrack, isLucaMode, SPEED_MAX, kidsData]);
 
   // ─── Math barrier answer ──────────────────────────────
   const handleMathAnswer = (c) => {
@@ -364,14 +378,16 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
     if (c === raceMathBarrier.answer) {
       setRaceScore(s => s + 100);
       setRaceSpeed(5);
-      if (isLucaMode) {
-        // Auto-nitro for Luca on correct answer
-        setNitroActive(true); nitroRef.current = true;
-        setTimeout(() => { setNitroActive(false); nitroRef.current = false; }, 3000);
-        showToast("⚡ Auto-Nitro! Great job!");
-      }
+      playSfx("correct");
+      buzz([20]);
+      // S07: auto-nitro for EVERY kid on a correct answer — answering right
+      // must strictly beat both waiting out the barrier and answering wrong.
+      setNitroActive(true); nitroRef.current = true;
+      setTimeout(() => { setNitroActive(false); nitroRef.current = false; }, 3000);
+      showToast("⚡ Auto-Nitro! Great job!");
     } else {
       // Wrong: speed drops 50% for 3s, no permanent freeze. No shame language.
+      playSfx("tryAgain");
       setRaceSpeed(s => s * 0.5);
       setSlowPenalty(true); slowRef.current = true;
       setTimeout(() => { setSlowPenalty(false); slowRef.current = false; }, 3000);
@@ -499,40 +515,13 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
           </div>
         </div>
 
-        {/* Leaderboard — text-labeled columns, not color-only */}
-        <div style={{ background: "#1e293b", borderRadius: 12, padding: "12px", marginBottom: 10 }}>
-          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, color: "#94a3b8" }}>TOP SCORES 🏆</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            {["yana", "luca"].map(name => (
-              <div key={name}>
-                <div style={{ fontWeight: 800, fontSize: 13, color: "#fbbf24", marginBottom: 4 }}>
-                  {name === "yana" ? "Yana 👧" : "Luca 👦"}
-                </div>
-                {leaderboard[name].length === 0
-                  ? <div style={{ fontSize: 11, color: "#475569" }}>No races yet</div>
-                  : leaderboard[name].map((r, i) => (
-                    <div key={i} style={{
-                      fontSize: 11, color: "#cbd5e1",
-                      display: "flex", justifyContent: "space-between", padding: "3px 0",
-                      borderBottom: "1px solid rgba(255,255,255,0.05)",
-                    }}>
-                      <span>{i + 1}. {r.car || "🏎️"} {r.track || ""}</span>
-                      <span style={{ fontWeight: 700 }}>{r.score}pts</span>
-                    </div>
-                  ))
-                }
-              </div>
-            ))}
-          </div>
-        </div>
-
         {isLucaMode && (
           <div style={{
             background: "rgba(251,191,36,0.12)", border: "1px solid #fbbf24",
             borderRadius: 8, padding: "6px 10px", marginBottom: 10,
             fontSize: 12, color: "#fbbf24",
           }}>
-            ⭐ Luca Mode — softer obstacles, auto-nitro on correct math!
+            ⭐ Luca Mode — softer obstacles, extra hearts, bigger buttons!
           </div>
         )}
 
@@ -708,6 +697,18 @@ export default function RacingGame({ profile, kidsData, fbSet, addStars, transit
               <div style={{ fontSize: 18, color: "#fff", marginTop: 4 }}>Score: {raceScore}</div>
               <div style={{ fontSize: 13, color: "#94a3b8" }}>Distance: {Math.round(distance)} m</div>
               <div style={{ fontSize: 16, color: "#fbbf24", marginTop: 4 }}>⭐ {raceStarsEarned} Stars!</div>
+              {/* S07 PB: own-best only, never a sibling comparison. First-ever
+                  score sets the baseline silently (isNewBest stays false). */}
+              {personalBest?.isNewBest && (
+                <>
+                  <div style={{ fontSize: 18, fontWeight: 900, color: "#fbbf24", marginTop: 10 }}>
+                    🏆 NEW PERSONAL BEST!
+                  </div>
+                  <div style={{ fontSize: 13, color: "#cbd5e1", marginTop: 2 }}>
+                    Your old best: {personalBest.prevBest}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>

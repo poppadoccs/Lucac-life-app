@@ -4,6 +4,7 @@ import {
   getDatabase, ref, onValue, runTransaction, onDisconnect, set as dbSet,
 } from "firebase/database";
 import { generateMathProblem, GameBtn, recordGameHistory, ageBandFromProfile } from "./_shared";
+import { playSfx } from "../utils";
 import { BOARD_TILES, TILE_POSITIONS } from "./board/boardData";
 
 // ── constants ─────────────────────────────────────────────────────────────────
@@ -51,6 +52,7 @@ export default function BoardGame({ profile, kidsData, fbSet, addStars, transiti
   const unsubRef  = useRef(null);
   const presRef   = useRef(null);
   const diceTimer = useRef(null);
+  const starsAwardedRef = useRef(false); // one-shot: real stars award once per game
 
   // ── Firebase subscription ─────────────────────────────────────────────────
   useEffect(() => {
@@ -75,6 +77,22 @@ export default function BoardGame({ profile, kidsData, fbSet, addStars, transiti
         recordGameHistory(fbSet, profile, "board", me.stars, stars, {
           potions: me.potions, roomCode: code,
         });
+      }
+      // Real stars: each client awards ONLY its own player (me-scoped, like
+      // recordGameHistory above) — 3 for the winner, 1 for playing. One-shot
+      // ref guard so a re-fired effect can't double-award. Kid profiles only:
+      // a parent player earning stars would create kidsData/{ParentName}
+      // nodes that Jr's getKidsStatus then reports as a kid (3-lens review),
+      // and stars are the kids' economy anyway.
+      if (me && !starsAwardedRef.current && profile?.type === "kid") {
+        starsAwardedRef.current = true;
+        if (gameState.winner === me.name) {
+          addStars?.(3, "Board Game win");
+          playSfx("levelClear");
+        } else {
+          addStars?.(1, "Board Game played");
+          playSfx("starReveal");
+        }
       }
     }
   }, [gameState?.phase]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -408,6 +426,7 @@ export default function BoardGame({ profile, kidsData, fbSet, addStars, transiti
               setMathUI(null);
               setMyIdx(null);
               setJoinInput("");
+              starsAwardedRef.current = false; // new game can award again
             }}
           >
             🎲 Play Again

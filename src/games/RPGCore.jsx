@@ -1,6 +1,6 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { GameBtn, generateMathProblem } from "./_shared";
-import { speakText } from "../utils";
+import { speakText, playSfx, buzz, isSfxMuted, toggleSfxMuted } from "../utils";
 import FishGame from "./FishGame";
 import RacingGame from "./RacingGame";
 import BoardGame from "./BoardGame";
@@ -59,9 +59,9 @@ const WORLDS = [
       { type: "village", title: "The Cursed Well", desc: "Dark water bubbles and glows green." },
       { type: "village", title: "The Clock Tower", desc: "The clock strikes 13... impossible!" },
     ],
-    boss: { name: "Danyells", title: "The Dark Queen", emoji: "👩‍🦳", hp: 7, color: "#f43f5e",
+    boss: { name: "The Dark Queen", title: "Ruler of Shadow Village", emoji: "👩‍🦳", hp: 7, color: "#f43f5e",
       attacks: ["Doom Glare", "Shadow Serve", "Dark Decree", "Ultimate Sass"],
-      taunts: ["You call yourself a HERO?!", "My houseplant is braver than you!", "You are getting SERVED!", "DANYELLS ULTIMATE ATTACK! 💅"] },
+      taunts: ["You call yourself a HERO?!", "My houseplant is braver than you!", "You are getting SERVED!", "DARK QUEEN ULTIMATE ATTACK! 💅"] },
   },
   {
     id: "volcano", name: "Magma Core", emoji: "🌋", color: "#ef4444",
@@ -509,6 +509,7 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
   const [choiceResult, setChoiceResult] = useState(null);
   const [emotion, setEmotion] = useState("idle");
   const [avatarAnim, setAvatarAnim] = useState("bounce");
+  const [sfxMuted, setSfxMuted] = useState(isSfxMuted());
 
   // Battle state
   const [bossHp, setBossHp] = useState(0);
@@ -530,6 +531,14 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
   const [coopRoundWinner, setCoopRoundWinner] = useState(null);
 
   const floatIdRef = useRef(0);
+
+  // Victory fanfare — fires once each time the World Complete screen appears
+  useEffect(() => {
+    if (screen === "victory") {
+      playSfx("levelClear");
+      buzz([30, 50, 30]);
+    }
+  }, [screen]);
 
   // Adventure scene option shuffle — hoisted here so it obeys rules of hooks.
   // The original had the correct answer pinned to the top button because
@@ -565,7 +574,7 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
   function addItem(itemId) {
     if (ITEMS[itemId]) {
       setInventory(inv => [...inv, itemId]);
-      if (itemId === "star") addStars(1);
+      if (itemId === "star") { addStars(1); setStarsEarned(s => s + 1); }
     }
   }
 
@@ -695,6 +704,9 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
         setEmotion("victorious");
         setAvatarAnim("jump");
         addStars(5);
+        setStarsEarned(s => s + 5);
+        playSfx("levelClear");
+        buzz([30, 50, 30]);
         addFloatingText("+5 ⭐", "#fbbf24");
         setWorldsCompleted(wc => [...wc, WORLDS[currentWorld].id]);
       }, 600);
@@ -888,8 +900,13 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
                 <HPDisplay current={hp} max={MAX_HP} label={playerName} color={playerColor} />
                 <InventoryBar inventory={inventory} />
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <div style={{ background: "rgba(0,0,0,0.4)", borderRadius: 8, padding: "4px 10px", fontSize: 14, color: "#fbbf24", fontWeight: 700 }}>⭐ {starsEarned}</div>
+                <button onClick={() => setSfxMuted(toggleSfxMuted())}
+                  style={{ background: "rgba(0,0,0,0.4)", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 8,
+                    padding: "4px 10px", minHeight: 44, minWidth: 44, fontSize: 14, color: "#fff", fontWeight: 700, cursor: "pointer" }}>
+                  {sfxMuted ? "🔇 Muted" : "🔊 Sound"}
+                </button>
                 <GameBtn color="#64748b" onClick={backToMenu} style={{ width: "auto", padding: "6px 12px", minHeight: 36, fontSize: 14 }}>✕</GameBtn>
               </div>
             </div>
@@ -987,7 +1004,7 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
                 <div style={{ fontSize: 22, fontWeight: 900, color: "#fbbf24", textShadow: "0 0 15px #fbbf24", marginBottom: 8 }}>VICTORY!</div>
                 <div style={{ fontSize: 15, color: "#fff", marginBottom: 4 }}>You defeated {boss.name}!</div>
                 <div style={{ fontSize: 16, color: "#fbbf24", fontWeight: 700, marginBottom: 16 }}>+5 ⭐ Stars Earned!</div>
-                <GameBtn color="#22c55e" big onClick={() => { addStars(3); localTransitionTo("victory"); }}>🎉 Celebrate! (+3 bonus stars)</GameBtn>
+                <GameBtn color="#22c55e" big onClick={() => { addStars(3); setStarsEarned(s => s + 3); localTransitionTo("victory"); }}>🎉 Celebrate! (+3 bonus stars)</GameBtn>
               </div>
             )}
           </div>
@@ -1053,7 +1070,13 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
 
   // ─── STAR STORE ───────────────────────────────────────
   if (screen === "store") {
-    const rewards = kd.rewards || DEFAULT_REWARDS;
+    // Parent-configured rewards (Settings) win; normalize {id,label,cost,enabled}
+    // into the {name,cost,emoji} shape this screen renders. Fall back to
+    // kd.rewards || DEFAULT_REWARDS only when nothing is configured.
+    const configuredRewards = (Array.isArray(rewardsConfig) ? rewardsConfig : [])
+      .filter(r => r && r.enabled !== false)
+      .map(r => ({ name: r.label || "Reward", cost: Number(r.cost) || 0, emoji: r.emoji || "🎁" }));
+    const rewards = configuredRewards.length > 0 ? configuredRewards : (kd.rewards || DEFAULT_REWARDS);
     return (
       <>
         <style>{KEYFRAMES_CSS}</style>
@@ -1365,7 +1388,7 @@ export default function RPGCore({ profile, kidsData, fbSet, addStars, transition
                     <div style={{ fontSize:28, fontWeight:800, color:"#fbbf24" }}>👫 TEAMWORK!</div>
                     <div style={{ fontSize:20, color:"#fff", marginTop:8 }}>Team Score: {coopScoreLeft + coopScoreRight}</div>
                     <div style={{ fontSize:14, color:"#c084fc", marginTop:4 }}>⭐ {Math.round((coopScoreLeft + coopScoreRight) / 5)} stars EACH!</div>
-                    <GameBtn color="#22c55e" onClick={() => { addStars(Math.round((coopScoreLeft + coopScoreRight) / 5)); localTransitionTo("mini_games"); }}>Collect Stars!</GameBtn>
+                    <GameBtn color="#22c55e" onClick={() => { const earned = Math.round((coopScoreLeft + coopScoreRight) / 5); addStars(earned); setStarsEarned(s => s + earned); localTransitionTo("mini_games"); }}>Collect Stars!</GameBtn>
                   </>
                 )}
               </div>
