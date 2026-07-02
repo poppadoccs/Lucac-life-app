@@ -1,6 +1,6 @@
 // src/aiAgent.js — The Lucac Life AI Agent Engine
 // Replaces ALL regex-based parsing with Groq native function calling
-import { isRateLimited, setRateLimited, callAI } from './utils.js';
+import { isRateLimited, setRateLimited, callAI, detectUnsafeInput, SAFETY_RESPONSE_TEXT } from './utils.js';
 
 const MODEL_HEAVY = 'llama-3.3-70b-versatile'; // tool calling, complex reasoning
 const MODEL_LIGHT = 'llama-3.1-8b-instant';    // simple text, connection tests
@@ -503,6 +503,21 @@ function coerceToolArgs(functionName, args) {
 // ═══ THE AGENT LOOP — the entire brain ═══
 async function runAgentLoop(apiKey, userMessage, appState, conversationHistory = []) {
   console.log('[aiAgent] Starting loop:', userMessage?.slice(0, 50), '| key:', !!apiKey);
+
+  // S02 BF-0 port (S07): deterministic safety guard — unsafe kid/guest input
+  // NEVER reaches the LLM. Covers both runAgentLoop entry points (Jr chat +
+  // Quick Add) and the pre-built Jr kid mode before it ever gets wired.
+  // MUST run BEFORE the rate-limit bail (codex S07 review): a rate-limited kid
+  // disclosing self-harm must get the trusted-grown-up response, never a
+  // flippant "AI is resting". The guard is pure JS — no rate limit applies.
+  // Adult roles (admin/parent) are excluded on purpose: adult self-referential
+  // input is the designed use-case of the emotional_support tool, and the
+  // kid-toned refusal copy would be wrong for them. conversationHistory is
+  // returned UNCHANGED so the unsafe text never enters LLM context on later
+  // turns — same semantics as HomeworkHelper's guard.
+  if ((appState.userRole === "kid" || appState.userRole === "guest") && detectUnsafeInput(userMessage)) {
+    return { type: 'text', content: SAFETY_RESPONSE_TEXT, actions: [], conversationHistory };
+  }
 
   // Bail early if rate limited — no point burning retries
   if (isRateLimited()) {

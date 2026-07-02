@@ -109,6 +109,69 @@ export function verifyMath(text) {
   });
 }
 
+// --- Deterministic kid-safety guard (S02 BF-0, extracted from HomeworkHelper in S07) ---
+// Follows the same principle as verifyMath: anything safety-critical lives in
+// JavaScript, not in LLM prompt instructions. An 8B Llama model cannot be
+// trusted to reliably follow "never celebrate self-harm" instructions under
+// adversarial phrasing. Runs BEFORE any LLM call on kid-facing paths; if
+// unsafe input is detected, the LLM is never called and this hardcoded safe
+// response is returned instead. False positives are acceptable (a borderline
+// message gets redirected gently); false negatives are not.
+export const SAFETY_RESPONSE_TEXT =
+  "I'm really glad you told me. You matter. I can't talk about this here — please tell a trusted grown-up right now, like a parent, teacher, or school counselor. They want to help. When you're ready, I'm here to help with homework or fun facts about something else.";
+
+export const UNSAFE_INPUT_PATTERNS = [
+  // === Self-harm & suicide — direct phrasing ===
+  /\bkill(ing)?\s+my\s?self\b/i,
+  /\bhurt(ing)?\s+my\s?self\b/i,
+  /\bcut(ting)?\s+my\s?self\b/i,
+  /\bsuicid(e|al)\b/i,
+  /\bend(ing)?\s+(my|his|her|their)\s+life\b/i,
+  /\bend\s+(it\s+all|everything)\b/i,
+  /\bwant\s+to\s+die\b/i,
+  /\bwanna\s+die\b/i,
+  /\bi\s+want\s+it\s+to\s+end\b/i,
+  /\bi\s+(should|wanna|want\s+to)\s+just\s+end\s+(it|everything)\b/i,
+  // === Self-harm & suicide — wish/hypothetical phrasing ===
+  /\bi\s+wish\s+i\s+(was|were)\s+dead\b/i,
+  /\bi\s+wish\s+i\s+(wasn'?t|was\s+never|wasn't\s+ever)\s+(born|alive|here)\b/i,
+  /\bi\s+(don'?t|do\s+not)\s+want\s+to\s+(be\s+alive|live|exist|be\s+here)\b/i,
+  /\blife\s+(isn'?t|is\s+not)\s+worth\s+(it|living|anything)\b/i,
+  /\bi\s+(hate|can'?t\s+stand)\s+(living|being\s+alive|my\s+life)\b/i,
+  /\bi\s+can'?t\s+(go\s+on|do\s+this\s+anymore|keep\s+going)\b/i,
+  /\bi\s+(want\s+to|wanna)\s+dis[sa]*p+ear(\s+(forever|for\s+good))?\b/i,
+  /\bi\s+wish\s+i\s+could\s+dis[sa]*p+ear\b/i,
+  // === Self-harm & suicide — isolation/worthlessness phrasing ===
+  /\bi\s+hate\s+my\s?self\b/i,
+  /\bnobody\s+(cares|loves|likes)\s+(about\s+)?me\b/i,
+  /\bno\s+one\s+(cares|loves|likes)\s+(about\s+)?me\b/i,
+  /\bno\s+one\s+would\s+(care|notice|miss\s+me)\s+if\s+i\s+(died|was\s+gone|wasn'?t\s+here|disappear)/i,
+  /\beveryone\s+(would|'d)\s+be\s+better\s+(off\s+)?without\s+me\b/i,
+  /\bworld\s+(is|would\s+be)\s+better\s+without\s+me\b/i,
+  /\bdying\s+(is|would\s+be|sounds)\s+(better|nice|cool|fun)\b/i,
+  // === Self-harm & suicide — slang abbreviations ===
+  /\bkms\b/i,         // "kill myself" slang, common in text
+  /\bkys\b/i,         // "kill yourself" slang, aimed at others but still unsafe context
+  // === Violence towards others ===
+  /\b(kill|hurt|shoot|stab|beat\s+up|punch|attack|strangle)\s+(him|her|them|you|my\s+(mom|dad|sister|brother|friend|classmate)|the\s+(teacher|kid|boy|girl|bus\s+driver))\b/i,
+  /\bi'?m\s+(gonna|going\s+to)\s+(kill|hurt|shoot|stab|beat|attack)\s+(everyone|anyone|him|her|them|you|my\s*(self|mom|dad|sister|brother|friend)|the\s+(teacher|kid|boy|girl))\b/i,
+  // === Sexual content — action/intent based, NOT bare anatomy ===
+  // (bare anatomy nouns removed per codex review — penis/vagina/breast/nipple
+  // can appear in legitimate science questions. We match sexualized context.)
+  /\b(porn|pornography|horny|masturbat(e|ing|ion))\b/i,
+  /\b(sex|naked|nude)\s+(with|video|pic|photo|picture|time|me|you)\b/i,
+  /\bshow\s+me\s+(your|the)\s+(body|privates|naked|butt)\b/i,
+  /\btouch\s+(my|your)\s+(private|privates|pee\s?pee)\b/i,
+  // === Drugs — action/intent, NOT educational curiosity ===
+  /\b(i|we)\s+(want\s+to\s+try|tried|did|took|used)\s+(drugs|cocaine|heroin|meth|weed|crack|acid|ecstasy)\b/i,
+  /\bgetting\s+high\s+(on|with|off)\b/i,
+];
+
+export function detectUnsafeInput(text) {
+  if (typeof text !== "string" || !text) return false;
+  return UNSAFE_INPUT_PATTERNS.some((pattern) => pattern.test(text));
+}
+
 // --- Parse JSON from Groq response (strips markdown fences) ---
 export function parseGroqJSON(raw) {
   try {
@@ -217,6 +280,88 @@ export function clearConfetti() {
   document.querySelectorAll('[data-confetti="1"]').forEach(el => el.remove());
 }
 
+// --- Sound & haptics engine (S07 juice layer) ---
+// Zero-asset SFX: every sound is synthesized from Web Audio oscillators at
+// call time — nothing to download, works offline, zero bundle cost.
+// tryAgain is deliberately warm and quiet — never a buzzer — per the family
+// no-shame policy. Gains are low because kid tablets live at full volume.
+let _audioCtx = null;
+function getAudioCtx() {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  if (!_audioCtx) _audioCtx = new AC();
+  if (_audioCtx.state === "suspended") _audioCtx.resume();
+  return _audioCtx;
+}
+
+// Each tone: f = freq Hz, t = start offset s, d = duration s, w = waveform,
+// g = peak gain, slide = optional exponential glide target Hz.
+const SFX_RECIPES = {
+  correct: [
+    { f: 660, t: 0, d: 0.08, w: "sine", g: 0.15 },
+    { f: 880, t: 0.09, d: 0.1, w: "sine", g: 0.15 },
+  ],
+  tryAgain: [{ f: 220, t: 0, d: 0.12, w: "sine", g: 0.07 }],
+  powerup: [{ f: 300, t: 0, d: 0.15, w: "triangle", g: 0.12, slide: 900 }],
+  starReveal: [523, 659, 784, 1047].map((f, i) => ({ f, t: i * 0.06, d: 0.06, w: "sine", g: 0.12 })),
+  levelClear: [523, 659, 784, 1047].map((f, i) => ({ f, t: i * 0.11, d: 0.14, w: "square", g: 0.09 })),
+  newRecord: [
+    ...[523, 659, 784, 1047].map((f, i) => ({ f, t: i * 0.11, d: 0.14, w: "square", g: 0.09 })),
+    { f: 1568, t: 0.5, d: 0.25, w: "sine", g: 0.1 },
+    { f: 2093, t: 0.62, d: 0.3, w: "sine", g: 0.08 },
+  ],
+};
+
+export function isSfxMuted() {
+  return cacheGet("sfxMuted") === true;
+}
+
+export function toggleSfxMuted() {
+  const next = !isSfxMuted();
+  cacheSet("sfxMuted", next);
+  return next;
+}
+
+// playSfx("correct"|"tryAgain"|"powerup"|"starReveal"|"levelClear"|"newRecord")
+// Safe to call from anywhere — never throws, no-ops when muted or unsupported.
+// First call in a session should come from a tap handler so Android unlocks
+// the AudioContext (all game call sites are tap-driven or post-tap).
+export function playSfx(name) {
+  try {
+    if (isSfxMuted()) return;
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    const recipe = SFX_RECIPES[name];
+    if (!recipe) return;
+    const now = ctx.currentTime;
+    recipe.forEach(({ f, t, d, w, g, slide }) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = w;
+      osc.frequency.setValueAtTime(f, now + t);
+      if (slide) osc.frequency.exponentialRampToValueAtTime(slide, now + t + d);
+      gain.gain.setValueAtTime(g, now + t);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + t + d);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + t);
+      osc.stop(now + t + d + 0.02);
+    });
+  } catch {
+    // Audio must never break a game.
+  }
+}
+
+// buzz([20]) — haptic tap on Android Chrome; silently no-ops elsewhere.
+export function buzz(pattern = [20]) {
+  try {
+    if (isSfxMuted()) return;
+    if (navigator.vibrate) navigator.vibrate(pattern);
+  } catch {
+    // Haptics must never break a game.
+  }
+}
+
 // --- Speech recognition helper ---
 export function createSpeechRecognition() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -320,6 +465,8 @@ const PARENT_WRITE_PATHS = [
   "learningStats",
   // S04: admin and parents both configure the real-world reward menu
   "rewardsConfig",
+  // S07: parents can write game history too (imports / migrations)
+  "gameHistory",
 ];
 
 const KID_WRITE_PATHS = [
@@ -332,6 +479,8 @@ const KID_WRITE_PATHS = [
   // Path is learningStats/{kidName}/{subjectId}/{ts} — top-level key is scoped
   // by {kidName} segment and records are append-only timestamps
   "learningStats",
+  // S07: kids write their own game completions (recordGameHistory)
+  "gameHistory",
 ];
 
 export function canWrite(profile, path) {
@@ -386,9 +535,45 @@ export function canWrite(profile, path) {
       const nameSegment = path.split("/")[1];
       return !nameSegment || nameSegment === profile.name;
     }
+    // S07: gameHistory is keyed by kid name — same own-subtree rule.
+    if (topPath === "gameHistory") {
+      const nameSegment = path.split("/")[1];
+      return !nameSegment || nameSegment === profile.name;
+    }
     return true;
   }
 
   // Guest cannot write anything
   return false;
+}
+
+// --- Event privacy helpers (S07 / THEME-A) ---
+// Single source of truth for the "who can see a private event" rule that was
+// previously duplicated (and had drifted) across App.jsx, GroqAssistant.jsx,
+// FamilyTab.jsx and HomeTab.jsx. Events carry BOTH `isPrivate` (canonical)
+// and `private` (legacy) — readers must check both until data is migrated.
+export function isEventPrivate(ev) {
+  return ev?.isPrivate ?? ev?.private ?? false;
+}
+
+// Standard visibility rule: public events visible to all; private events
+// visible to admin and to their creator (missing creator = legacy admin event).
+// NOTE: FamilyTab's shared grid intentionally uses the STRICTER rule
+// (hide private from everyone) via isEventPrivate directly — do not swap it
+// to canSeeEvent.
+export function canSeeEvent(ev, profile) {
+  if (!isEventPrivate(ev)) return true;
+  if (profile?.type === "admin") return true;
+  return (ev.creator ?? "admin") === profile?.name;
+}
+
+export function filterEventsByPrivacy(eventsObj, profile) {
+  if (!eventsObj || !profile) return {};
+  if (profile.type === "admin") return eventsObj;
+  const filtered = {};
+  Object.entries(eventsObj).forEach(([dk, evs]) => {
+    const visible = (Array.isArray(evs) ? evs : []).filter(ev => canSeeEvent(ev, profile));
+    if (visible.length) filtered[dk] = visible;
+  });
+  return filtered;
 }

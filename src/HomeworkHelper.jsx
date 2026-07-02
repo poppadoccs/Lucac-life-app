@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { callAI, verifyMath, createSpeechRecognition, triggerConfetti, speakText } from "./utils";
+import { callAI, verifyMath, createSpeechRecognition, triggerConfetti, speakText, detectUnsafeInput, SAFETY_RESPONSE_TEXT } from "./utils";
 
 const SUBJECTS = [
   { key: "math", label: "Math", icon: "\u{1F522}" },
@@ -121,69 +121,10 @@ function shouldCelebrate(text, age) {
   return /correct|well done|excellent|perfect/.test(lower);
 }
 
-// BF-0: Deterministic safety guard for kid input.
-// Follows the same principle as verifyMath: anything safety-critical lives in
-// JavaScript, not in LLM prompt instructions. An 8B Llama model cannot be
-// trusted to reliably follow "never celebrate self-harm" instructions under
-// adversarial phrasing. This function runs BEFORE groqFetch in doAICall; if
-// unsafe input is detected, Groq is never called and a hardcoded safe response
-// is returned instead. False positives are acceptable (a borderline message
-// gets redirected gently); false negatives are not (unsafe content reaching
-// Groq and getting celebrated).
-const SAFETY_RESPONSE_TEXT =
-  "I'm really glad you told me. You matter. I can't talk about this here — please tell a trusted grown-up right now, like a parent, teacher, or school counselor. They want to help. When you're ready, I'm here to help with homework or fun facts about something else.";
-
-const UNSAFE_INPUT_PATTERNS = [
-  // === Self-harm & suicide — direct phrasing ===
-  /\bkill(ing)?\s+my\s?self\b/i,
-  /\bhurt(ing)?\s+my\s?self\b/i,
-  /\bcut(ting)?\s+my\s?self\b/i,
-  /\bsuicid(e|al)\b/i,
-  /\bend(ing)?\s+(my|his|her|their)\s+life\b/i,
-  /\bend\s+(it\s+all|everything)\b/i,
-  /\bwant\s+to\s+die\b/i,
-  /\bwanna\s+die\b/i,
-  /\bi\s+want\s+it\s+to\s+end\b/i,
-  /\bi\s+(should|wanna|want\s+to)\s+just\s+end\s+(it|everything)\b/i,
-  // === Self-harm & suicide — wish/hypothetical phrasing ===
-  /\bi\s+wish\s+i\s+(was|were)\s+dead\b/i,
-  /\bi\s+wish\s+i\s+(wasn'?t|was\s+never|wasn't\s+ever)\s+(born|alive|here)\b/i,
-  /\bi\s+(don'?t|do\s+not)\s+want\s+to\s+(be\s+alive|live|exist|be\s+here)\b/i,
-  /\blife\s+(isn'?t|is\s+not)\s+worth\s+(it|living|anything)\b/i,
-  /\bi\s+(hate|can'?t\s+stand)\s+(living|being\s+alive|my\s+life)\b/i,
-  /\bi\s+can'?t\s+(go\s+on|do\s+this\s+anymore|keep\s+going)\b/i,
-  /\bi\s+(want\s+to|wanna)\s+dis[sa]*p+ear(\s+(forever|for\s+good))?\b/i,
-  /\bi\s+wish\s+i\s+could\s+dis[sa]*p+ear\b/i,
-  // === Self-harm & suicide — isolation/worthlessness phrasing ===
-  /\bi\s+hate\s+my\s?self\b/i,
-  /\bnobody\s+(cares|loves|likes)\s+(about\s+)?me\b/i,
-  /\bno\s+one\s+(cares|loves|likes)\s+(about\s+)?me\b/i,
-  /\bno\s+one\s+would\s+(care|notice|miss\s+me)\s+if\s+i\s+(died|was\s+gone|wasn'?t\s+here|disappear)/i,
-  /\beveryone\s+(would|'d)\s+be\s+better\s+(off\s+)?without\s+me\b/i,
-  /\bworld\s+(is|would\s+be)\s+better\s+without\s+me\b/i,
-  /\bdying\s+(is|would\s+be|sounds)\s+(better|nice|cool|fun)\b/i,
-  // === Self-harm & suicide — slang abbreviations ===
-  /\bkms\b/i,         // "kill myself" slang, common in text
-  /\bkys\b/i,         // "kill yourself" slang, aimed at others but still unsafe context
-  // === Violence towards others ===
-  /\b(kill|hurt|shoot|stab|beat\s+up|punch|attack|strangle)\s+(him|her|them|you|my\s+(mom|dad|sister|brother|friend|classmate)|the\s+(teacher|kid|boy|girl|bus\s+driver))\b/i,
-  /\bi'?m\s+(gonna|going\s+to)\s+(kill|hurt|shoot|stab|beat|attack)\s+(everyone|anyone|him|her|them|you|my\s*(self|mom|dad|sister|brother|friend)|the\s+(teacher|kid|boy|girl))\b/i,
-  // === Sexual content — action/intent based, NOT bare anatomy ===
-  // (bare anatomy nouns removed per codex review — penis/vagina/breast/nipple
-  // can appear in legitimate science questions. We match sexualized context.)
-  /\b(porn|pornography|horny|masturbat(e|ing|ion))\b/i,
-  /\b(sex|naked|nude)\s+(with|video|pic|photo|picture|time|me|you)\b/i,
-  /\bshow\s+me\s+(your|the)\s+(body|privates|naked|butt)\b/i,
-  /\btouch\s+(my|your)\s+(private|privates|pee\s?pee)\b/i,
-  // === Drugs — action/intent, NOT educational curiosity ===
-  /\b(i|we)\s+(want\s+to\s+try|tried|did|took|used)\s+(drugs|cocaine|heroin|meth|weed|crack|acid|ecstasy)\b/i,
-  /\bgetting\s+high\s+(on|with|off)\b/i,
-];
-
-function detectUnsafeInput(text) {
-  if (typeof text !== "string" || !text) return false;
-  return UNSAFE_INPUT_PATTERNS.some((pattern) => pattern.test(text));
-}
+// BF-0: the deterministic kid-safety guard (SAFETY_RESPONSE_TEXT,
+// UNSAFE_INPUT_PATTERNS, detectUnsafeInput) moved to utils.js in S07 so the
+// Jr assistant path (aiAgent.js) shares the exact same guard. The doAICall
+// hook below is unchanged — it now imports the guard instead of owning it.
 
 export default function HomeworkHelper({ V, profiles, kidsData, fbSet, GROQ_KEY, showToast, homeworkSessions }) {
   const [selectedKid, setSelectedKid] = useState("");

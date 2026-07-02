@@ -8,7 +8,7 @@
 // a subject, cite a primary source in the `notes` field. Never let an LLM
 // hallucinate grade assignments (CLAUDE.md Lessons Learned 2026-04-07 rule).
 
-import { callAI } from "./utils";
+import { callAI, DIFFICULTY_LEVELS } from "./utils";
 import { generateMathProblem } from "./games/_shared";
 
 // Schema per subject:
@@ -187,34 +187,53 @@ export function getSubjectsForGrade(grade) {
   });
 }
 
-// subjectAccuracy — 0–1 accuracy for a subject attempt record, or null if < 3 samples.
+// subjectStatus — two-tier signal for a subject's attempt record (S07 / C3).
+//   "confident":   >= 3 attempts → real accuracy (original behavior)
+//   "provisional": 1-2 attempts, ALL wrong → resurface for practice without
+//                  claiming statistical confidence. A kid who tries a topic
+//                  once, fails, and bounces must not go invisible to the
+//                  adaptive loop.
 // attempts shape: { [timestamp]: { correct: boolean, timeMs: number } }
-function subjectAccuracy(attempts) {
+export function subjectStatus(attempts) {
   if (!attempts || typeof attempts !== "object") return null;
   const list = Object.values(attempts);
-  if (list.length < 3) return null;
-  return list.filter(a => a.correct).length / list.length;
+  if (list.length === 0) return null;
+  const correctCount = list.filter(a => a.correct).length;
+  if (list.length < 3) {
+    return correctCount === 0 ? { tier: "provisional", accuracy: 0, samples: list.length } : null;
+  }
+  return { tier: "confident", accuracy: correctCount / list.length, samples: list.length };
 }
 
-// getWeakAreas — top-3 subjects by lowest accuracy (min 3 attempts each).
+// subjectAccuracy — confident-tier accuracy or null. Exported single source of
+// truth (S07 / C5): SettingsTab and games import this instead of local copies.
+export function subjectAccuracy(attempts) {
+  const s = subjectStatus(attempts);
+  return s && s.tier === "confident" ? s.accuracy : null;
+}
+
+// getWeakAreas — top-3: confident-weak first (lowest accuracy), then
+// provisional. Provisional entries only enter when fewer than 3 confident
+// weak areas exist, so prioritization happens via inclusion.
 export function getWeakAreas(learningStats, kidName) {
   if (!learningStats?.[kidName]) return [];
   const kidStats = learningStats[kidName];
-  return LEARNING_SUBJECTS
+  const scored = LEARNING_SUBJECTS
     .map(subj => {
-      const acc = subjectAccuracy(kidStats[subj.id]);
-      return acc !== null ? { ...subj, accuracy: acc } : null;
+      const st = subjectStatus(kidStats[subj.id]);
+      return st ? { ...subj, accuracy: st.accuracy, tier: st.tier, samples: st.samples } : null;
     })
-    .filter(Boolean)
-    .sort((a, b) => a.accuracy - b.accuracy)
-    .slice(0, 3);
+    .filter(Boolean);
+  const confident = scored.filter(s => s.tier === "confident").sort((a, b) => a.accuracy - b.accuracy);
+  const provisional = scored.filter(s => s.tier === "provisional");
+  return [...confident, ...provisional].slice(0, 3);
 }
 
 // nextProblem — adaptive problem selection for a kid.
 // 60% from weak areas, 40% from active subjects.
 // S04: filters out subjects with gameMechanic:"placeholder" — catalog can
 // grow ahead of generators without games breaking.
-export function nextProblem(curriculumData, learningStats, kidName) {
+export function nextProblem(curriculumData, learningStats, kidName, kidsData) {
   const config = getCurriculum(curriculumData, kidName);
   const weakPlayable = getWeakAreas(learningStats, kidName).filter(s => isPlayable(s.id));
   const activePlayable = (config.activeSubjects || []).filter(isPlayable);
@@ -226,8 +245,14 @@ export function nextProblem(curriculumData, learningStats, kidName) {
     const active = activePlayable.length ? activePlayable : ["multiplication"];
     subjectId = active[Math.floor(Math.random() * active.length)];
   }
+  // S07 / C1: parent-set difficulty wins when present; otherwise mastery-auto.
+  // Raw read + validation (NOT getKidDifficulty) — getKidDifficulty defaults
+  // to "easy" when unset, which would silently downgrade mastery-derived
+  // "hard" for kids whose parent never touched the setting.
+  const parentDiff = kidsData?.[kidName]?.difficulty?.[subjectId];
   const mastery = config.mastery?.[subjectId] ?? 0;
-  const difficulty = mastery > 0.7 ? "hard" : "easy";
+  const autoDiff = mastery > 0.7 ? "hard" : "easy";
+  const difficulty = DIFFICULTY_LEVELS.includes(parentDiff) ? parentDiff : autoDiff;
   return { ...generateMathProblem(difficulty, subjectId), subjectId };
 }
 
@@ -261,14 +286,107 @@ export function recommendGames(curriculumData, learningStats, kidName) {
 }
 
 // recordAttempt — write one attempt to Firebase.
-// Path: learningStats/{kidName}/{subjectId}/{timestamp}
+// Path: learningStats/{kidName}/{subjectId}/{timestamp}-{counter}
+// The counter suffix (S07 / C6) prevents same-millisecond key collisions.
+// Every reader uses Object.values() only, so mixed old/new key formats
+// coexist harmlessly. Do NOT apply this key format to recordGameHistory —
+// ParentDashboard does Number(ts) on gameHistory keys.
+let _attemptCounter = 0;
 export function recordAttempt(fbSet, kidName, subjectId, correct, timeMs) {
   if (!fbSet || !kidName || !subjectId) return;
-  fbSet(`learningStats/${kidName}/${subjectId}/${Date.now()}`, {
+  _attemptCounter = (_attemptCounter + 1) % 1000;
+  fbSet(`learningStats/${kidName}/${subjectId}/${Date.now()}-${_attemptCounter}`, {
     correct: Boolean(correct),
     timeMs: Math.round(timeMs || 0),
     ts: new Date().toISOString(),
   });
+}
+
+// ─── PER-FACT RETRIEVAL ENGINE (S07, touchstone-grounded) ───────────────────
+// Retrieval practice is the best-evidenced fact-memorization intervention
+// (Roediger & Karpicke 2006) and spacing multiplies it (Cepeda et al. 2008);
+// learning is fastest near ~85% success (Wilson et al. 2019). These helpers
+// track every multiplication fact individually so games can aim practice at
+// exactly the facts a kid hasn't conquered yet (Yana's x9-x15 gap), while
+// mixing in ~30% confident wins so sessions never feel like a wall.
+// Storage: learningStats/{kid}/facts/{a}x{b} = { seen, correct, streak, lastTs }
+// ("facts" is a sibling of subject ids; getWeakAreas maps LEARNING_SUBJECTS
+// ids only, so it can never collide.)
+
+export function recordFactAttempt(fbSet, learningStats, kidName, a, b, correct) {
+  if (!fbSet || !kidName || !a || !b) return;
+  // Known trade-off (codex S07 review): prev comes from the last Firebase
+  // snapshot, so two attempts on the SAME fact inside one listener round-trip
+  // could compute from a stale streak. Accepted because: answers are human-
+  // paced (seconds apart vs sub-second sync), games gate double-submits via
+  // lockedRef, and the record self-heals on the next attempt. streak's
+  // conditional reset (miss → 0) can't be expressed as an atomic increment.
+  const prev = learningStats?.[kidName]?.facts?.[`${a}x${b}`] || {};
+  fbSet(`learningStats/${kidName}/facts/${a}x${b}`, {
+    seen: (prev.seen || 0) + 1,
+    correct: (prev.correct || 0) + (correct ? 1 : 0),
+    streak: correct ? (prev.streak || 0) + 1 : 0,
+    lastTs: Date.now(),
+  });
+}
+
+// pickFact — weighted retrieval-practice selection over tables × 1..bMax.
+// Weights: unseen 3, just-missed 4, shaky (streak 1-2) 2, mastered
+// 0.5 + min(2, days since last seen) — mastered facts drift back in as they
+// go stale (spacing). With probability 0.3 the pick comes from the mastered
+// set when non-empty (confidence mix: ~1 in 3 answers is a win she owns).
+export function pickFact(learningStats, kidName, { tables = [], bMax = 12 } = {}) {
+  const facts = learningStats?.[kidName]?.facts || {};
+  const candidates = [];
+  tables.forEach(a => {
+    for (let b = 1; b <= bMax; b++) {
+      const rec = facts[`${a}x${b}`];
+      let weight;
+      if (!rec || !rec.seen) weight = 3;
+      else if (rec.streak === 0) weight = 4;
+      else if (rec.streak < 3) weight = 2;
+      else {
+        const days = (Date.now() - (rec.lastTs || 0)) / 86400000;
+        weight = 0.5 + Math.min(2, days);
+      }
+      candidates.push({ a, b, weight, mastered: !!rec && (rec.streak || 0) >= 3 });
+    }
+  });
+  if (!candidates.length) return null;
+  const mastered = candidates.filter(c => c.mastered);
+  // Confidence-mix probability scales with the mastered set (5% per owned
+  // fact, capped at 30%) — with only 1-2 mastered facts a flat 30% would
+  // serve the SAME fact nearly a third of the time, which bores a skilled
+  // kid and wastes practice slots.
+  const mixP = Math.min(0.3, mastered.length * 0.05);
+  const pool = mastered.length && Math.random() < mixP ? mastered : candidates;
+  const total = pool.reduce((s, c) => s + c.weight, 0);
+  let roll = Math.random() * total;
+  for (const c of pool) {
+    roll -= c.weight;
+    if (roll <= 0) return { a: c.a, b: c.b };
+  }
+  return { a: pool[pool.length - 1].a, b: pool[pool.length - 1].b };
+}
+
+// tableMastery — how many of table×1..12 the kid owns (streak >= 3).
+export function tableMastery(learningStats, kidName, table) {
+  const facts = learningStats?.[kidName]?.facts || {};
+  let mastered = 0;
+  for (let b = 1; b <= 12; b++) {
+    if ((facts[`${table}x${b}`]?.streak || 0) >= 3) mastered++;
+  }
+  return { mastered, total: 12 };
+}
+
+// getFactStreaks — the 12 per-fact streaks for a table (Fact Map rendering).
+export function getFactStreaks(learningStats, kidName, table) {
+  const facts = learningStats?.[kidName]?.facts || {};
+  const out = [];
+  for (let b = 1; b <= 12; b++) {
+    out.push({ b, fact: `${table}×${b}`, streak: facts[`${table}x${b}`]?.streak || 0 });
+  }
+  return out;
 }
 
 // getELI5 — AI-generated plain-language refresher for a parent.

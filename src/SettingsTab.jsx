@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { testGroqConnection } from "./aiAgent";
-import { LEARNING_SUBJECTS, getCurriculum, getELI5, getSubjectsForGrade, getSubjectLabel } from "./LearningEngine";
+import { LEARNING_SUBJECTS, getCurriculum, getELI5, getSubjectsForGrade, getSubjectLabel, subjectAccuracy } from "./LearningEngine";
 import { DIFFICULTY_LEVELS, getKidDifficulty, verifyMath } from "./utils";
 
 export default function SettingsTab({ V, THEMES, themeName, setThemeName, profiles, currentProfile, setCurrentProfile, widgetPrefs, setWidgetPref, fbSet, showToast, isAdmin, isParent, GROQ_KEY, cardStyle, btnPrimary, btnSecondary, inputStyle, alertMinutes, setAlertMinutes, callButtons, setCallButtons, contactDad, contactMom, curriculum = {}, learningStats = {}, rewardsConfig = [], kidsData = {} }) {
@@ -348,11 +348,8 @@ export default function SettingsTab({ V, THEMES, themeName, setThemeName, profil
           {(profiles||[]).filter(p=>p.type==="kid").map(p => {
             const config = getCurriculum(curriculum, p.name);
             const kidStats = learningStats?.[p.name] || {};
-            function accuracy(subjId) {
-              const attempts = Object.values(kidStats[subjId] || {});
-              if (attempts.length < 3) return null;
-              return attempts.filter(a=>a.correct).length / attempts.length;
-            }
+            // S07 / C5: single source of truth — LearningEngine.subjectAccuracy
+            const accuracy = (subjId) => subjectAccuracy(kidStats[subjId]);
             const currentAgeBand = p.ageBand || "early";
             return (
               <div key={p.id} style={{...cardStyle,marginBottom:12}}>

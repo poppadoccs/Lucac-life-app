@@ -4,8 +4,8 @@
 //
 // Each game owns its own effect *application* logic — Magnet/Reverse are
 // FractionLine-drag-modal specific and a noop in games without dragging.
-// ReadingGame's application set is: heart, starSurge, invincible, slowTime
-// (buffs); loseHeart, frenzy, thunder, blind, freeze (debuffs).
+// ReadingGame's application set (S07 — only effects that are REAL there):
+// heart, starSurge, slowTime (buffs); loseHeart, frenzy, blind (debuffs).
 
 export const BUFF_TYPES = [
   { type: "heart",      name: "❤️ +1 Heart",     duration: 0     },
@@ -28,21 +28,24 @@ export const POWERUP_NOTICE_MS = 2200;
 export const DROP_FALL_DURATION_MS = 7000;
 
 // Pure math-expression generator. Returns [expressionText, numericValue].
-// Lifted verbatim from FractionLine.jsx:72-76.
-export function generateMathExpr() {
-  const a = 1 + Math.floor(Math.random() * 9);
-  const b = 1 + Math.floor(Math.random() * 9);
+// S07 / FL9: difficulty scales the drop-math sums so the "tap the bigger sum"
+// comparison grows with the kid — extreme sums (up to 99+99) force estimation-
+// comparison between the two drops instead of instant recall.
+export function generateMathExpr(difficulty = "easy") {
+  const MAX = { easy: 9, medium: 19, hard: 49, extreme: 99 }[difficulty] || 9;
+  const a = 1 + Math.floor(Math.random() * MAX);
+  const b = 1 + Math.floor(Math.random() * MAX);
   return [`${a} + ${b}`, a + b];
 }
 
 // Generate a pair of drops with DIFFERENT values (always a clear winner).
 // Lifted from FractionLine.jsx:79-94. Caller decides leftPct / placement.
-export function spawnDropPair() {
-  const [exprA, valA] = generateMathExpr();
-  let [exprB, valB] = generateMathExpr();
+export function spawnDropPair(difficulty = "easy") {
+  const [exprA, valA] = generateMathExpr(difficulty);
+  let [exprB, valB] = generateMathExpr(difficulty);
   let attempts = 0;
   while (valB === valA && attempts < 8) {
-    [exprB, valB] = generateMathExpr();
+    [exprB, valB] = generateMathExpr(difficulty);
     attempts++;
   }
   if (valB === valA) valB = valA + 1; // emergency tiebreak
